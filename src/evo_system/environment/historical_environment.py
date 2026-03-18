@@ -42,13 +42,15 @@ class HistoricalEnvironment:
                 continue
 
             if in_position and normalized_price < agent.genome.threshold_close:
-                profit += candle.close - entry_price
+                trade_return = (candle.close - entry_price) / entry_price
+                profit += trade_return * agent.genome.position_size
                 in_position = False
                 trades += 1
 
-        if in_position:
-            last_price = self.candles[-1].close
-            profit += last_price - entry_price
+        if in_position and normalized_price < agent.genome.threshold_close:
+            trade_return = (candle.close - entry_price) / entry_price
+            profit += trade_return * agent.genome.position_size
+            in_position = False
             trades += 1
 
         cost = trades * 0.01

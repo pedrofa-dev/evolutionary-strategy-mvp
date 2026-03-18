@@ -37,4 +37,19 @@ def test_fitness_penalizes_no_trades() -> None:
 
     fitness = calculator.calculate(result)
 
+    assert fitness == 0.3 - 1
+
+def test_fitness_penalizes_no_trades() -> None:
+    calculator = FitnessCalculator()
+
+    result = EpisodeResult(
+        profit=0.0,
+        drawdown=0.0,
+        cost=0.0,
+        stability=1.0,
+        trades=1,
+    )
+
+    fitness = calculator.calculate(result)
+
     assert fitness == 0.3 - 0.2
