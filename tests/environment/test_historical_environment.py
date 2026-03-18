@@ -1,7 +1,7 @@
 from evo_system.domain.agent import Agent
+from evo_system.domain.episode_result import EpisodeResult
 from evo_system.domain.genome import Genome
 from evo_system.domain.historical_candle import HistoricalCandle
-from evo_system.domain.episode_result import EpisodeResult
 from evo_system.environment.historical_environment import HistoricalEnvironment
 
 
@@ -13,8 +13,8 @@ def test_historical_environment_runs_episode() -> None:
     ]
 
     genome = Genome(
-        threshold_open=105,
-        threshold_close=95,
+        threshold_open=0.7,
+        threshold_close=0.3,
         position_size=0.2,
         stop_loss=0.05,
         take_profit=0.1,

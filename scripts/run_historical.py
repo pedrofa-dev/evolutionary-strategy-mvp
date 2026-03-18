@@ -2,13 +2,15 @@ import uuid
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
-from evo_system.domain.run_config import RunConfig
 from evo_system.domain.run_record import RunRecord
+from evo_system.environment.csv_loader import load_historical_candles
+from evo_system.environment.historical_environment import HistoricalEnvironment
+from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
-from evo_system.orchestration.config_loader import load_run_config
-from evo_system.environment.simple_environment import SimpleEnvironment
 
+
+DATASET_PATH = "data/sample_market.csv"
 
 
 def build_initial_population(population_size: int) -> list[Agent]:
@@ -28,15 +30,29 @@ def build_initial_population(population_size: int) -> list[Agent]:
     selected_genomes = base_genomes[:population_size]
     return [Agent.create(genome) for genome in selected_genomes]
 
+
 def main() -> None:
-    config = config = load_run_config("configs/run_config.json")
+    config = load_run_config("configs/run_config.json")
+
+    candles = load_historical_candles(DATASET_PATH)
+    split_index = int(len(candles) * 0.7)
+
+    train_candles = candles[:split_index]
+    validation_candles = candles[split_index:]
+
+    if not train_candles or not validation_candles:
+        raise ValueError("Dataset split produced an empty train or validation set")
+
+    train_env = HistoricalEnvironment(train_candles)
+    validation_env = HistoricalEnvironment(validation_candles)
 
     run_id = str(uuid.uuid4())
 
     runner = EvolutionRunner(
-    environment=SimpleEnvironment(),
-    mutation_seed=config.mutation_seed,
-)
+        environment=train_env,
+        mutation_seed=config.mutation_seed,
+    )
+
     store = SQLiteStore()
     store.initialize()
 
@@ -54,6 +70,8 @@ def main() -> None:
     store.save_run_record(run_record)
 
     print(f"Run ID: {run_id}")
+    print(f"Dataset: {DATASET_PATH}")
+    print(f"Train candles: {len(train_candles)} | Validation candles: {len(validation_candles)}")
 
     for generation_number in range(1, config.generations_planned + 1):
         evaluated_agents = runner.run_generation(population)
@@ -65,10 +83,31 @@ def main() -> None:
 
         store.save_generation_result(run_id, summary)
 
+        validation_results = [
+            (
+                agent,
+                runner.fitness_calculator.calculate(
+                    validation_env.run_episode(agent)
+                ),
+            )
+            for agent, _ in evaluated_agents
+        ]
+
+        best_validation = max(fitness for _, fitness in validation_results)
+        average_validation = (
+            sum(fitness for _, fitness in validation_results)
+            / len(validation_results)
+        )
+
         print(
             f"Generation {summary.generation_number} | "
-            f"Best fitness: {summary.best_fitness:.4f} | "
-            f"Average fitness: {summary.average_fitness:.4f}"
+            f"Train best: {summary.best_fitness:.4f} | "
+            f"Train average: {summary.average_fitness:.4f}"
+        )
+        print(
+            f"Validation | "
+            f"Best: {best_validation:.4f} | "
+            f"Average: {average_validation:.4f}"
         )
 
         if generation_number < config.generations_planned:

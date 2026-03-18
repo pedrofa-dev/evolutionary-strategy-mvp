@@ -9,27 +9,31 @@ class HistoricalEnvironment:
     """
 
     def __init__(self, candles: list[HistoricalCandle]) -> None:
+        if not candles:
+            raise ValueError("candles cannot be empty")
+
         self.candles = candles
+        self.min_close = min(candle.close for candle in candles)
+        self.max_close = max(candle.close for candle in candles)
 
     def run_episode(self, agent: Agent) -> EpisodeResult:
         in_position = False
         entry_price = 0.0
         profit = 0.0
-
         trades = 0
 
         for candle in self.candles:
-            price = candle.close
+            normalized_price = self._normalize_price(candle.close)
 
             # Open position
-            if not in_position and price > agent.genome.threshold_open:
+            if not in_position and normalized_price > agent.genome.threshold_open:
                 in_position = True
-                entry_price = price
+                entry_price = candle.close
                 continue
 
             # Close position
-            if in_position and price < agent.genome.threshold_close:
-                profit += price - entry_price
+            if in_position and normalized_price < agent.genome.threshold_close:
+                profit += candle.close - entry_price
                 in_position = False
                 trades += 1
 
@@ -48,3 +52,9 @@ class HistoricalEnvironment:
             cost=cost,
             stability=stability,
         )
+
+    def _normalize_price(self, price: float) -> float:
+        if self.max_close == self.min_close:
+            return 0.5
+
+        return (price - self.min_close) / (self.max_close - self.min_close)
