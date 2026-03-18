@@ -8,9 +8,10 @@ from evo_system.environment.historical_environment import HistoricalEnvironment
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
+from pathlib import Path
 
 
-DATASET_PATH = "data/sample_market.csv"
+DATASET_PATH = Path("data/real/BTCUSDT-1h-2026-02.csv")
 
 
 def build_initial_population(population_size: int) -> list[Agent]:
