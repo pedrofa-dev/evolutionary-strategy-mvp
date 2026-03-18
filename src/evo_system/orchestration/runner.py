@@ -1,28 +1,13 @@
 from evo_system.domain.agent import Agent
-from evo_system.environment.simple_environment import SimpleEnvironment
+from evo_system.domain.generation_result import GenerationResult
 from evo_system.fitness.calculator import FitnessCalculator
 from evo_system.mutation.mutator import Mutator
 from evo_system.selection.selector import Selector
-from evo_system.domain.generation_result import GenerationResult
 
 
 class EvolutionRunner:
-    def summarize_generation(
-        self,
-        generation_number: int,
-        evaluated_agents: list[tuple[Agent, float]],
-    ) -> GenerationResult:
-        fitness_values = [fitness for _, fitness in evaluated_agents]
-
-        return GenerationResult(
-            generation_number=generation_number,
-            evaluated_agents=evaluated_agents,
-            best_fitness=max(fitness_values),
-            average_fitness=sum(fitness_values) / len(fitness_values),
-        )
-    
-    def __init__(self, mutation_seed: int | None = None) -> None:
-        self.environment = SimpleEnvironment()
+    def __init__(self, environment, mutation_seed: int | None = None) -> None:
+        self.environment = environment
         self.fitness_calculator = FitnessCalculator()
         self.selector = Selector()
         self.mutator = Mutator(seed=mutation_seed)
@@ -31,11 +16,17 @@ class EvolutionRunner:
         results = []
 
         for agent in agents:
-            episode_result = self.environment.run(agent.genome)
+            episode_result = self._run_agent(agent)
             fitness = self.fitness_calculator.calculate(episode_result)
             results.append((agent, fitness))
 
         return results
+
+    def _run_agent(self, agent: Agent):
+        if hasattr(self.environment, "run"):
+            return self.environment.run(agent.genome)
+
+        return self.environment.run_episode(agent)
 
     def build_next_generation(
         self,
@@ -50,7 +41,6 @@ class EvolutionRunner:
             evaluated_agents=evaluated_agents,
             survivors_count=survivors_count,
         )
-        
 
         next_generation = list(survivors)
 
@@ -63,4 +53,17 @@ class EvolutionRunner:
             survivor_index += 1
 
         return next_generation
-    
+
+    def summarize_generation(
+        self,
+        generation_number: int,
+        evaluated_agents: list[tuple[Agent, float]],
+    ) -> GenerationResult:
+        fitness_values = [fitness for _, fitness in evaluated_agents]
+
+        return GenerationResult(
+            generation_number=generation_number,
+            evaluated_agents=evaluated_agents,
+            best_fitness=max(fitness_values),
+            average_fitness=sum(fitness_values) / len(fitness_values),
+        )

@@ -2,6 +2,7 @@ import uuid
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
+from evo_system.domain.run_config import RunConfig
 from evo_system.domain.run_record import RunRecord
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
@@ -28,7 +29,7 @@ def build_initial_population(population_size: int) -> list[Agent]:
     return [Agent.create(genome) for genome in selected_genomes]
 
 def main() -> None:
-    config = load_run_config("configs/run_config.json")
+    config = config = load_run_config("configs/run_config.json")
 
     run_id = str(uuid.uuid4())
 

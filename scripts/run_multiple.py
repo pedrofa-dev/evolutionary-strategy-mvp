@@ -1,13 +1,15 @@
 import uuid
+from pathlib import Path
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
 from evo_system.domain.run_record import RunRecord
+from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
-from evo_system.orchestration.config_loader import load_run_config
-from evo_system.environment.simple_environment import SimpleEnvironment
 
+
+CONFIGS_DIR = Path("configs/runs")
 
 
 def build_initial_population(population_size: int) -> list[Agent]:
@@ -27,18 +29,12 @@ def build_initial_population(population_size: int) -> list[Agent]:
     selected_genomes = base_genomes[:population_size]
     return [Agent.create(genome) for genome in selected_genomes]
 
-def main() -> None:
-    config = load_run_config("configs/run_config.json")
 
+def execute_run(config_path: Path, store: SQLiteStore) -> None:
+    config = load_run_config(str(config_path))
     run_id = str(uuid.uuid4())
 
-    runner = EvolutionRunner(
-    environment=SimpleEnvironment(),
-    mutation_seed=config.mutation_seed,
-)
-    store = SQLiteStore()
-    store.initialize()
-
+    runner = EvolutionRunner(mutation_seed=config.mutation_seed)
     population = build_initial_population(config.population_size)
 
     run_record = RunRecord(
@@ -52,6 +48,7 @@ def main() -> None:
 
     store.save_run_record(run_record)
 
+    print(f"\nConfig: {config_path.name}")
     print(f"Run ID: {run_id}")
 
     for generation_number in range(1, config.generations_planned + 1):
@@ -76,6 +73,20 @@ def main() -> None:
                 survivors_count=config.survivors_count,
                 target_population_size=config.target_population_size,
             )
+
+
+def main() -> None:
+    store = SQLiteStore()
+    store.initialize()
+
+    config_files = sorted(CONFIGS_DIR.glob("*.json"))
+
+    if not config_files:
+        print("No config files found.")
+        return
+
+    for config_path in config_files:
+        execute_run(config_path, store)
 
 
 if __name__ == "__main__":

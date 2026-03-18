@@ -4,6 +4,7 @@ from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.selection.selector import Selector
+from evo_system.environment.simple_environment import SimpleEnvironment
 
 
 
@@ -15,7 +16,7 @@ def test_run_generation_returns_fitness_for_each_agent() -> None:
 
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner()
+    runner = EvolutionRunner(environment=SimpleEnvironment())
 
     results = runner.run_generation(agents)
 
@@ -29,7 +30,7 @@ def test_run_generation_is_deterministic() -> None:
     genome = Genome(0.8, 0.4, 0.2, 0.05, 0.1)
     agent = Agent.create(genome)
 
-    runner = EvolutionRunner()
+    runner = EvolutionRunner(environment=SimpleEnvironment())
 
     result_1 = runner.run_generation([agent])
     result_2 = runner.run_generation([agent])
@@ -44,7 +45,7 @@ def test_build_next_generation_returns_expected_population_size() -> None:
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(mutation_seed=42)
+    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
     evaluated = runner.run_generation(agents)
 
     next_generation = runner.build_next_generation(
@@ -64,7 +65,7 @@ def test_build_next_generation_keeps_survivors() -> None:
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(mutation_seed=42)
+    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
     evaluated = runner.run_generation(agents)
 
     selector = Selector()
@@ -87,7 +88,7 @@ def test_build_next_generation_raises_error_when_target_population_is_too_small(
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(mutation_seed=42)
+    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
     evaluated = runner.run_generation(agents)
 
     with pytest.raises(ValueError, match="target_population_size cannot be smaller than survivors_count"):
@@ -104,7 +105,7 @@ def test_summarize_generation_returns_expected_result() -> None:
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(mutation_seed=42)
+    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
     evaluated = runner.run_generation(agents)
 
     summary = runner.summarize_generation(

@@ -1,0 +1,7 @@
+{
+  "mutation_seed": 123,
+  "population_size": 4,
+  "target_population_size": 4,
+  "survivors_count": 2,
+  "generations_planned": 5
+}
