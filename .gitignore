@@ -1,0 +1,22 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Test cache
+.pytest_cache/
+
+# Linter cache
+.ruff_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# SQLite database
+data/*.db
+
+# IDE (optional)
+.vscode/

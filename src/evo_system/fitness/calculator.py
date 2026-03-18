@@ -1,0 +1,15 @@
+from evo_system.domain.episode_result import EpisodeResult
+
+
+class FitnessCalculator:
+    """
+    Converts raw episode metrics into a fitness score.
+    """
+
+    def calculate(self, result: EpisodeResult) -> float:
+        return (
+            result.profit * 1.0
+            - result.drawdown * 0.7
+            - result.cost * 0.5
+            + result.stability * 0.3
+        )
