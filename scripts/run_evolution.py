@@ -2,6 +2,7 @@ import uuid
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
+from evo_system.domain.run_record import RunRecord
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
 
@@ -18,19 +19,34 @@ def build_initial_population() -> list[Agent]:
 
 
 def main() -> None:
+    #Run data
     run_id = str(uuid.uuid4())
+    mutation_seed = 42
+    population = build_initial_population()
+    population_size = len(population)
+    target_population_size = 4
+    survivors_count = 2
+    generations_planned = 5
+
+    run_record = RunRecord(
+        run_id=run_id,
+        mutation_seed=mutation_seed,
+        population_size=population_size,
+        survivors_count=survivors_count,
+        generations_planned=generations_planned,
+        target_population_size=target_population_size
+    )
+
     print(f"Run ID: {run_id}")
-    runner = EvolutionRunner(mutation_seed=42)
+    runner = EvolutionRunner(mutation_seed)
     store = SQLiteStore()
     store.initialize()
+    store.save_run_record(run_record)
 
-    population = build_initial_population()
 
-    generations_to_run = 5
-    survivors_count = 2
-    target_population_size = 4
+    
 
-    for generation_number in range(1, generations_to_run + 1):
+    for generation_number in range(1, generations_planned + 1):
         evaluated_agents = runner.run_generation(population)
 
         summary = runner.summarize_generation(
@@ -46,7 +62,7 @@ def main() -> None:
             f"Average fitness: {summary.average_fitness:.4f}"
         )
 
-        if generation_number < generations_to_run:
+        if generation_number < generations_planned:
             population = runner.build_next_generation(
                 evaluated_agents=evaluated_agents,
                 survivors_count=survivors_count,

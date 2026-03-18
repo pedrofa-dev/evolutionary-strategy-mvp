@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from evo_system.domain.generation_result import GenerationResult
+from evo_system.domain.run_record import RunRecord
 
 
 class SQLiteStore:
@@ -24,6 +25,19 @@ class SQLiteStore:
                     average_fitness REAL NOT NULL,
                     result_json TEXT NOT NULL,
                     PRIMARY KEY (run_id, generation_number)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS runs (
+                    run_id TEXT PRIMARY KEY,
+                    mutation_seed INTEGER,
+                    population_size INTEGER NOT NULL,
+                    target_population_size INTEGER NOT NULL,
+                    survivors_count INTEGER NOT NULL,
+                    generations_planned INTEGER NOT NULL,
+                    run_json TEXT NOT NULL
                 )
                 """
             )
@@ -48,6 +62,33 @@ class SQLiteStore:
                     result.generation_number,
                     result.best_fitness,
                     result.average_fitness,
+                    payload,
+                ),
+            )
+            connection.commit()
+    def save_run_record(self, run_record: RunRecord) -> None:
+        payload = json.dumps(run_record.to_dict())
+
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO runs (
+                    run_id,
+                    mutation_seed,
+                    population_size,
+                    target_population_size,
+                    survivors_count,
+                    generations_planned,
+                    run_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_record.run_id,
+                    run_record.mutation_seed,
+                    run_record.population_size,
+                    run_record.target_population_size,
+                    run_record.survivors_count,
+                    run_record.generations_planned,
                     payload,
                 ),
             )
