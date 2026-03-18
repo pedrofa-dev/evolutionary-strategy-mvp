@@ -7,3 +7,4 @@ class EpisodeResult:
     drawdown: float
     cost: float
     stability: float
+    trades: int

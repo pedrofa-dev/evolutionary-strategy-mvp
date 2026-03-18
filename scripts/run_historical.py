@@ -82,6 +82,7 @@ def main() -> None:
             evaluated_agents=evaluated_agents,
         )
 
+
         store.save_generation_result(run_id, summary)
 
         validation_results = [
@@ -99,6 +100,12 @@ def main() -> None:
             sum(fitness for _, fitness in validation_results)
             / len(validation_results)
         )
+        best_agent, best_fitness = max(
+            evaluated_agents,
+            key=lambda item: item[1],
+        )
+
+        diagnostics = train_env.get_episode_diagnostics(best_agent)
 
         print(
             f"Generation {summary.generation_number} | "
@@ -109,6 +116,15 @@ def main() -> None:
             f"Validation | "
             f"Best: {best_validation:.4f} | "
             f"Average: {average_validation:.4f}"
+        )
+        print("Best agent genome:", best_agent.genome)
+        print("Best agent fitness:", best_fitness)
+        print(
+            "Best agent diagnostics | "
+            f"Trades: {diagnostics['trades']} | "
+            f"Profit: {diagnostics['profit']:.4f} | "
+            f"Cost: {diagnostics['cost']:.4f} | "
+            f"Stability: {diagnostics['stability']:.4f}"
         )
 
         if generation_number < config.generations_planned:

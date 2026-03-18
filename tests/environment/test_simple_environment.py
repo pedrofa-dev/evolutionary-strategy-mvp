@@ -53,3 +53,4 @@ def test_simple_environment_run_returns_expected_metrics() -> None:
     assert result.drawdown == 0.05 * (1.0 - 0.2)
     assert result.cost == 0.01 * 0.2
     assert result.stability == 1.0 - abs(0.8 - 0.4)
+    assert result.trades == 1

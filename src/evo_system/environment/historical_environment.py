@@ -17,6 +17,17 @@ class HistoricalEnvironment:
         self.max_close = max(candle.close for candle in candles)
 
     def run_episode(self, agent: Agent) -> EpisodeResult:
+        metrics = self.get_episode_diagnostics(agent)
+
+        return EpisodeResult(
+            profit=metrics["profit"],
+            drawdown=0.0,
+            cost=metrics["cost"],
+            stability=metrics["stability"],
+            trades=metrics["trades"],
+        )
+
+    def get_episode_diagnostics(self, agent: Agent) -> dict[str, float | int]:
         in_position = False
         entry_price = 0.0
         profit = 0.0
@@ -25,19 +36,16 @@ class HistoricalEnvironment:
         for candle in self.candles:
             normalized_price = self._normalize_price(candle.close)
 
-            # Open position
             if not in_position and normalized_price > agent.genome.threshold_open:
                 in_position = True
                 entry_price = candle.close
                 continue
 
-            # Close position
             if in_position and normalized_price < agent.genome.threshold_close:
                 profit += candle.close - entry_price
                 in_position = False
                 trades += 1
 
-        # Close at end if still open
         if in_position:
             last_price = self.candles[-1].close
             profit += last_price - entry_price
@@ -46,12 +54,12 @@ class HistoricalEnvironment:
         cost = trades * 0.01
         stability = 1.0 if trades <= 1 else 1.0 / trades
 
-        return EpisodeResult(
-            profit=profit,
-            drawdown=0.0,
-            cost=cost,
-            stability=stability,
-        )
+        return {
+            "profit": profit,
+            "trades": trades,
+            "cost": cost,
+            "stability": stability,
+        }
 
     def _normalize_price(self, price: float) -> float:
         if self.max_close == self.min_close:

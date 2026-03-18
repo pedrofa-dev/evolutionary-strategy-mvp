@@ -29,3 +29,4 @@ def test_historical_environment_runs_episode() -> None:
     assert isinstance(result, EpisodeResult)
     assert result.profit != 0.0
     assert result.cost == 0.01
+    assert result.trades == 1

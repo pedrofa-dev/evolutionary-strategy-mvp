@@ -12,7 +12,6 @@ class SimpleEnvironment:
         Simulates execution of a genome and returns metrics.
         """
 
-        # Deterministic "fake" logic
         profit = (
             genome.take_profit * genome.position_size
             - genome.stop_loss * 0.5
@@ -24,9 +23,12 @@ class SimpleEnvironment:
 
         stability = 1.0 - abs(genome.threshold_open - genome.threshold_close)
 
+        trades = 1
+
         return EpisodeResult(
             profit=profit,
             drawdown=drawdown,
             cost=cost,
             stability=stability,
+            trades=trades,
         )

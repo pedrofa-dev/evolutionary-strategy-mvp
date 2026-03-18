@@ -7,9 +7,13 @@ class FitnessCalculator:
     """
 
     def calculate(self, result: EpisodeResult) -> float:
-        return (
+        fitness =  (
             result.profit * 1.0
             - result.drawdown * 0.7
             - result.cost * 0.5
             + result.stability * 0.3
         )
+
+        if result.trades == 0:
+            fitness -= 0.2
+        return fitness
