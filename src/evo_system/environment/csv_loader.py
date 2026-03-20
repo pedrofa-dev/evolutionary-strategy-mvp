@@ -1,22 +1,27 @@
 import csv
+from pathlib import Path
 
 from evo_system.domain.historical_candle import HistoricalCandle
 
 
-def load_historical_candles(csv_path: str) -> list[HistoricalCandle]:
+def load_historical_candles(path: str | Path) -> list[HistoricalCandle]:
     candles: list[HistoricalCandle] = []
 
-    with open(csv_path, "r", encoding="utf-8") as file:
-        reader = csv.reader(file)
+    with open(path, newline="", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
 
         for row in reader:
-            candle = HistoricalCandle(
-                timestamp=str(row[0]),
-                open=float(row[1]),
-                high=float(row[2]),
-                low=float(row[3]),
-                close=float(row[4]),
+            candles.append(
+                HistoricalCandle(
+                    timestamp=str(row["timestamp"]),
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                )
             )
-            candles.append(candle)
+
+    if not candles:
+        raise ValueError(f"No candles found in dataset: {path}")
 
     return candles

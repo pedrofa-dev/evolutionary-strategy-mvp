@@ -3,11 +3,12 @@ from pathlib import Path
 from evo_system.environment.csv_loader import load_historical_candles
 
 
-def test_load_historical_candles_reads_csv_file(tmp_path: Path) -> None:
+def test_load_historical_candles_reads_normalized_csv_file(tmp_path: Path) -> None:
     csv_path = tmp_path / "market.csv"
     csv_path.write_text(
-        "1,100,105,99,104,1000,2,2000,10,500,1000,0\n"
-        "2,104,108,103,107,1200,3,2200,12,600,1100,0\n",
+        "timestamp,open,high,low,close\n"
+        "1,100,105,99,104\n"
+        "2,104,108,103,107\n",
         encoding="utf-8",
     )
 

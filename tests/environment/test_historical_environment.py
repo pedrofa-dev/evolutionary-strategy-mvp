@@ -8,12 +8,12 @@ from evo_system.environment.historical_environment import HistoricalEnvironment
 def test_historical_environment_runs_episode() -> None:
     candles = [
         HistoricalCandle("1", 100, 105, 99, 100),
-        HistoricalCandle("2", 100, 105, 99, 110),
-        HistoricalCandle("3", 110, 115, 108, 90),
+        HistoricalCandle("2", 100, 112, 99, 110),
+        HistoricalCandle("3", 110, 125, 108, 120),
     ]
 
     genome = Genome(
-        threshold_open=0.7,
+        threshold_open=0.4,
         threshold_close=0.3,
         position_size=0.2,
         stop_loss=0.05,
@@ -27,6 +27,6 @@ def test_historical_environment_runs_episode() -> None:
     result = env.run_episode(agent)
 
     assert isinstance(result, EpisodeResult)
-    assert result.profit != 0.0
-    assert result.cost == 0.01
     assert result.trades == 1
+    assert result.profit > 0.0
+    assert result.cost == 0.01

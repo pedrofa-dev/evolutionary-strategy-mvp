@@ -41,16 +41,36 @@ class HistoricalEnvironment:
                 entry_price = candle.close
                 continue
 
-            if in_position and normalized_price < agent.genome.threshold_close:
-                trade_return = (candle.close - entry_price) / entry_price
-                profit += trade_return * agent.genome.position_size
-                in_position = False
-                trades += 1
+            if in_position:
+                stop_price = entry_price * (1.0 - agent.genome.stop_loss)
+                take_price = entry_price * (1.0 + agent.genome.take_profit)
 
-        if in_position and normalized_price < agent.genome.threshold_close:
-            trade_return = (candle.close - entry_price) / entry_price
+                # Conservative rule:
+                # if both are reachable in the same candle, stop loss wins
+                if candle.low <= stop_price:
+                    trade_return = (stop_price - entry_price) / entry_price
+                    profit += trade_return * agent.genome.position_size
+                    in_position = False
+                    trades += 1
+                    continue
+
+                if candle.high >= take_price:
+                    trade_return = (take_price - entry_price) / entry_price
+                    profit += trade_return * agent.genome.position_size
+                    in_position = False
+                    trades += 1
+                    continue
+
+                if normalized_price < agent.genome.threshold_close:
+                    trade_return = (candle.close - entry_price) / entry_price
+                    profit += trade_return * agent.genome.position_size
+                    in_position = False
+                    trades += 1
+
+        if in_position:
+            last_price = self.candles[-1].close
+            trade_return = (last_price - entry_price) / entry_price
             profit += trade_return * agent.genome.position_size
-            in_position = False
             trades += 1
 
         cost = trades * 0.01
