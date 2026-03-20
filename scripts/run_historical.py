@@ -21,10 +21,42 @@ TRAIN_SAMPLE_SIZE = 4
 
 def build_initial_population(population_size: int) -> list[Agent]:
     base_genomes = [
-        Genome(0.8, 0.4, 0.2, 0.05, 0.1),
-        Genome(0.7, 0.3, 0.3, 0.04, 0.15),
-        Genome(0.6, 0.2, 0.1, 0.03, 0.08),
-        Genome(0.9, 0.5, 0.25, 0.06, 0.12),
+        Genome(
+            threshold_open=0.8,
+            threshold_close=0.4,
+            position_size=0.2,
+            stop_loss=0.05,
+            take_profit=0.1,
+            use_momentum=False,
+            momentum_threshold=0.0,
+        ),
+        Genome(
+            threshold_open=0.7,
+            threshold_close=0.3,
+            position_size=0.3,
+            stop_loss=0.04,
+            take_profit=0.15,
+            use_momentum=True,
+            momentum_threshold=0.001,
+        ),
+        Genome(
+            threshold_open=0.6,
+            threshold_close=0.2,
+            position_size=0.1,
+            stop_loss=0.03,
+            take_profit=0.08,
+            use_momentum=True,
+            momentum_threshold=0.0,
+        ),
+        Genome(
+            threshold_open=0.9,
+            threshold_close=0.5,
+            position_size=0.25,
+            stop_loss=0.06,
+            take_profit=0.12,
+            use_momentum=True,
+            momentum_threshold=-0.001,
+        ),
     ]
 
     if population_size > len(base_genomes):

@@ -41,6 +41,8 @@ def test_agent_to_dict_returns_serializable_data() -> None:
             "position_size": 0.2,
             "stop_loss": 0.05,
             "take_profit": 0.1,
+            "use_momentum": False,
+            "momentum_threshold": 0.0,
         },
     }
 
@@ -54,6 +56,8 @@ def test_agent_from_dict_rebuilds_agent() -> None:
             "position_size": 0.2,
             "stop_loss": 0.05,
             "take_profit": 0.1,
+            "use_momentum": True,
+            "momentum_threshold": 0.002,
         },
     }
 
@@ -65,3 +69,5 @@ def test_agent_from_dict_rebuilds_agent() -> None:
     assert agent.genome.position_size == 0.2
     assert agent.genome.stop_loss == 0.05
     assert agent.genome.take_profit == 0.1
+    assert agent.genome.use_momentum is True
+    assert agent.genome.momentum_threshold == 0.002

@@ -11,6 +11,8 @@ class Genome:
     position_size: float
     stop_loss: float
     take_profit: float
+    use_momentum: bool = False
+    momentum_threshold: float = 0.0
 
     def validate(self) -> None:
         if not 0.0 <= self.threshold_open <= 1.0:
@@ -42,6 +44,8 @@ class Genome:
             position_size=float(data["position_size"]),
             stop_loss=float(data["stop_loss"]),
             take_profit=float(data["take_profit"]),
+            use_momentum=bool(data.get("use_momentum", False)),
+            momentum_threshold=float(data.get("momentum_threshold", 0.0)),
         )
         genome.validate()
         return genome

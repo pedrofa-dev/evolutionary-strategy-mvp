@@ -37,10 +37,19 @@ class HistoricalEnvironment:
         peak_equity = 0.0
         max_drawdown = 0.0
 
-        for candle in self.candles:
+        for index, candle in enumerate(self.candles):
             normalized_price = self._normalize_price(candle.close)
+            normalized_momentum = self._get_normalized_momentum(index)
 
-            if not in_position and normalized_price > agent.genome.threshold_open:
+            open_signal = normalized_price > agent.genome.threshold_open
+
+            if agent.genome.use_momentum:
+                open_signal = (
+                    open_signal
+                    and normalized_momentum > agent.genome.momentum_threshold
+                )
+
+            if not in_position and open_signal:
                 in_position = True
                 entry_price = candle.close
                 continue
@@ -117,3 +126,15 @@ class HistoricalEnvironment:
             return 0.5
 
         return (price - self.min_close) / (self.max_close - self.min_close)
+
+    def _get_normalized_momentum(self, index: int) -> float:
+        if index == 0:
+            return 0.0
+
+        previous_close = self.candles[index - 1].close
+        current_close = self.candles[index].close
+
+        if previous_close == 0.0:
+            return 0.0
+
+        return (current_close - previous_close) / previous_close

@@ -12,32 +12,61 @@ class Mutator:
         self.random = random.Random(seed)
 
     def mutate(self, genome: Genome) -> Genome:
+        # --- Standard mutations ---
+        threshold_open = self._clamp(
+            genome.threshold_open + self.random.uniform(-0.05, 0.05),
+            0.0,
+            1.0,
+        )
+
+        threshold_close = self._clamp(
+            genome.threshold_close + self.random.uniform(-0.05, 0.05),
+            0.0,
+            1.0,
+        )
+
+        position_size = self._clamp(
+            genome.position_size + self.random.uniform(-0.05, 0.05),
+            0.01,
+            1.0,
+        )
+
+        stop_loss = self._clamp(
+            genome.stop_loss + self.random.uniform(-0.02, 0.02),
+            0.01,
+            1.0,
+        )
+
+        take_profit = self._clamp(
+            genome.take_profit + self.random.uniform(-0.05, 0.05),
+            0.01,
+            2.0,
+        )
+
+        # --- Momentum mutation ---
+        use_momentum = genome.use_momentum
+        momentum_threshold = genome.momentum_threshold
+
+        # Flip use_momentum with small probability
+        if self.random.random() < 0.1:
+            use_momentum = not use_momentum
+
+        # Mutate threshold only if momentum is active
+        if use_momentum:
+            momentum_threshold = self._clamp(
+                momentum_threshold + self.random.uniform(-0.001, 0.001),
+                -0.01,
+                0.01,
+            )
+
         mutated = genome.copy_with(
-            threshold_open=self._clamp(
-                genome.threshold_open + self.random.uniform(-0.05, 0.05),
-                0.0,
-                1.0,
-            ),
-            threshold_close=self._clamp(
-                genome.threshold_close + self.random.uniform(-0.05, 0.05),
-                0.0,
-                1.0,
-            ),
-            position_size=self._clamp(
-                genome.position_size + self.random.uniform(-0.05, 0.05),
-                0.01,
-                1.0,
-            ),
-            stop_loss=self._clamp(
-                genome.stop_loss + self.random.uniform(-0.02, 0.02),
-                0.01,
-                1.0,
-            ),
-            take_profit=self._clamp(
-                genome.take_profit + self.random.uniform(-0.05, 0.05),
-                0.01,
-                2.0,
-            ),
+            threshold_open=threshold_open,
+            threshold_close=threshold_close,
+            position_size=position_size,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            use_momentum=use_momentum,
+            momentum_threshold=momentum_threshold,
         )
 
         if mutated.threshold_close > mutated.threshold_open:

@@ -20,10 +20,34 @@ def test_genome_to_dict_returns_serializable_data() -> None:
         "position_size": 0.2,
         "stop_loss": 0.05,
         "take_profit": 0.1,
+        "use_momentum": False,
+        "momentum_threshold": 0.0,
     }
 
 
 def test_genome_from_dict_builds_valid_genome() -> None:
+    data = {
+        "threshold_open": 0.8,
+        "threshold_close": 0.4,
+        "position_size": 0.2,
+        "stop_loss": 0.05,
+        "take_profit": 0.1,
+        "use_momentum": True,
+        "momentum_threshold": 0.002,
+    }
+
+    genome = Genome.from_dict(data)
+
+    assert genome.threshold_open == 0.8
+    assert genome.threshold_close == 0.4
+    assert genome.position_size == 0.2
+    assert genome.stop_loss == 0.05
+    assert genome.take_profit == 0.1
+    assert genome.use_momentum is True
+    assert genome.momentum_threshold == 0.002
+
+
+def test_genome_from_dict_supports_legacy_data_without_momentum_fields() -> None:
     data = {
         "threshold_open": 0.8,
         "threshold_close": 0.4,
@@ -39,6 +63,8 @@ def test_genome_from_dict_builds_valid_genome() -> None:
     assert genome.position_size == 0.2
     assert genome.stop_loss == 0.05
     assert genome.take_profit == 0.1
+    assert genome.use_momentum is False
+    assert genome.momentum_threshold == 0.0
 
 
 def test_genome_validation_fails_when_close_threshold_is_greater_than_open() -> None:
@@ -67,3 +93,23 @@ def test_genome_copy_with_returns_new_valid_genome() -> None:
 
     assert updated.position_size == 0.3
     assert genome.position_size == 0.2
+
+
+def test_genome_copy_with_can_update_momentum_fields() -> None:
+    genome = Genome(
+        threshold_open=0.8,
+        threshold_close=0.4,
+        position_size=0.2,
+        stop_loss=0.05,
+        take_profit=0.1,
+    )
+
+    updated = genome.copy_with(
+        use_momentum=True,
+        momentum_threshold=0.001,
+    )
+
+    assert updated.use_momentum is True
+    assert updated.momentum_threshold == 0.001
+    assert genome.use_momentum is False
+    assert genome.momentum_threshold == 0.0
