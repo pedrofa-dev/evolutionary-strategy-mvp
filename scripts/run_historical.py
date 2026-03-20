@@ -52,7 +52,7 @@ def summarize_generation_scores(
 
 
 def format_dataset_list(paths: list[Path]) -> str:
-    return ", ".join(path.name for path in paths)
+    return ", ".join(str(path.relative_to(DATA_ROOT)) for path in paths)
 
 
 def format_evaluation(label: str, evaluation: AgentEvaluation) -> str:
@@ -81,7 +81,7 @@ def print_dataset_breakdown(
         evaluation.dataset_drawdowns,
     ):
         print(
-            f"  {path.name} -> "
+            f"  {path.relative_to(DATA_ROOT)} -> "
             f"score={score:.4f} | "
             f"profit={profit:.4f} | "
             f"dd={drawdown:.4f}"

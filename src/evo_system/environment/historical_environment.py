@@ -21,7 +21,7 @@ class HistoricalEnvironment:
 
         return EpisodeResult(
             profit=metrics["profit"],
-            drawdown=0.0,
+            drawdown=metrics["drawdown"],
             cost=metrics["cost"],
             stability=metrics["stability"],
             trades=metrics["trades"],
@@ -32,6 +32,10 @@ class HistoricalEnvironment:
         entry_price = 0.0
         profit = 0.0
         trades = 0
+
+        equity = 0.0
+        peak_equity = 0.0
+        max_drawdown = 0.0
 
         for candle in self.candles:
             normalized_price = self._normalize_price(candle.close)
@@ -49,28 +53,52 @@ class HistoricalEnvironment:
                 # if both are reachable in the same candle, stop loss wins
                 if candle.low <= stop_price:
                     trade_return = (stop_price - entry_price) / entry_price
-                    profit += trade_return * agent.genome.position_size
+                    realized_profit = trade_return * agent.genome.position_size
+
+                    profit += realized_profit
+                    equity += realized_profit
+                    peak_equity = max(peak_equity, equity)
+                    max_drawdown = max(max_drawdown, peak_equity - equity)
+
                     in_position = False
                     trades += 1
                     continue
 
                 if candle.high >= take_price:
                     trade_return = (take_price - entry_price) / entry_price
-                    profit += trade_return * agent.genome.position_size
+                    realized_profit = trade_return * agent.genome.position_size
+
+                    profit += realized_profit
+                    equity += realized_profit
+                    peak_equity = max(peak_equity, equity)
+                    max_drawdown = max(max_drawdown, peak_equity - equity)
+
                     in_position = False
                     trades += 1
                     continue
 
                 if normalized_price < agent.genome.threshold_close:
                     trade_return = (candle.close - entry_price) / entry_price
-                    profit += trade_return * agent.genome.position_size
+                    realized_profit = trade_return * agent.genome.position_size
+
+                    profit += realized_profit
+                    equity += realized_profit
+                    peak_equity = max(peak_equity, equity)
+                    max_drawdown = max(max_drawdown, peak_equity - equity)
+
                     in_position = False
                     trades += 1
 
         if in_position:
             last_price = self.candles[-1].close
             trade_return = (last_price - entry_price) / entry_price
-            profit += trade_return * agent.genome.position_size
+            realized_profit = trade_return * agent.genome.position_size
+
+            profit += realized_profit
+            equity += realized_profit
+            peak_equity = max(peak_equity, equity)
+            max_drawdown = max(max_drawdown, peak_equity - equity)
+
             trades += 1
 
         cost = trades * 0.01
@@ -78,6 +106,7 @@ class HistoricalEnvironment:
 
         return {
             "profit": profit,
+            "drawdown": max_drawdown,
             "trades": trades,
             "cost": cost,
             "stability": stability,
