@@ -17,34 +17,44 @@ from evo_system.storage.sqlite_store import SQLiteStore
 
 DATA_ROOT = Path("data/real")
 TRAIN_SAMPLE_SIZE = 4
+RUN_LOG_DIR = Path("artifacts/runs")
 
 
 def build_initial_population(population_size: int) -> list[Agent]:
     base_genomes = [
+        # --- Baseline (sin señales) ---
         Genome(
             threshold_open=0.8,
             threshold_close=0.4,
             position_size=0.2,
             stop_loss=0.05,
             take_profit=0.1,
-            use_momentum=False,
-            momentum_threshold=0.0,
-            use_trend=False,
-            trend_threshold=0.0,
-            trend_window=5,
         ),
+
+        # --- Momentum only ---
         Genome(
             threshold_open=0.7,
             threshold_close=0.3,
-            position_size=0.3,
+            position_size=0.25,
             stop_loss=0.04,
-            take_profit=0.15,
+            take_profit=0.12,
             use_momentum=True,
             momentum_threshold=0.001,
-            use_trend=False,
-            trend_threshold=0.0,
+        ),
+
+        # --- Trend only ---
+        Genome(
+            threshold_open=0.65,
+            threshold_close=0.25,
+            position_size=0.15,
+            stop_loss=0.03,
+            take_profit=0.08,
+            use_trend=True,
+            trend_threshold=0.001,
             trend_window=5,
         ),
+
+        # --- Momentum + Trend ---
         Genome(
             threshold_open=0.6,
             threshold_close=0.2,
@@ -57,17 +67,61 @@ def build_initial_population(population_size: int) -> list[Agent]:
             trend_threshold=0.0,
             trend_window=5,
         ),
+
+        # --- Momentum + Exit ---
         Genome(
-            threshold_open=0.9,
-            threshold_close=0.5,
-            position_size=0.25,
-            stop_loss=0.06,
-            take_profit=0.12,
+            threshold_open=0.75,
+            threshold_close=0.3,
+            position_size=0.2,
+            stop_loss=0.04,
+            take_profit=0.1,
             use_momentum=True,
-            momentum_threshold=-0.001,
+            momentum_threshold=0.001,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.001,
+        ),
+
+        # --- Trend + Exit ---
+        Genome(
+            threshold_open=0.7,
+            threshold_close=0.25,
+            position_size=0.15,
+            stop_loss=0.03,
+            take_profit=0.09,
             use_trend=True,
             trend_threshold=0.001,
-            trend_window=8,
+            trend_window=6,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.001,
+        ),
+
+        # --- Momentum + Trend + Exit (agresivo) ---
+        Genome(
+            threshold_open=0.6,
+            threshold_close=0.2,
+            position_size=0.08,
+            stop_loss=0.02,
+            take_profit=0.05,
+            use_momentum=True,
+            momentum_threshold=0.0005,
+            use_trend=True,
+            trend_threshold=0.0005,
+            trend_window=4,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0005,
+        ),
+
+        # --- Variante conservadora ---
+        Genome(
+            threshold_open=0.85,
+            threshold_close=0.5,
+            position_size=0.3,
+            stop_loss=0.06,
+            take_profit=0.15,
+            use_momentum=False,
+            use_trend=True,
+            trend_threshold=0.002,
+            trend_window=10,
         ),
     ]
 
@@ -112,24 +166,30 @@ def format_evaluation(label: str, evaluation: AgentEvaluation) -> str:
     )
 
 
-def print_dataset_breakdown(
+def build_dataset_breakdown_lines(
     paths: list[Path],
     evaluation: AgentEvaluation,
     label: str,
-) -> None:
-    print(f"{label} breakdown:")
+) -> list[str]:
+    lines = [f"{label} breakdown:"]
     for path, score, profit, drawdown in zip(
         paths,
         evaluation.dataset_scores,
         evaluation.dataset_profits,
         evaluation.dataset_drawdowns,
     ):
-        print(
+        lines.append(
             f"  {path.relative_to(DATA_ROOT)} -> "
             f"score={score:.4f} | "
             f"profit={profit:.4f} | "
             f"dd={drawdown:.4f}"
         )
+    return lines
+
+
+def append_lines(log_file_path: Path, lines: list[str]) -> None:
+    with log_file_path.open("a", encoding="utf-8") as log_file:
+        log_file.write("\n".join(lines) + "\n")
 
 
 def main() -> None:
@@ -164,11 +224,29 @@ def main() -> None:
 
     store.save_run_record(run_record)
 
+    RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_file_path = RUN_LOG_DIR / f"run_{run_id}.txt"
+
+    header_lines = [
+        f"Run ID: {run_id}",
+        f"Mutation seed: {config.mutation_seed}",
+        f"Population size: {config.population_size}",
+        f"Target population size: {config.target_population_size}",
+        f"Survivors count: {config.survivors_count}",
+        f"Generations planned: {config.generations_planned}",
+        f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
+        f"Train datasets: {format_dataset_list(train_dataset_paths)}",
+        f"Validation datasets: {format_dataset_list(validation_dataset_paths)}",
+        "",
+    ]
+    append_lines(log_file_path, header_lines)
+
     print(f"Run ID: {run_id}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
     )
+    print(f"Writing detailed log to {log_file_path}")
 
     random_generator = random.Random(config.mutation_seed)
 
@@ -219,31 +297,52 @@ def main() -> None:
             list(agent_evaluations.values())
         )
 
-        print()
-        print(f"Generation {generation_number}")
-        print(f"Train sample -> {format_dataset_list(sampled_train_paths)}")
-        print(
-            f"Selection scores -> best={train_best:.4f} | "
-            f"average={train_average:.4f}"
+        generation_lines = [
+            "",
+            f"Generation {generation_number}",
+            f"Train sample -> {format_dataset_list(sampled_train_paths)}",
+            (
+                f"Selection scores -> best={train_best:.4f} | "
+                f"average={train_average:.4f}"
+            ),
+            f"Best genome -> {best_agent.genome}",
+            format_evaluation("Train", best_train_evaluation),
+            format_evaluation("Validation", validation_evaluation),
+        ]
+
+        generation_lines.extend(
+            build_dataset_breakdown_lines(
+                sampled_train_paths,
+                best_train_evaluation,
+                "Train",
+            )
         )
-        print(f"Best genome -> {best_agent.genome}")
-        print(format_evaluation("Train", best_train_evaluation))
-        print(format_evaluation("Validation", validation_evaluation))
-        print_dataset_breakdown(sampled_train_paths, best_train_evaluation, "Train")
-        print_dataset_breakdown(
-            validation_dataset_paths,
-            validation_evaluation,
-            "Validation",
+        generation_lines.extend(
+            build_dataset_breakdown_lines(
+                validation_dataset_paths,
+                validation_evaluation,
+                "Validation",
+            )
         )
 
         if best_train_evaluation.violations:
-            print(f"Train violations -> {', '.join(best_train_evaluation.violations)}")
+            generation_lines.append(
+                f"Train violations -> {', '.join(best_train_evaluation.violations)}"
+            )
 
         if validation_evaluation.violations:
-            print(
-                f"Validation violations -> "
-                f"{', '.join(validation_evaluation.violations)}"
+            generation_lines.append(
+                f"Validation violations -> {', '.join(validation_evaluation.violations)}"
             )
+
+        append_lines(log_file_path, generation_lines)
+
+        print(
+            f"Generation {generation_number} | "
+            f"best={train_best:.4f} | "
+            f"validation_profit={validation_evaluation.median_profit:.4f} | "
+            f"log={log_file_path.name}"
+        )
 
         if generation_number < config.generations_planned:
             population = runner.build_next_generation(
@@ -251,6 +350,8 @@ def main() -> None:
                 survivors_count=config.survivors_count,
                 target_population_size=config.target_population_size,
             )
+
+    print(f"Detailed run log saved to {log_file_path}")
 
 
 if __name__ == "__main__":
