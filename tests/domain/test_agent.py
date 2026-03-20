@@ -46,6 +46,8 @@ def test_agent_to_dict_returns_serializable_data() -> None:
             "use_trend": False,
             "trend_threshold": 0.0,
             "trend_window": 5,
+            "use_exit_momentum": False,
+            "exit_momentum_threshold": 0.0,
         },
     }
 
@@ -64,6 +66,8 @@ def test_agent_from_dict_rebuilds_agent() -> None:
             "use_trend": True,
             "trend_threshold": 0.003,
             "trend_window": 7,
+            "use_exit_momentum": True,
+            "exit_momentum_threshold": -0.002,
         },
     }
 
@@ -80,3 +84,5 @@ def test_agent_from_dict_rebuilds_agent() -> None:
     assert agent.genome.use_trend is True
     assert agent.genome.trend_threshold == 0.003
     assert agent.genome.trend_window == 7
+    assert agent.genome.use_exit_momentum is True
+    assert agent.genome.exit_momentum_threshold == -0.002

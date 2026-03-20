@@ -82,3 +82,57 @@ def test_historical_environment_filters_entries_when_momentum_is_enabled() -> No
     result = environment.run_episode(agent)
 
     assert result.trades == 0
+
+def test_historical_environment_exit_momentum_does_not_break_legacy_behavior_when_disabled() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 100, 100, 110),
+        HistoricalCandle("3", 110, 110, 100, 101),
+        HistoricalCandle("4", 101, 101, 100, 100),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+            use_exit_momentum=False,
+            exit_momentum_threshold=-0.001,
+        )
+    )
+
+    result = environment.run_episode(agent)
+
+    assert result.trades >= 1
+
+
+def test_historical_environment_can_exit_on_negative_momentum() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 100, 100, 110),
+        HistoricalCandle("3", 110, 110, 100, 101),
+        HistoricalCandle("4", 101, 101, 90, 95),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.05,
+        )
+    )
+
+    result = environment.run_episode(agent)
+
+    assert result.trades >= 1
+    assert isinstance(result.profit, float)

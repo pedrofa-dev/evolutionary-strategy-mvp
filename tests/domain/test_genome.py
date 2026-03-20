@@ -25,6 +25,8 @@ def test_genome_to_dict_returns_serializable_data() -> None:
         "use_trend": False,
         "trend_threshold": 0.0,
         "trend_window": 5,
+        "use_exit_momentum": False,
+        "exit_momentum_threshold": 0.0,
     }
 
 
@@ -40,6 +42,8 @@ def test_genome_from_dict_builds_valid_genome() -> None:
         "use_trend": True,
         "trend_threshold": 0.003,
         "trend_window": 7,
+        "use_exit_momentum": True,
+        "exit_momentum_threshold": -0.002,
     }
 
     genome = Genome.from_dict(data)
@@ -54,6 +58,8 @@ def test_genome_from_dict_builds_valid_genome() -> None:
     assert genome.use_trend is True
     assert genome.trend_threshold == 0.003
     assert genome.trend_window == 7
+    assert genome.use_exit_momentum is True
+    assert genome.exit_momentum_threshold == -0.002
 
 
 def test_genome_from_dict_supports_legacy_data_without_signal_fields() -> None:
@@ -77,6 +83,8 @@ def test_genome_from_dict_supports_legacy_data_without_signal_fields() -> None:
     assert genome.use_trend is False
     assert genome.trend_threshold == 0.0
     assert genome.trend_window == 5
+    assert genome.use_exit_momentum is False
+    assert genome.exit_momentum_threshold == 0.0
 
 
 def test_genome_validation_fails_when_close_threshold_is_greater_than_open() -> None:
@@ -136,6 +144,8 @@ def test_genome_copy_with_can_update_signal_fields() -> None:
         use_trend=True,
         trend_threshold=0.002,
         trend_window=7,
+        use_exit_momentum=True,
+        exit_momentum_threshold=-0.001,
     )
 
     assert updated.use_momentum is True
@@ -143,9 +153,13 @@ def test_genome_copy_with_can_update_signal_fields() -> None:
     assert updated.use_trend is True
     assert updated.trend_threshold == 0.002
     assert updated.trend_window == 7
+    assert updated.use_exit_momentum is True
+    assert updated.exit_momentum_threshold == -0.001
 
     assert genome.use_momentum is False
     assert genome.momentum_threshold == 0.0
     assert genome.use_trend is False
     assert genome.trend_threshold == 0.0
     assert genome.trend_window == 5
+    assert genome.use_exit_momentum is False
+    assert genome.exit_momentum_threshold == 0.0

@@ -96,6 +96,22 @@ class HistoricalEnvironment:
                     trades += 1
                     continue
 
+                if (
+                    agent.genome.use_exit_momentum
+                    and normalized_momentum < agent.genome.exit_momentum_threshold
+                ):
+                    trade_return = (candle.close - entry_price) / entry_price
+                    realized_profit = trade_return * agent.genome.position_size
+
+                    profit += realized_profit
+                    equity += realized_profit
+                    peak_equity = max(peak_equity, equity)
+                    max_drawdown = max(max_drawdown, peak_equity - equity)
+
+                    in_position = False
+                    trades += 1
+                    continue
+
                 if normalized_price < agent.genome.threshold_close:
                     trade_return = (candle.close - entry_price) / entry_price
                     realized_profit = trade_return * agent.genome.position_size

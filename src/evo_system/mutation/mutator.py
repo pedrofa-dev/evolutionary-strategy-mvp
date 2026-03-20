@@ -80,6 +80,20 @@ class Mutator:
                 )
             )
 
+        # --- Exit momentum mutation ---
+        use_exit_momentum = genome.use_exit_momentum
+        exit_momentum_threshold = genome.exit_momentum_threshold
+
+        if self.random.random() < 0.1:
+            use_exit_momentum = not use_exit_momentum
+
+        if use_exit_momentum:
+            exit_momentum_threshold = self._clamp(
+                exit_momentum_threshold + self.random.uniform(-0.001, 0.001),
+                -0.01,
+                0.0,
+            )
+
         mutated = genome.copy_with(
             threshold_open=threshold_open,
             threshold_close=threshold_close,
@@ -91,6 +105,8 @@ class Mutator:
             use_trend=use_trend,
             trend_threshold=trend_threshold,
             trend_window=trend_window,
+            use_exit_momentum=use_exit_momentum,
+            exit_momentum_threshold=exit_momentum_threshold,
         )
 
         if mutated.threshold_close > mutated.threshold_open:

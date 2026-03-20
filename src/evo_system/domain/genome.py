@@ -16,6 +16,8 @@ class Genome:
     use_trend: bool = False
     trend_threshold: float = 0.0
     trend_window: int = 5
+    use_exit_momentum: bool = False
+    exit_momentum_threshold: float = 0.0
 
     def validate(self) -> None:
         if not 0.0 <= self.threshold_open <= 1.0:
@@ -55,6 +57,8 @@ class Genome:
             use_trend=bool(data.get("use_trend", False)),
             trend_threshold=float(data.get("trend_threshold", 0.0)),
             trend_window=int(data.get("trend_window", 5)),
+            use_exit_momentum=bool(data.get("use_exit_momentum", False)),
+            exit_momentum_threshold=float(data.get("exit_momentum_threshold", 0.0)),
         )
         genome.validate()
         return genome
