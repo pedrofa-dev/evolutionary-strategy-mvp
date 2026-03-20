@@ -43,6 +43,9 @@ def test_agent_to_dict_returns_serializable_data() -> None:
             "take_profit": 0.1,
             "use_momentum": False,
             "momentum_threshold": 0.0,
+            "use_trend": False,
+            "trend_threshold": 0.0,
+            "trend_window": 5,
         },
     }
 
@@ -58,6 +61,9 @@ def test_agent_from_dict_rebuilds_agent() -> None:
             "take_profit": 0.1,
             "use_momentum": True,
             "momentum_threshold": 0.002,
+            "use_trend": True,
+            "trend_threshold": 0.003,
+            "trend_window": 7,
         },
     }
 
@@ -71,3 +77,6 @@ def test_agent_from_dict_rebuilds_agent() -> None:
     assert agent.genome.take_profit == 0.1
     assert agent.genome.use_momentum is True
     assert agent.genome.momentum_threshold == 0.002
+    assert agent.genome.use_trend is True
+    assert agent.genome.trend_threshold == 0.003
+    assert agent.genome.trend_window == 7

@@ -29,6 +29,9 @@ def build_initial_population(population_size: int) -> list[Agent]:
             take_profit=0.1,
             use_momentum=False,
             momentum_threshold=0.0,
+            use_trend=False,
+            trend_threshold=0.0,
+            trend_window=5,
         ),
         Genome(
             threshold_open=0.7,
@@ -38,6 +41,9 @@ def build_initial_population(population_size: int) -> list[Agent]:
             take_profit=0.15,
             use_momentum=True,
             momentum_threshold=0.001,
+            use_trend=False,
+            trend_threshold=0.0,
+            trend_window=5,
         ),
         Genome(
             threshold_open=0.6,
@@ -47,6 +53,9 @@ def build_initial_population(population_size: int) -> list[Agent]:
             take_profit=0.08,
             use_momentum=True,
             momentum_threshold=0.0,
+            use_trend=True,
+            trend_threshold=0.0,
+            trend_window=5,
         ),
         Genome(
             threshold_open=0.9,
@@ -56,6 +65,9 @@ def build_initial_population(population_size: int) -> list[Agent]:
             take_profit=0.12,
             use_momentum=True,
             momentum_threshold=-0.001,
+            use_trend=True,
+            trend_threshold=0.001,
+            trend_window=8,
         ),
     ]
 

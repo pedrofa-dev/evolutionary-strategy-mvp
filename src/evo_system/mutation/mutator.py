@@ -47,16 +47,37 @@ class Mutator:
         use_momentum = genome.use_momentum
         momentum_threshold = genome.momentum_threshold
 
-        # Flip use_momentum with small probability
         if self.random.random() < 0.1:
             use_momentum = not use_momentum
 
-        # Mutate threshold only if momentum is active
         if use_momentum:
             momentum_threshold = self._clamp(
                 momentum_threshold + self.random.uniform(-0.001, 0.001),
                 -0.01,
                 0.01,
+            )
+
+        # --- Trend mutation ---
+        use_trend = genome.use_trend
+        trend_threshold = genome.trend_threshold
+        trend_window = genome.trend_window
+
+        if self.random.random() < 0.1:
+            use_trend = not use_trend
+
+        if use_trend:
+            trend_threshold = self._clamp(
+                trend_threshold + self.random.uniform(-0.001, 0.001),
+                -0.01,
+                0.01,
+            )
+
+            trend_window = int(
+                self._clamp(
+                    trend_window + self.random.choice([-1, 1]),
+                    2,
+                    20,
+                )
             )
 
         mutated = genome.copy_with(
@@ -67,6 +88,9 @@ class Mutator:
             take_profit=take_profit,
             use_momentum=use_momentum,
             momentum_threshold=momentum_threshold,
+            use_trend=use_trend,
+            trend_threshold=trend_threshold,
+            trend_window=trend_window,
         )
 
         if mutated.threshold_close > mutated.threshold_open:

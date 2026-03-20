@@ -13,6 +13,9 @@ class Genome:
     take_profit: float
     use_momentum: bool = False
     momentum_threshold: float = 0.0
+    use_trend: bool = False
+    trend_threshold: float = 0.0
+    trend_window: int = 5
 
     def validate(self) -> None:
         if not 0.0 <= self.threshold_open <= 1.0:
@@ -33,6 +36,9 @@ class Genome:
         if not 0.0 < self.take_profit <= 2.0:
             raise ValueError("take_profit must be between 0.0 and 2.0")
 
+        if self.trend_window <= 0:
+            raise ValueError("trend_window must be greater than 0")
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -46,6 +52,9 @@ class Genome:
             take_profit=float(data["take_profit"]),
             use_momentum=bool(data.get("use_momentum", False)),
             momentum_threshold=float(data.get("momentum_threshold", 0.0)),
+            use_trend=bool(data.get("use_trend", False)),
+            trend_threshold=float(data.get("trend_threshold", 0.0)),
+            trend_window=int(data.get("trend_window", 5)),
         )
         genome.validate()
         return genome

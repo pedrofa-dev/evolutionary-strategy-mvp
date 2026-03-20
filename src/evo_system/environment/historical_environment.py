@@ -40,6 +40,10 @@ class HistoricalEnvironment:
         for index, candle in enumerate(self.candles):
             normalized_price = self._normalize_price(candle.close)
             normalized_momentum = self._get_normalized_momentum(index)
+            normalized_trend = self._get_normalized_trend(
+                index=index,
+                window=agent.genome.trend_window,
+            )
 
             open_signal = normalized_price > agent.genome.threshold_open
 
@@ -47,6 +51,12 @@ class HistoricalEnvironment:
                 open_signal = (
                     open_signal
                     and normalized_momentum > agent.genome.momentum_threshold
+                )
+
+            if agent.genome.use_trend:
+                open_signal = (
+                    open_signal
+                    and normalized_trend > agent.genome.trend_threshold
                 )
 
             if not in_position and open_signal:
@@ -138,3 +148,21 @@ class HistoricalEnvironment:
             return 0.0
 
         return (current_close - previous_close) / previous_close
+
+    def _get_normalized_trend(self, index: int, window: int) -> float:
+        if window <= 0:
+            return 0.0
+
+        start_index = max(0, index - window + 1)
+        closes = [candle.close for candle in self.candles[start_index:index + 1]]
+
+        if not closes:
+            return 0.0
+
+        sma = sum(closes) / len(closes)
+        current_close = self.candles[index].close
+
+        if sma == 0.0:
+            return 0.0
+
+        return (current_close - sma) / sma
