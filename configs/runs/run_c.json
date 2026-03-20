@@ -1,5 +1,5 @@
 {
-  "mutation_seed": 84,
+  "mutation_seed": 7,
   "population_size": 4,
   "target_population_size": 4,
   "survivors_count": 2,

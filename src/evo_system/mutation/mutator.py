@@ -14,31 +14,31 @@ class Mutator:
     def mutate(self, genome: Genome) -> Genome:
         # --- Standard mutations ---
         threshold_open = self._clamp(
-            genome.threshold_open + self.random.uniform(-0.05, 0.05),
+            genome.threshold_open + self.random.uniform(-0.03, 0.03),
             0.0,
             1.0,
         )
 
         threshold_close = self._clamp(
-            genome.threshold_close + self.random.uniform(-0.05, 0.05),
+            genome.threshold_close + self.random.uniform(-0.03, 0.03),
             0.0,
             1.0,
         )
 
         position_size = self._clamp(
-            genome.position_size + self.random.uniform(-0.05, 0.05),
+            genome.position_size + self.random.uniform(-0.03, 0.03),
             0.01,
             1.0,
         )
 
         stop_loss = self._clamp(
-            genome.stop_loss + self.random.uniform(-0.02, 0.02),
+            genome.stop_loss + self.random.uniform(-0.01, 0.01),
             0.01,
             1.0,
         )
 
         take_profit = self._clamp(
-            genome.take_profit + self.random.uniform(-0.05, 0.05),
+            genome.take_profit + self.random.uniform(-0.03, 0.03),
             0.01,
             2.0,
         )
@@ -47,12 +47,12 @@ class Mutator:
         use_momentum = genome.use_momentum
         momentum_threshold = genome.momentum_threshold
 
-        if self.random.random() < 0.1:
+        if self.random.random() < 0.05:
             use_momentum = not use_momentum
 
         if use_momentum:
             momentum_threshold = self._clamp(
-                momentum_threshold + self.random.uniform(-0.001, 0.001),
+                momentum_threshold + self.random.uniform(-0.0007, 0.0007),
                 -0.01,
                 0.01,
             )
@@ -62,34 +62,35 @@ class Mutator:
         trend_threshold = genome.trend_threshold
         trend_window = genome.trend_window
 
-        if self.random.random() < 0.1:
+        if self.random.random() < 0.05:
             use_trend = not use_trend
 
         if use_trend:
             trend_threshold = self._clamp(
-                trend_threshold + self.random.uniform(-0.001, 0.001),
+                trend_threshold + self.random.uniform(-0.0007, 0.0007),
                 -0.01,
                 0.01,
             )
 
-            trend_window = int(
-                self._clamp(
-                    trend_window + self.random.choice([-1, 1]),
-                    2,
-                    20,
+            if self.random.random() < 0.30:
+                trend_window = int(
+                    self._clamp(
+                        trend_window + self.random.choice([-1, 1]),
+                        2,
+                        20,
+                    )
                 )
-            )
 
         # --- Exit momentum mutation ---
         use_exit_momentum = genome.use_exit_momentum
         exit_momentum_threshold = genome.exit_momentum_threshold
 
-        if self.random.random() < 0.1:
+        if self.random.random() < 0.05:
             use_exit_momentum = not use_exit_momentum
 
         if use_exit_momentum:
             exit_momentum_threshold = self._clamp(
-                exit_momentum_threshold + self.random.uniform(-0.001, 0.001),
+                exit_momentum_threshold + self.random.uniform(-0.0007, 0.0007),
                 -0.01,
                 0.0,
             )

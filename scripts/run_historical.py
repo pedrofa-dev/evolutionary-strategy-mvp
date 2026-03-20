@@ -192,8 +192,8 @@ def append_lines(log_file_path: Path, lines: list[str]) -> None:
         log_file.write("\n".join(lines) + "\n")
 
 
-def main() -> None:
-    config = load_run_config("configs/run_config.json")
+def execute_historical_run(config_path: str | Path) -> Path:
+    config = load_run_config(str(config_path))
 
     evaluator = AgentEvaluator()
     loader = DatasetPoolLoader()
@@ -228,6 +228,7 @@ def main() -> None:
     log_file_path = RUN_LOG_DIR / f"run_{run_id}.txt"
 
     header_lines = [
+        f"Config path: {config_path}",
         f"Run ID: {run_id}",
         f"Mutation seed: {config.mutation_seed}",
         f"Population size: {config.population_size}",
@@ -242,6 +243,7 @@ def main() -> None:
     append_lines(log_file_path, header_lines)
 
     print(f"Run ID: {run_id}")
+    print(f"Config: {config_path}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
@@ -352,6 +354,11 @@ def main() -> None:
             )
 
     print(f"Detailed run log saved to {log_file_path}")
+    return log_file_path
+
+
+def main() -> None:
+    execute_historical_run("configs/run_config.json")
 
 
 if __name__ == "__main__":
