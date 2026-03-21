@@ -1,6 +1,7 @@
 import random
 import uuid
 from pathlib import Path
+from dataclasses import dataclass
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.agent_evaluation import AgentEvaluation
@@ -13,6 +14,7 @@ from evo_system.orchestration.agent_evaluator import AgentEvaluator
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
+from evo_system.domain.run_summary import HistoricalRunSummary
 
 
 DATA_ROOT = Path("data/real")
@@ -21,120 +23,148 @@ RUN_LOG_DIR = Path("artifacts/runs")
 
 
 def build_initial_population(population_size: int) -> list[Agent]:
+    if population_size <= 0:
+        raise ValueError("population_size must be greater than 0")
+
+    random_generator = random.Random(12345)
+
     base_genomes = [
-        # --- Baseline (sin señales) ---
         Genome(
-            threshold_open=0.8,
-            threshold_close=0.4,
-            position_size=0.2,
+            threshold_open=0.80,
+            threshold_close=0.40,
+            position_size=0.20,
             stop_loss=0.05,
-            take_profit=0.1,
-        ),
-
-        # --- Momentum only ---
-        Genome(
-            threshold_open=0.7,
-            threshold_close=0.3,
-            position_size=0.25,
-            stop_loss=0.04,
-            take_profit=0.12,
-            use_momentum=True,
-            momentum_threshold=0.001,
-        ),
-
-        # --- Trend only ---
-        Genome(
-            threshold_open=0.65,
-            threshold_close=0.25,
-            position_size=0.15,
-            stop_loss=0.03,
-            take_profit=0.08,
-            use_trend=True,
-            trend_threshold=0.001,
-            trend_window=5,
-        ),
-
-        # --- Momentum + Trend ---
-        Genome(
-            threshold_open=0.6,
-            threshold_close=0.2,
-            position_size=0.1,
-            stop_loss=0.03,
-            take_profit=0.08,
-            use_momentum=True,
-            momentum_threshold=0.0,
-            use_trend=True,
-            trend_threshold=0.0,
-            trend_window=5,
-        ),
-
-        # --- Momentum + Exit ---
-        Genome(
-            threshold_open=0.75,
-            threshold_close=0.3,
-            position_size=0.2,
-            stop_loss=0.04,
-            take_profit=0.1,
-            use_momentum=True,
-            momentum_threshold=0.001,
+            take_profit=0.10,
             use_exit_momentum=True,
-            exit_momentum_threshold=-0.001,
+            exit_momentum_threshold=-0.0005,
         ),
-
-        # --- Trend + Exit ---
         Genome(
-            threshold_open=0.7,
-            threshold_close=0.25,
+            threshold_open=0.78,
+            threshold_close=0.38,
+            position_size=0.18,
+            stop_loss=0.05,
+            take_profit=0.12,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0003,
+        ),
+        Genome(
+            threshold_open=0.72,
+            threshold_close=0.30,
+            position_size=0.16,
+            stop_loss=0.04,
+            take_profit=0.10,
+            use_momentum=True,
+            momentum_threshold=0.0008,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0008,
+        ),
+        Genome(
+            threshold_open=0.70,
+            threshold_close=0.28,
             position_size=0.15,
             stop_loss=0.03,
             take_profit=0.09,
             use_trend=True,
-            trend_threshold=0.001,
-            trend_window=6,
+            trend_threshold=0.0006,
+            trend_window=4,
             use_exit_momentum=True,
-            exit_momentum_threshold=-0.001,
+            exit_momentum_threshold=-0.0008,
         ),
-
-        # --- Momentum + Trend + Exit (agresivo) ---
         Genome(
-            threshold_open=0.6,
-            threshold_close=0.2,
-            position_size=0.08,
+            threshold_open=0.66,
+            threshold_close=0.24,
+            position_size=0.10,
             stop_loss=0.02,
-            take_profit=0.05,
+            take_profit=0.06,
             use_momentum=True,
             momentum_threshold=0.0005,
             use_trend=True,
-            trend_threshold=0.0005,
-            trend_window=4,
+            trend_threshold=0.0004,
+            trend_window=3,
             use_exit_momentum=True,
             exit_momentum_threshold=-0.0005,
         ),
-
-        # --- Variante conservadora ---
         Genome(
-            threshold_open=0.85,
-            threshold_close=0.5,
-            position_size=0.3,
-            stop_loss=0.06,
-            take_profit=0.15,
-            use_momentum=False,
+            threshold_open=0.68,
+            threshold_close=0.26,
+            position_size=0.08,
+            stop_loss=0.025,
+            take_profit=0.07,
+            use_momentum=True,
+            momentum_threshold=0.0012,
             use_trend=True,
-            trend_threshold=0.002,
-            trend_window=10,
+            trend_threshold=0.0008,
+            trend_window=2,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0003,
+        ),
+        Genome(
+            threshold_open=0.84,
+            threshold_close=0.45,
+            position_size=0.22,
+            stop_loss=0.06,
+            take_profit=0.14,
+            use_trend=True,
+            trend_threshold=0.0015,
+            trend_window=6,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0006,
+        ),
+        Genome(
+            threshold_open=0.76,
+            threshold_close=0.34,
+            position_size=0.14,
+            stop_loss=0.04,
+            take_profit=0.11,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0010,
         ),
     ]
 
-    if population_size > len(base_genomes):
-        raise ValueError(
-            f"population_size cannot be greater than {len(base_genomes)} "
-            "with the current initial population builder"
+    genomes = list(base_genomes)
+
+    while len(genomes) < population_size:
+        threshold_open = random_generator.uniform(0.45, 0.90)
+        threshold_close = random_generator.uniform(0.15, min(0.45, threshold_open))
+
+        use_momentum = random_generator.choice([True, False])
+        use_trend = random_generator.choice([True, False])
+        use_exit_momentum = random_generator.choice([True, False])
+
+        genome = Genome(
+            threshold_open=threshold_open,
+            threshold_close=threshold_close,
+            position_size=random_generator.uniform(0.05, 0.25),
+            stop_loss=random_generator.uniform(0.01, 0.06),
+            take_profit=random_generator.uniform(0.03, 0.18),
+            use_momentum=use_momentum,
+            momentum_threshold=0.0,
+            use_trend=use_trend,
+            trend_threshold=0.0,
+            trend_window=random_generator.randint(2, 8),
+            use_exit_momentum=use_exit_momentum,
+            exit_momentum_threshold=0.0,
         )
 
-    selected_genomes = base_genomes[:population_size]
+        if use_momentum:
+            genome = genome.copy_with(
+                momentum_threshold=random_generator.uniform(-0.002, 0.002)
+            )
+
+        if use_trend:
+            genome = genome.copy_with(
+                trend_threshold=random_generator.uniform(-0.002, 0.002)
+            )
+
+        if use_exit_momentum:
+            genome = genome.copy_with(
+                exit_momentum_threshold=random_generator.uniform(-0.002, 0.0)
+            )
+
+        genomes.append(genome)
+
+    selected_genomes = genomes[:population_size]
     return [Agent.create(genome) for genome in selected_genomes]
-
-
 def build_environment(dataset_path: Path) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
     return HistoricalEnvironment(candles)
@@ -192,7 +222,7 @@ def append_lines(log_file_path: Path, lines: list[str]) -> None:
         log_file.write("\n".join(lines) + "\n")
 
 
-def execute_historical_run(config_path: str | Path) -> Path:
+def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     config = load_run_config(str(config_path))
 
     evaluator = AgentEvaluator()
@@ -243,7 +273,6 @@ def execute_historical_run(config_path: str | Path) -> Path:
     append_lines(log_file_path, header_lines)
 
     print(f"Run ID: {run_id}")
-    print(f"Config: {config_path}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
@@ -251,6 +280,14 @@ def execute_historical_run(config_path: str | Path) -> Path:
     print(f"Writing detailed log to {log_file_path}")
 
     random_generator = random.Random(config.mutation_seed)
+
+    best_train_selection_score = float("-inf")
+    best_genome_repr = ""
+    final_validation_selection_score = float("-inf")
+    final_validation_profit = 0.0
+    final_validation_drawdown = 0.0
+    final_validation_trades = 0.0
+    
 
     for generation_number in range(1, config.generations_planned + 1):
         sampled_train_paths = random_generator.sample(
@@ -346,6 +383,16 @@ def execute_historical_run(config_path: str | Path) -> Path:
             f"log={log_file_path.name}"
         )
 
+        if best_train_evaluation.selection_score > best_train_selection_score:
+            best_train_selection_score = best_train_evaluation.selection_score
+            best_genome_repr = repr(best_agent.genome)
+            generation_of_best = generation_number
+
+        final_validation_selection_score = validation_evaluation.selection_score
+        final_validation_profit = validation_evaluation.median_profit
+        final_validation_drawdown = validation_evaluation.median_drawdown
+        final_validation_trades = validation_evaluation.median_trades
+
         if generation_number < config.generations_planned:
             population = runner.build_next_generation(
                 evaluated_agents=evaluated_agents,
@@ -353,12 +400,37 @@ def execute_historical_run(config_path: str | Path) -> Path:
                 target_population_size=config.target_population_size,
             )
 
-    print(f"Detailed run log saved to {log_file_path}")
-    return log_file_path
+    summary_lines = [
+        "",
+        "Final summary",
+        f"Best train selection score: {best_train_selection_score:.4f}",
+        f"Final validation selection score: {final_validation_selection_score:.4f}",
+        f"Final validation profit: {final_validation_profit:.4f}",
+        f"Final validation drawdown: {final_validation_drawdown:.4f}",
+        f"Final validation trades: {final_validation_trades:.1f}",
+        f"Best genome found: {best_genome_repr}",
+        f"Generation of best genome: {generation_of_best}",
+    ]
+    append_lines(log_file_path, summary_lines)
 
+    print(f"Detailed run log saved to {log_file_path}")
+
+    return HistoricalRunSummary(
+        config_name=config_path.name,
+        run_id=run_id,
+        log_file_path=log_file_path,
+        best_train_selection_score=best_train_selection_score,
+        final_validation_selection_score=final_validation_selection_score,
+        final_validation_profit=final_validation_profit,
+        final_validation_drawdown=final_validation_drawdown,
+        final_validation_trades=final_validation_trades,
+        best_genome_repr=best_genome_repr,
+        generation_of_best=generation_of_best,
+
+    )
 
 def main() -> None:
-    execute_historical_run("configs/run_config.json")
+    execute_historical_run(Path("configs/run_config.json"))
 
 
 if __name__ == "__main__":

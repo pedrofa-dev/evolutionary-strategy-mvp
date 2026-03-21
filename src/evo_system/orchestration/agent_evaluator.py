@@ -9,9 +9,17 @@ MIN_TRADES = 5
 MIN_POSITION_SIZE = 0.05
 MIN_TAKE_PROFIT = 0.02
 MAX_DISPERSION = 80.0
-INVALID_SCORE = -9999.0
+
+DRAWDOWN_WEIGHT = 0.5
 DISPERSION_WEIGHT = 0.3
-DRAWDOWN_WEIGHT = 2.0
+
+SCORE_SCALE = 1000.0
+TRADE_BONUS = 0.01
+
+TOO_FEW_TRADES_PENALTY = 0.5
+DISPERSION_VIOLATION_PENALTY = 0.5
+POSITION_SIZE_VIOLATION_PENALTY = 1.0
+TAKE_PROFIT_VIOLATION_PENALTY = 1.0
 
 
 class AgentEvaluator:
@@ -31,7 +39,8 @@ class AgentEvaluator:
         for environment in environments:
             result = environment.run_episode(agent)
 
-            score = result.profit - DRAWDOWN_WEIGHT * result.drawdown
+            raw_score = result.profit - DRAWDOWN_WEIGHT * result.drawdown
+            score = SCORE_SCALE * raw_score + TRADE_BONUS * result.trades
 
             scores.append(score)
             trades.append(result.trades)
@@ -58,13 +67,25 @@ class AgentEvaluator:
         if dispersion > MAX_DISPERSION:
             violations.append("dispersion_too_high")
 
-        is_valid = len(violations) == 0
+        penalty = 0.0
 
-        if not is_valid:
-            aggregated_score = INVALID_SCORE
-            selection_score = INVALID_SCORE
-        else:
-            selection_score = aggregated_score - DISPERSION_WEIGHT * dispersion
+        if "too_few_trades" in violations:
+            missing_trades = max(0.0, MIN_TRADES - median_trades)
+            penalty += TOO_FEW_TRADES_PENALTY * missing_trades
+
+        if "dispersion_too_high" in violations:
+            penalty += DISPERSION_VIOLATION_PENALTY
+
+        if "position_size_too_small" in violations:
+            penalty += POSITION_SIZE_VIOLATION_PENALTY
+
+        if "take_profit_too_small" in violations:
+            penalty += TAKE_PROFIT_VIOLATION_PENALTY
+
+        aggregated_score -= penalty
+        selection_score = aggregated_score - DISPERSION_WEIGHT * dispersion
+
+        is_valid = len(violations) == 0
 
         return AgentEvaluation(
             aggregated_score=aggregated_score,

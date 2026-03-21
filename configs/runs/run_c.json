@@ -1,7 +1,7 @@
 {
   "mutation_seed": 7,
-  "population_size": 4,
-  "target_population_size": 4,
-  "survivors_count": 2,
-  "generations_planned": 5
+  "population_size": 12,
+  "target_population_size": 12,
+  "survivors_count": 4,
+  "generations_planned": 25
 }

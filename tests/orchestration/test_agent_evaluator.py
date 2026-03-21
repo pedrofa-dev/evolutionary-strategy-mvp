@@ -17,7 +17,7 @@ def build_environment() -> HistoricalEnvironment:
     return HistoricalEnvironment(candles)
 
 
-def test_agent_evaluator_rejects_small_position_size() -> None:
+def test_agent_evaluator_penalizes_small_position_size() -> None:
     evaluator = AgentEvaluator()
     environments = [build_environment()]
 
@@ -35,11 +35,11 @@ def test_agent_evaluator_rejects_small_position_size() -> None:
 
     assert evaluation.is_valid is False
     assert "position_size_too_small" in evaluation.violations
-    assert evaluation.aggregated_score == -9999.0
-    assert evaluation.selection_score == -9999.0
+    assert evaluation.aggregated_score < 0.0
+    assert evaluation.selection_score <= evaluation.aggregated_score
 
 
-def test_agent_evaluator_rejects_small_take_profit() -> None:
+def test_agent_evaluator_penalizes_small_take_profit() -> None:
     evaluator = AgentEvaluator()
     environments = [build_environment()]
 
@@ -57,11 +57,11 @@ def test_agent_evaluator_rejects_small_take_profit() -> None:
 
     assert evaluation.is_valid is False
     assert "take_profit_too_small" in evaluation.violations
-    assert evaluation.aggregated_score == -9999.0
-    assert evaluation.selection_score == -9999.0
+    assert evaluation.aggregated_score < 0.0
+    assert evaluation.selection_score <= evaluation.aggregated_score
 
 
-def test_agent_evaluator_rejects_too_few_trades() -> None:
+def test_agent_evaluator_penalizes_too_few_trades() -> None:
     evaluator = AgentEvaluator()
     environments = [build_environment()]
 
@@ -79,8 +79,8 @@ def test_agent_evaluator_rejects_too_few_trades() -> None:
 
     assert evaluation.is_valid is False
     assert "too_few_trades" in evaluation.violations
-    assert evaluation.aggregated_score == -9999.0
-    assert evaluation.selection_score == -9999.0
+    assert evaluation.aggregated_score < 0.0
+    assert evaluation.selection_score <= evaluation.aggregated_score
 
 
 def test_agent_evaluator_returns_valid_evaluation_for_viable_agent() -> None:
