@@ -149,6 +149,35 @@ def test_build_next_generation_raises_error_when_survivors_count_is_not_positive
         )
 
 
+def test_build_random_agent_uses_feature_fields() -> None:
+    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
+
+    agent = runner._build_random_agent()
+    genome = agent.genome
+
+    assert 1 <= genome.ret_short_window < genome.ret_mid_window <= 20
+    assert 2 <= genome.vol_short_window < genome.vol_long_window <= 30
+    assert 3 <= genome.ma_window <= 25
+    assert 3 <= genome.range_window <= 20
+
+    assert -1.5 <= genome.weight_ret_short <= 1.5
+    assert -1.5 <= genome.weight_ret_mid <= 1.5
+    assert -1.5 <= genome.weight_dist_ma <= 1.5
+    assert -1.5 <= genome.weight_range_pos <= 1.5
+    assert -1.5 <= genome.weight_vol_ratio <= 1.5
+
+    assert any(
+        weight != 0.0
+        for weight in (
+            genome.weight_ret_short,
+            genome.weight_ret_mid,
+            genome.weight_dist_ma,
+            genome.weight_range_pos,
+            genome.weight_vol_ratio,
+        )
+    )
+
+
 def test_summarize_generation_returns_expected_result() -> None:
     genomes = [
         Genome(0.8, 0.4, 0.2, 0.05, 0.1),

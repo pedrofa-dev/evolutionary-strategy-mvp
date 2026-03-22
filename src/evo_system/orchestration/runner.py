@@ -73,12 +73,21 @@ class EvolutionRunner:
         return next_generation
 
     def _build_random_agent(self) -> Agent:
-        threshold_open = self.random.uniform(0.45, 0.90)
-        threshold_close = self.random.uniform(0.15, min(0.45, threshold_open))
+        return Agent.create(self._build_random_genome())
+
+    def _build_random_genome(self) -> Genome:
+        threshold_open = self.random.uniform(0.35, 0.90)
+        threshold_close = self.random.uniform(0.05, min(0.45, threshold_open))
 
         use_momentum = self.random.choice([True, False])
         use_trend = self.random.choice([True, False])
         use_exit_momentum = self.random.choice([True, False])
+
+        ret_short_window = self.random.randint(1, 5)
+        ret_mid_window = self.random.randint(max(2, ret_short_window + 1), 20)
+
+        vol_short_window = self.random.randint(2, 8)
+        vol_long_window = self.random.randint(max(3, vol_short_window + 1), 30)
 
         genome = Genome(
             threshold_open=threshold_open,
@@ -93,6 +102,17 @@ class EvolutionRunner:
             trend_window=self.random.randint(2, 8),
             use_exit_momentum=use_exit_momentum,
             exit_momentum_threshold=0.0,
+            ret_short_window=ret_short_window,
+            ret_mid_window=ret_mid_window,
+            ma_window=self.random.randint(3, 25),
+            range_window=self.random.randint(3, 20),
+            vol_short_window=vol_short_window,
+            vol_long_window=vol_long_window,
+            weight_ret_short=self.random.uniform(-1.5, 1.5),
+            weight_ret_mid=self.random.uniform(-1.5, 1.5),
+            weight_dist_ma=self.random.uniform(-1.5, 1.5),
+            weight_range_pos=self.random.uniform(-1.5, 1.5),
+            weight_vol_ratio=self.random.uniform(-1.5, 1.5),
         )
 
         if use_momentum:
@@ -110,7 +130,7 @@ class EvolutionRunner:
                 exit_momentum_threshold=self.random.uniform(-0.002, 0.0)
             )
 
-        return Agent.create(genome)
+        return genome
 
     def summarize_generation(
         self,

@@ -1,12 +1,12 @@
 import random
 import uuid
 from pathlib import Path
-from dataclasses import dataclass
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.agent_evaluation import AgentEvaluation
 from evo_system.domain.genome import Genome
 from evo_system.domain.run_record import RunRecord
+from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.environment.csv_loader import load_historical_candles
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.environment.historical_environment import HistoricalEnvironment
@@ -14,12 +14,69 @@ from evo_system.orchestration.agent_evaluator import AgentEvaluator
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
-from evo_system.domain.run_summary import HistoricalRunSummary
 
 
 DATA_ROOT = Path("data/real")
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
+
+
+def build_random_genome(random_generator: random.Random) -> Genome:
+    threshold_open = random_generator.uniform(0.35, 0.90)
+    threshold_close = random_generator.uniform(0.05, min(0.45, threshold_open))
+
+    use_momentum = random_generator.choice([True, False])
+    use_trend = random_generator.choice([True, False])
+    use_exit_momentum = random_generator.choice([True, False])
+
+    ret_short_window = random_generator.randint(1, 5)
+    ret_mid_window = random_generator.randint(max(2, ret_short_window + 1), 20)
+
+    vol_short_window = random_generator.randint(2, 8)
+    vol_long_window = random_generator.randint(max(3, vol_short_window + 1), 30)
+
+    genome = Genome(
+        threshold_open=threshold_open,
+        threshold_close=threshold_close,
+        position_size=random_generator.uniform(0.05, 0.25),
+        stop_loss=random_generator.uniform(0.01, 0.06),
+        take_profit=random_generator.uniform(0.03, 0.18),
+        use_momentum=use_momentum,
+        momentum_threshold=0.0,
+        use_trend=use_trend,
+        trend_threshold=0.0,
+        trend_window=random_generator.randint(2, 8),
+        use_exit_momentum=use_exit_momentum,
+        exit_momentum_threshold=0.0,
+        ret_short_window=ret_short_window,
+        ret_mid_window=ret_mid_window,
+        ma_window=random_generator.randint(3, 25),
+        range_window=random_generator.randint(3, 20),
+        vol_short_window=vol_short_window,
+        vol_long_window=vol_long_window,
+        weight_ret_short=random_generator.uniform(-1.5, 1.5),
+        weight_ret_mid=random_generator.uniform(-1.5, 1.5),
+        weight_dist_ma=random_generator.uniform(-1.5, 1.5),
+        weight_range_pos=random_generator.uniform(-1.5, 1.5),
+        weight_vol_ratio=random_generator.uniform(-1.5, 1.5),
+    )
+
+    if use_momentum:
+        genome = genome.copy_with(
+            momentum_threshold=random_generator.uniform(-0.002, 0.002)
+        )
+
+    if use_trend:
+        genome = genome.copy_with(
+            trend_threshold=random_generator.uniform(-0.002, 0.002)
+        )
+
+    if use_exit_momentum:
+        genome = genome.copy_with(
+            exit_momentum_threshold=random_generator.uniform(-0.002, 0.0)
+        )
+
+    return genome
 
 
 def build_initial_population(population_size: int) -> list[Agent]:
@@ -28,6 +85,9 @@ def build_initial_population(population_size: int) -> list[Agent]:
 
     random_generator = random.Random(12345)
 
+    # Deliberately mixed:
+    # - first legacy genomes preserve the old search space
+    # - later genomes already activate the new feature-based path
     base_genomes = [
         Genome(
             threshold_open=0.80,
@@ -37,15 +97,6 @@ def build_initial_population(population_size: int) -> list[Agent]:
             take_profit=0.10,
             use_exit_momentum=True,
             exit_momentum_threshold=-0.0005,
-        ),
-        Genome(
-            threshold_open=0.78,
-            threshold_close=0.38,
-            position_size=0.18,
-            stop_loss=0.05,
-            take_profit=0.12,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0003,
         ),
         Genome(
             threshold_open=0.72,
@@ -85,86 +136,101 @@ def build_initial_population(population_size: int) -> list[Agent]:
             exit_momentum_threshold=-0.0005,
         ),
         Genome(
-            threshold_open=0.68,
-            threshold_close=0.26,
-            position_size=0.08,
-            stop_loss=0.025,
-            take_profit=0.07,
-            use_momentum=True,
-            momentum_threshold=0.0012,
-            use_trend=True,
-            trend_threshold=0.0008,
-            trend_window=2,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0003,
-        ),
-        Genome(
-            threshold_open=0.84,
-            threshold_close=0.45,
-            position_size=0.22,
-            stop_loss=0.06,
-            take_profit=0.14,
-            use_trend=True,
-            trend_threshold=0.0015,
-            trend_window=6,
+            threshold_open=0.40,
+            threshold_close=0.12,
+            position_size=0.12,
+            stop_loss=0.03,
+            take_profit=0.08,
+            ret_short_window=1,
+            ret_mid_window=3,
+            ma_window=5,
+            range_window=4,
+            vol_short_window=2,
+            vol_long_window=6,
+            weight_ret_short=1.1,
+            weight_ret_mid=0.7,
+            weight_dist_ma=0.4,
+            weight_range_pos=0.2,
+            weight_vol_ratio=-0.1,
             use_exit_momentum=True,
             exit_momentum_threshold=-0.0006,
         ),
         Genome(
-            threshold_open=0.76,
-            threshold_close=0.34,
+            threshold_open=0.42,
+            threshold_close=0.14,
+            position_size=0.12,
+            stop_loss=0.03,
+            take_profit=0.09,
+            ret_short_window=2,
+            ret_mid_window=5,
+            ma_window=6,
+            range_window=5,
+            vol_short_window=2,
+            vol_long_window=7,
+            weight_ret_short=-0.8,
+            weight_ret_mid=0.9,
+            weight_dist_ma=-0.5,
+            weight_range_pos=0.6,
+            weight_vol_ratio=0.2,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0007,
+        ),
+        Genome(
+            threshold_open=0.38,
+            threshold_close=0.10,
+            position_size=0.10,
+            stop_loss=0.025,
+            take_profit=0.07,
+            ret_short_window=1,
+            ret_mid_window=4,
+            ma_window=8,
+            range_window=6,
+            vol_short_window=2,
+            vol_long_window=8,
+            weight_ret_short=0.5,
+            weight_ret_mid=1.2,
+            weight_dist_ma=0.3,
+            weight_range_pos=-0.4,
+            weight_vol_ratio=0.4,
+            use_momentum=True,
+            momentum_threshold=0.0003,
+            use_exit_momentum=True,
+            exit_momentum_threshold=-0.0005,
+        ),
+        Genome(
+            threshold_open=0.44,
+            threshold_close=0.16,
             position_size=0.14,
             stop_loss=0.04,
-            take_profit=0.11,
+            take_profit=0.10,
+            ret_short_window=2,
+            ret_mid_window=6,
+            ma_window=10,
+            range_window=6,
+            vol_short_window=3,
+            vol_long_window=9,
+            weight_ret_short=-0.6,
+            weight_ret_mid=-0.3,
+            weight_dist_ma=0.9,
+            weight_range_pos=0.5,
+            weight_vol_ratio=-0.2,
+            use_trend=True,
+            trend_threshold=0.0004,
+            trend_window=3,
             use_exit_momentum=True,
-            exit_momentum_threshold=-0.0010,
+            exit_momentum_threshold=-0.0006,
         ),
     ]
 
     genomes = list(base_genomes)
 
     while len(genomes) < population_size:
-        threshold_open = random_generator.uniform(0.45, 0.90)
-        threshold_close = random_generator.uniform(0.15, min(0.45, threshold_open))
-
-        use_momentum = random_generator.choice([True, False])
-        use_trend = random_generator.choice([True, False])
-        use_exit_momentum = random_generator.choice([True, False])
-
-        genome = Genome(
-            threshold_open=threshold_open,
-            threshold_close=threshold_close,
-            position_size=random_generator.uniform(0.05, 0.25),
-            stop_loss=random_generator.uniform(0.01, 0.06),
-            take_profit=random_generator.uniform(0.03, 0.18),
-            use_momentum=use_momentum,
-            momentum_threshold=0.0,
-            use_trend=use_trend,
-            trend_threshold=0.0,
-            trend_window=random_generator.randint(2, 8),
-            use_exit_momentum=use_exit_momentum,
-            exit_momentum_threshold=0.0,
-        )
-
-        if use_momentum:
-            genome = genome.copy_with(
-                momentum_threshold=random_generator.uniform(-0.002, 0.002)
-            )
-
-        if use_trend:
-            genome = genome.copy_with(
-                trend_threshold=random_generator.uniform(-0.002, 0.002)
-            )
-
-        if use_exit_momentum:
-            genome = genome.copy_with(
-                exit_momentum_threshold=random_generator.uniform(-0.002, 0.0)
-            )
-
-        genomes.append(genome)
+        genomes.append(build_random_genome(random_generator))
 
     selected_genomes = genomes[:population_size]
     return [Agent.create(genome) for genome in selected_genomes]
+
+
 def build_environment(dataset_path: Path) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
     return HistoricalEnvironment(candles)
@@ -287,7 +353,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     final_validation_profit = 0.0
     final_validation_drawdown = 0.0
     final_validation_trades = 0.0
-    
+    generation_of_best = 0
 
     for generation_number in range(1, config.generations_planned + 1):
         sampled_train_paths = random_generator.sample(
@@ -426,8 +492,8 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         final_validation_trades=final_validation_trades,
         best_genome_repr=best_genome_repr,
         generation_of_best=generation_of_best,
-
     )
+
 
 def main() -> None:
     execute_historical_run(Path("configs/run_config.json"))

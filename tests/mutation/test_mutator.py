@@ -26,19 +26,15 @@ def test_mutate_is_reproducible_with_same_seed() -> None:
         position_size=0.2,
         stop_loss=0.05,
         take_profit=0.1,
-        use_momentum=True,
-        momentum_threshold=0.0008,
-        use_exit_momentum=True,
-        exit_momentum_threshold=-0.0008,
     )
 
-    mutator_1 = Mutator(seed=42)
-    mutator_2 = Mutator(seed=42)
+    mutator1 = Mutator(seed=42)
+    mutator2 = Mutator(seed=42)
 
-    mutated_1 = mutator_1.mutate(genome)
-    mutated_2 = mutator_2.mutate(genome)
+    mutated1 = mutator1.mutate(genome)
+    mutated2 = mutator2.mutate(genome)
 
-    assert mutated_1 == mutated_2
+    assert mutated1 == mutated2
 
 
 def test_mutate_preserves_valid_ranges() -> None:

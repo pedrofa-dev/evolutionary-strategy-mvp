@@ -11,6 +11,9 @@ class Genome:
     position_size: float
     stop_loss: float
     take_profit: float
+
+    # Legacy signal fields kept for backward compatibility with the current
+    # environment, mutator and tests.
     use_momentum: bool = False
     momentum_threshold: float = 0.0
     use_trend: bool = False
@@ -18,6 +21,20 @@ class Genome:
     trend_window: int = 5
     use_exit_momentum: bool = False
     exit_momentum_threshold: float = 0.0
+
+    # New feature-oriented fields for phase 4.
+    ret_short_window: int = 3
+    ret_mid_window: int = 12
+    ma_window: int = 20
+    range_window: int = 20
+    vol_short_window: int = 5
+    vol_long_window: int = 20
+
+    weight_ret_short: float = 0.0
+    weight_ret_mid: float = 0.0
+    weight_dist_ma: float = 0.0
+    weight_range_pos: float = 0.0
+    weight_vol_ratio: float = 0.0
 
     def validate(self) -> None:
         if not 0.0 <= self.threshold_open <= 1.0:
@@ -41,6 +58,41 @@ class Genome:
         if self.trend_window <= 0:
             raise ValueError("trend_window must be greater than 0")
 
+        if self.ret_short_window <= 0:
+            raise ValueError("ret_short_window must be greater than 0")
+
+        if self.ret_mid_window <= 0:
+            raise ValueError("ret_mid_window must be greater than 0")
+
+        if self.ma_window <= 0:
+            raise ValueError("ma_window must be greater than 0")
+
+        if self.range_window <= 0:
+            raise ValueError("range_window must be greater than 0")
+
+        if self.vol_short_window <= 0:
+            raise ValueError("vol_short_window must be greater than 0")
+
+        if self.vol_long_window <= 0:
+            raise ValueError("vol_long_window must be greater than 0")
+
+        if self.ret_short_window >= self.ret_mid_window:
+            raise ValueError("ret_short_window must be less than ret_mid_window")
+
+        if self.vol_short_window >= self.vol_long_window:
+            raise ValueError("vol_short_window must be less than vol_long_window")
+
+        self._validate_weight(self.weight_ret_short, "weight_ret_short")
+        self._validate_weight(self.weight_ret_mid, "weight_ret_mid")
+        self._validate_weight(self.weight_dist_ma, "weight_dist_ma")
+        self._validate_weight(self.weight_range_pos, "weight_range_pos")
+        self._validate_weight(self.weight_vol_ratio, "weight_vol_ratio")
+
+    @staticmethod
+    def _validate_weight(value: float, field_name: str) -> None:
+        if not -3.0 <= value <= 3.0:
+            raise ValueError(f"{field_name} must be between -3.0 and 3.0")
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -59,6 +111,17 @@ class Genome:
             trend_window=int(data.get("trend_window", 5)),
             use_exit_momentum=bool(data.get("use_exit_momentum", False)),
             exit_momentum_threshold=float(data.get("exit_momentum_threshold", 0.0)),
+            ret_short_window=int(data.get("ret_short_window", 3)),
+            ret_mid_window=int(data.get("ret_mid_window", 12)),
+            ma_window=int(data.get("ma_window", 20)),
+            range_window=int(data.get("range_window", 20)),
+            vol_short_window=int(data.get("vol_short_window", 5)),
+            vol_long_window=int(data.get("vol_long_window", 20)),
+            weight_ret_short=float(data.get("weight_ret_short", 0.0)),
+            weight_ret_mid=float(data.get("weight_ret_mid", 0.0)),
+            weight_dist_ma=float(data.get("weight_dist_ma", 0.0)),
+            weight_range_pos=float(data.get("weight_range_pos", 0.0)),
+            weight_vol_ratio=float(data.get("weight_vol_ratio", 0.0)),
         )
         genome.validate()
         return genome

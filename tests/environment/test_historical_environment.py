@@ -27,7 +27,6 @@ def test_historical_environment_returns_drawdown_in_episode_result() -> None:
 
     result = environment.run_episode(agent)
 
-    assert isinstance(result.profit, float)
     assert isinstance(result.drawdown, float)
     assert result.drawdown >= 0.0
 
@@ -55,7 +54,7 @@ def test_historical_environment_keeps_backward_compatibility_when_momentum_is_di
 
     result = environment.run_episode(agent)
 
-    assert result.trades >= 1
+    assert result.trades == 1
 
 
 def test_historical_environment_filters_entries_when_momentum_is_enabled() -> None:
@@ -83,6 +82,7 @@ def test_historical_environment_filters_entries_when_momentum_is_enabled() -> No
 
     assert result.trades == 0
 
+
 def test_historical_environment_exit_momentum_does_not_break_legacy_behavior_when_disabled() -> None:
     candles = [
         HistoricalCandle("1", 100, 100, 100, 100),
@@ -107,7 +107,7 @@ def test_historical_environment_exit_momentum_does_not_break_legacy_behavior_whe
 
     result = environment.run_episode(agent)
 
-    assert result.trades >= 1
+    assert result.trades == 1
 
 
 def test_historical_environment_can_exit_on_negative_momentum() -> None:
@@ -134,5 +134,81 @@ def test_historical_environment_can_exit_on_negative_momentum() -> None:
 
     result = environment.run_episode(agent)
 
-    assert result.trades >= 1
+    assert result.trades == 1
     assert isinstance(result.profit, float)
+
+
+def test_historical_environment_uses_feature_weights_when_present() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 101, 99, 100),
+        HistoricalCandle("2", 100, 103, 99, 102),
+        HistoricalCandle("3", 102, 106, 101, 105),
+        HistoricalCandle("4", 105, 110, 104, 109),
+        HistoricalCandle("5", 109, 113, 108, 112),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.15,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+            weight_ret_short=1.0,
+            weight_ret_mid=1.0,
+            weight_dist_ma=0.5,
+            weight_range_pos=0.2,
+            ret_short_window=1,
+            ret_mid_window=2,
+            ma_window=3,
+            range_window=3,
+        )
+    )
+
+    result = environment.run_episode(agent)
+
+    assert result.trades >= 1
+
+
+def test_historical_environment_keeps_legacy_behavior_when_feature_weights_are_zero() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 100, 100, 105),
+        HistoricalCandle("3", 105, 105, 105, 106),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    legacy_agent = Agent.create(
+        Genome(
+            threshold_open=0.05,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+        )
+    )
+
+    feature_agent = Agent.create(
+        Genome(
+            threshold_open=0.05,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+            weight_ret_short=0.0,
+            weight_ret_mid=0.0,
+            weight_dist_ma=0.0,
+            weight_range_pos=0.0,
+            weight_vol_ratio=0.0,
+        )
+    )
+
+    legacy_result = environment.run_episode(legacy_agent)
+    feature_result = environment.run_episode(feature_agent)
+
+    assert legacy_result.trades == feature_result.trades
+    assert legacy_result.profit == feature_result.profit
+    assert legacy_result.drawdown == feature_result.drawdown

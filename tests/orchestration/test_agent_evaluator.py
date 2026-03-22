@@ -107,3 +107,37 @@ def test_agent_evaluator_returns_valid_evaluation_for_viable_agent() -> None:
     assert isinstance(evaluation.median_drawdown, float)
     assert isinstance(evaluation.is_valid, bool)
     assert isinstance(evaluation.violations, list)
+
+
+def test_agent_evaluator_supports_feature_based_agents() -> None:
+    evaluator = AgentEvaluator()
+    environments = [build_environment(), build_environment()]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.4,
+            threshold_close=0.1,
+            position_size=0.1,
+            stop_loss=0.03,
+            take_profit=0.05,
+            ret_short_window=1,
+            ret_mid_window=2,
+            ma_window=3,
+            range_window=3,
+            vol_short_window=2,
+            vol_long_window=4,
+            weight_ret_short=1.0,
+            weight_ret_mid=0.8,
+            weight_dist_ma=0.4,
+            weight_range_pos=0.2,
+            weight_vol_ratio=0.1,
+        )
+    )
+
+    evaluation = evaluator.evaluate(agent, environments)
+
+    assert isinstance(evaluation.aggregated_score, float)
+    assert isinstance(evaluation.selection_score, float)
+    assert isinstance(evaluation.dataset_scores, list)
+    assert len(evaluation.dataset_scores) == 2
+    assert isinstance(evaluation.violations, list)

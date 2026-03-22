@@ -48,9 +48,19 @@ def test_agent_to_dict_returns_serializable_data() -> None:
             "trend_window": 5,
             "use_exit_momentum": False,
             "exit_momentum_threshold": 0.0,
+            "ret_short_window": 3,
+            "ret_mid_window": 12,
+            "ma_window": 20,
+            "range_window": 20,
+            "vol_short_window": 5,
+            "vol_long_window": 20,
+            "weight_ret_short": 0.0,
+            "weight_ret_mid": 0.0,
+            "weight_dist_ma": 0.0,
+            "weight_range_pos": 0.0,
+            "weight_vol_ratio": 0.0,
         },
     }
-
 
 def test_agent_from_dict_rebuilds_agent() -> None:
     data = {
