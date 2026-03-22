@@ -14,3 +14,6 @@ class AgentEvaluation:
     dataset_drawdowns: list[float]
     is_valid: bool
     violations: list[str]
+    worst_dataset_score: float
+    bottom_quartile_score: float
+    score_mad: float

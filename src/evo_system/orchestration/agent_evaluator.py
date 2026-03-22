@@ -12,6 +12,7 @@ MAX_DISPERSION = 80.0
 
 DRAWDOWN_WEIGHT = 0.5
 DISPERSION_WEIGHT = 0.3
+DOWNSIDE_WEIGHT = 0.4
 
 SCORE_SCALE = 1000.0
 TRADE_BONUS = 0.01
@@ -65,6 +66,10 @@ class AgentEvaluator:
         median_profit = median(profits)
         median_drawdown = median(drawdowns)
 
+        worst_dataset_score = min(scores)
+        bottom_quartile_score = self._calculate_bottom_quartile_score(scores)
+        score_mad = self._calculate_mad(scores, aggregated_score)
+
         violations: list[str] = []
 
         if median_trades < MIN_TRADES:
@@ -95,7 +100,13 @@ class AgentEvaluator:
             penalty += TAKE_PROFIT_VIOLATION_PENALTY
 
         aggregated_score -= penalty
-        selection_score = aggregated_score - DISPERSION_WEIGHT * dispersion
+
+        downside_penalty = max(0.0, -bottom_quartile_score)
+        selection_score = (
+            aggregated_score
+            - DISPERSION_WEIGHT * score_mad
+            - DOWNSIDE_WEIGHT * downside_penalty
+        )
 
         is_valid = len(violations) == 0
 
@@ -111,4 +122,17 @@ class AgentEvaluator:
             dataset_drawdowns=drawdowns,
             is_valid=is_valid,
             violations=violations,
+            worst_dataset_score=worst_dataset_score,
+            bottom_quartile_score=bottom_quartile_score,
+            score_mad=score_mad,
         )
+
+    def _calculate_bottom_quartile_score(self, scores: list[float]) -> float:
+        sorted_scores = sorted(scores)
+        sample_size = max(1, len(sorted_scores) // 4)
+        bottom_scores = sorted_scores[:sample_size]
+        return sum(bottom_scores) / len(bottom_scores)
+
+    def _calculate_mad(self, values: list[float], center: float) -> float:
+        absolute_deviations = [abs(value - center) for value in values]
+        return median(absolute_deviations)

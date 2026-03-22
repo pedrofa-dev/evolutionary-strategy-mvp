@@ -107,6 +107,9 @@ def test_agent_evaluator_returns_valid_evaluation_for_viable_agent() -> None:
     assert isinstance(evaluation.median_drawdown, float)
     assert isinstance(evaluation.is_valid, bool)
     assert isinstance(evaluation.violations, list)
+    assert isinstance(evaluation.worst_dataset_score, float)
+    assert isinstance(evaluation.bottom_quartile_score, float)
+    assert isinstance(evaluation.score_mad, float)
 
 
 def test_agent_evaluator_supports_feature_based_agents() -> None:
@@ -141,6 +144,9 @@ def test_agent_evaluator_supports_feature_based_agents() -> None:
     assert isinstance(evaluation.dataset_scores, list)
     assert len(evaluation.dataset_scores) == 2
     assert isinstance(evaluation.violations, list)
+    assert isinstance(evaluation.worst_dataset_score, float)
+    assert isinstance(evaluation.bottom_quartile_score, float)
+    assert isinstance(evaluation.score_mad, float)
 
 
 def test_agent_evaluator_penalizes_costly_environments() -> None:
@@ -223,3 +229,45 @@ def test_agent_evaluator_penalty_weight_can_be_disabled() -> None:
 
     assert evaluation_with_cost_penalty.aggregated_score < evaluation_without_cost_penalty.aggregated_score
     assert evaluation_with_cost_penalty.selection_score < evaluation_without_cost_penalty.selection_score
+
+
+def test_agent_evaluator_reports_zero_mad_for_identical_dataset_scores() -> None:
+    evaluator = AgentEvaluator()
+    environments = [build_environment(), build_environment(), build_environment()]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.6,
+            threshold_close=0.2,
+            position_size=0.1,
+            stop_loss=0.03,
+            take_profit=0.05,
+        )
+    )
+
+    evaluation = evaluator.evaluate(agent, environments)
+
+    assert evaluation.score_mad == 0.0
+    assert evaluation.worst_dataset_score == 0.0
+    assert evaluation.bottom_quartile_score == 0.0
+    assert evaluation.dataset_scores == [0.0, 0.0, 0.0]
+    assert evaluation.aggregated_score < evaluation.worst_dataset_score
+
+def test_agent_evaluator_bottom_quartile_matches_worst_score_with_three_datasets() -> None:
+    evaluator = AgentEvaluator()
+    environments = [build_environment(), build_environment(), build_environment()]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.6,
+            threshold_close=0.2,
+            position_size=0.1,
+            stop_loss=0.03,
+            take_profit=0.05,
+        )
+    )
+
+    evaluation = evaluator.evaluate(agent, environments)
+
+    assert evaluation.bottom_quartile_score == min(evaluation.dataset_scores)
+    assert evaluation.worst_dataset_score == min(evaluation.dataset_scores)
