@@ -1,0 +1,244 @@
+import json
+import statistics
+import tempfile
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+
+from run_historical import execute_historical_run
+from evo_system.domain.run_summary import HistoricalRunSummary
+
+
+CONFIGS_DIR = Path("configs/runs")
+BATCHES_ROOT_DIR = Path("artifacts/batches")
+DEFAULT_SEEDS = [101, 102, 103, 104, 105]
+
+
+def load_config(config_path: Path) -> dict:
+    return json.loads(config_path.read_text(encoding="utf-8"))
+
+
+def write_temp_config(config_data: dict) -> Path:
+    temp_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".json",
+        delete=False,
+        encoding="utf-8",
+    )
+    with temp_file:
+        json.dump(config_data, temp_file, indent=2)
+    return Path(temp_file.name)
+
+
+def build_log_name(config_path: Path, seed: int) -> str:
+    return f"run_{config_path.stem}_seed{seed}.txt"
+
+
+def create_multiseed_dir() -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    multiseed_dir = BATCHES_ROOT_DIR / f"multiseed_{timestamp}"
+    multiseed_dir.mkdir(parents=True, exist_ok=True)
+    return multiseed_dir
+
+
+def execute_multiseed_runs(
+    config_paths: list[Path],
+    seeds: list[int],
+    output_dir: Path,
+) -> list[HistoricalRunSummary]:
+    summaries: list[HistoricalRunSummary] = []
+
+    for config_path in config_paths:
+        base_config = load_config(config_path)
+
+        for seed in seeds:
+            print()
+            print(f"=== Running {config_path.name} with seed {seed} ===")
+
+            config_copy = dict(base_config)
+            config_copy["mutation_seed"] = seed
+
+            temp_config_path = write_temp_config(config_copy)
+            try:
+                summary = execute_historical_run(
+                    config_path=temp_config_path,
+                    output_dir=output_dir,
+                    log_name=build_log_name(config_path, seed),
+                )
+
+                summaries.append(
+                    HistoricalRunSummary(
+                        config_name=config_path.name,
+                        run_id=summary.run_id,
+                        log_file_path=summary.log_file_path,
+                        mutation_seed=seed,
+                        best_train_selection_score=summary.best_train_selection_score,
+                        final_validation_selection_score=summary.final_validation_selection_score,
+                        final_validation_profit=summary.final_validation_profit,
+                        final_validation_drawdown=summary.final_validation_drawdown,
+                        final_validation_trades=summary.final_validation_trades,
+                        best_genome_repr=summary.best_genome_repr,
+                        generation_of_best=summary.generation_of_best,
+                        train_validation_selection_gap=summary.train_validation_selection_gap,
+                        train_validation_profit_gap=summary.train_validation_profit_gap,
+                    )
+                )
+            finally:
+                temp_config_path.unlink(missing_ok=True)
+
+    return summaries
+
+
+def safe_mean(values: list[float]) -> float:
+    return statistics.mean(values) if values else 0.0
+
+
+def safe_stdev(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    return statistics.stdev(values)
+
+
+def build_grouped_summary_lines(
+    summaries: list[HistoricalRunSummary],
+) -> list[str]:
+    grouped: dict[str, list[HistoricalRunSummary]] = defaultdict(list)
+    for summary in summaries:
+        grouped[summary.config_name].append(summary)
+
+    wins_by_config: dict[str, int] = defaultdict(int)
+
+    for seed_runs in zip(
+        *[
+            sorted(runs, key=lambda run: run.mutation_seed)
+            for _, runs in sorted(grouped.items())
+        ]
+    ):
+        winner = max(
+            seed_runs,
+            key=lambda run: run.final_validation_selection_score,
+        )
+        wins_by_config[winner.config_name] += 1
+
+    aggregated_rows = []
+    for config_name, runs in grouped.items():
+        runs_sorted = sorted(runs, key=lambda run: run.mutation_seed)
+
+        selection_scores = [r.final_validation_selection_score for r in runs_sorted]
+        profits = [r.final_validation_profit for r in runs_sorted]
+        drawdowns = [r.final_validation_drawdown for r in runs_sorted]
+        trades = [r.final_validation_trades for r in runs_sorted]
+        abs_gaps = [abs(r.train_validation_selection_gap) for r in runs_sorted]
+
+        aggregated_rows.append(
+            {
+                "config_name": config_name,
+                "runs": runs_sorted,
+                "mean_validation_selection": safe_mean(selection_scores),
+                "std_validation_selection": safe_stdev(selection_scores),
+                "best_validation_selection": max(selection_scores),
+                "worst_validation_selection": min(selection_scores),
+                "mean_validation_profit": safe_mean(profits),
+                "std_validation_profit": safe_stdev(profits),
+                "mean_validation_drawdown": safe_mean(drawdowns),
+                "mean_validation_trades": safe_mean(trades),
+                "mean_abs_selection_gap": safe_mean(abs_gaps),
+                "wins_count": wins_by_config[config_name],
+            }
+        )
+
+    aggregated_rows.sort(
+        key=lambda row: (
+            row["mean_validation_selection"],
+            row["mean_validation_profit"],
+            -row["std_validation_selection"],
+        ),
+        reverse=True,
+    )
+
+    lines: list[str] = []
+    lines.append("Ranking by mean validation selection score")
+    lines.append("")
+
+    for index, row in enumerate(aggregated_rows, start=1):
+        lines.append(
+            f"{index}. {row['config_name']} | "
+            f"mean_validation_selection={row['mean_validation_selection']:.4f} | "
+            f"std_validation_selection={row['std_validation_selection']:.4f} | "
+            f"best_validation_selection={row['best_validation_selection']:.4f} | "
+            f"worst_validation_selection={row['worst_validation_selection']:.4f} | "
+            f"mean_validation_profit={row['mean_validation_profit']:.4f} | "
+            f"std_validation_profit={row['std_validation_profit']:.4f} | "
+            f"mean_validation_drawdown={row['mean_validation_drawdown']:.4f} | "
+            f"mean_validation_trades={row['mean_validation_trades']:.1f} | "
+            f"mean_abs_selection_gap={row['mean_abs_selection_gap']:.4f} | "
+            f"wins={row['wins_count']}"
+        )
+
+        for run in row["runs"]:
+            lines.append(
+                f"   seed={run.mutation_seed} | "
+                f"validation_selection={run.final_validation_selection_score:.4f} | "
+                f"validation_profit={run.final_validation_profit:.4f} | "
+                f"drawdown={run.final_validation_drawdown:.4f} | "
+                f"trades={run.final_validation_trades:.1f} | "
+                f"selection_gap={run.train_validation_selection_gap:.4f} | "
+                f"log={run.log_file_path.name}"
+            )
+        lines.append("")
+
+    return lines
+
+
+def write_multiseed_summary(
+    summaries: list[HistoricalRunSummary],
+    seeds: list[int],
+    output_dir: Path,
+) -> Path:
+    summary_path = output_dir / "multiseed_summary.txt"
+
+    lines = [
+        f"Multiseed batch executed at: {datetime.now().isoformat(timespec='seconds')}",
+        f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
+        f"Seeds per config: {len(seeds)}",
+        f"Seeds used: {', '.join(str(seed) for seed in seeds)}",
+        f"Total runs: {len(summaries)}",
+        "",
+    ]
+    lines.extend(build_grouped_summary_lines(summaries))
+
+    summary_path.write_text("\n".join(lines), encoding="utf-8")
+    return summary_path
+
+
+def main() -> None:
+    config_paths = sorted(CONFIGS_DIR.glob("*.json"))
+
+    if not config_paths:
+        print("No config files found.")
+        return
+
+    print(f"Found {len(config_paths)} config files.")
+    print(f"Using seeds: {DEFAULT_SEEDS}")
+
+    output_dir = create_multiseed_dir()
+    print(f"Writing multiseed artifacts to {output_dir}")
+
+    summaries = execute_multiseed_runs(
+        config_paths=config_paths,
+        seeds=DEFAULT_SEEDS,
+        output_dir=output_dir,
+    )
+
+    summary_path = write_multiseed_summary(
+        summaries=summaries,
+        seeds=DEFAULT_SEEDS,
+        output_dir=output_dir,
+    )
+
+    print()
+    print(f"Multiseed summary saved to {summary_path}")
+
+
+if __name__ == "__main__":
+    main()

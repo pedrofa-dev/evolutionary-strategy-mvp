@@ -1,11 +1,12 @@
 from datetime import datetime
 from pathlib import Path
 
-from run_historical import RUN_LOG_DIR, execute_historical_run
+from run_historical import execute_historical_run
 from evo_system.domain.run_summary import HistoricalRunSummary
 
 
 CONFIGS_DIR = Path("configs/runs")
+BATCHES_ROOT_DIR = Path("artifacts/batches")
 
 
 def build_ranking_lines_by_selection(
@@ -24,6 +25,7 @@ def build_ranking_lines_by_selection(
         lines.append(
             f"{index}. {summary.config_name} | "
             f"run_id={summary.run_id} | "
+            f"mutation_seed={summary.mutation_seed} | "
             f"best_train={summary.best_train_selection_score:.4f} | "
             f"validation_selection={summary.final_validation_selection_score:.4f} | "
             f"validation_profit={summary.final_validation_profit:.4f} | "
@@ -55,6 +57,7 @@ def build_ranking_lines_by_profit(
         lines.append(
             f"{index}. {summary.config_name} | "
             f"run_id={summary.run_id} | "
+            f"mutation_seed={summary.mutation_seed} | "
             f"validation_profit={summary.final_validation_profit:.4f} | "
             f"validation_selection={summary.final_validation_selection_score:.4f} | "
             f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
@@ -85,15 +88,24 @@ def build_batch_summary_lines(
     return lines
 
 
-def write_batch_summary(run_summaries: list[HistoricalRunSummary]) -> Path:
-    RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
+def build_log_name(config_path: Path) -> str:
+    return f"run_{config_path.stem}.txt"
 
+
+def create_batch_dir() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    batch_summary_path = RUN_LOG_DIR / f"batch_{timestamp}.txt"
+    batch_dir = BATCHES_ROOT_DIR / f"batch_{timestamp}"
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    return batch_dir
 
+
+def write_batch_summary(
+    run_summaries: list[HistoricalRunSummary],
+    batch_dir: Path,
+) -> Path:
+    batch_summary_path = batch_dir / "batch_summary.txt"
     lines = build_batch_summary_lines(run_summaries)
     batch_summary_path.write_text("\n".join(lines), encoding="utf-8")
-
     return batch_summary_path
 
 
@@ -106,15 +118,26 @@ def main() -> None:
 
     print(f"Found {len(config_files)} config files.")
 
+    batch_dir = create_batch_dir()
+    print(f"Writing batch artifacts to {batch_dir}")
+
     run_summaries: list[HistoricalRunSummary] = []
 
     for config_path in config_files:
         print()
         print(f"=== Running {config_path.name} ===")
-        summary = execute_historical_run(config_path)
+
+        summary = execute_historical_run(
+            config_path=config_path,
+            output_dir=batch_dir,
+            log_name=build_log_name(config_path),
+        )
         run_summaries.append(summary)
 
-    batch_summary_path = write_batch_summary(run_summaries)
+    batch_summary_path = write_batch_summary(
+        run_summaries=run_summaries,
+        batch_dir=batch_dir,
+    )
 
     print()
     print(f"Batch summary saved to {batch_summary_path}")

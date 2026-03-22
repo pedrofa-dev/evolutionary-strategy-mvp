@@ -21,9 +21,11 @@ DATA_ROOT = Path("data/real")
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
 
-TRAIN_WEIGHT = 0.35
-VALIDATION_WEIGHT = 0.65
-OVERFIT_GAP_WEIGHT = 0.50
+TRAIN_WEIGHT = 0.30
+VALIDATION_WEIGHT = 0.70
+OVERFIT_GAP_WEIGHT = 0.75
+UNDERFIT_GAP_WEIGHT = 0.50
+VALIDATION_DISPERSION_WEIGHT = 0.50
 INVALID_VALIDATION_PENALTY = 5.0
 NEGATIVE_VALIDATION_PENALTY = 2.0
 
@@ -298,15 +300,21 @@ def build_evolution_selection_score(
     train_evaluation: AgentEvaluation,
     validation_evaluation: AgentEvaluation,
 ) -> float:
-    overfit_gap = max(
-        0.0,
-        train_evaluation.selection_score - validation_evaluation.selection_score,
+    selection_gap = (
+        train_evaluation.selection_score
+        - validation_evaluation.selection_score
     )
+
+    overfit_penalty = max(0.0, selection_gap)
+    underfit_penalty = max(0.0, -selection_gap)
+    validation_dispersion_penalty = validation_evaluation.dispersion
 
     score = (
         TRAIN_WEIGHT * train_evaluation.selection_score
         + VALIDATION_WEIGHT * validation_evaluation.selection_score
-        - OVERFIT_GAP_WEIGHT * overfit_gap
+        - OVERFIT_GAP_WEIGHT * overfit_penalty
+        - UNDERFIT_GAP_WEIGHT * underfit_penalty
+        - VALIDATION_DISPERSION_WEIGHT * validation_dispersion_penalty
     )
 
     if not validation_evaluation.is_valid:
@@ -318,7 +326,11 @@ def build_evolution_selection_score(
     return score
 
 
-def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
+def execute_historical_run(
+    config_path: Path,
+    output_dir: Path | None = None,
+    log_name: str | None = None,
+) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
     config = load_run_config(str(config_path))
@@ -328,11 +340,6 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     train_dataset_paths, validation_dataset_paths = loader.load_paths(DATA_ROOT)
 
     run_id = str(uuid.uuid4())
-
-    bootstrap_environment = build_environment(
-        train_dataset_paths[0],
-        trade_cost_rate=config.trade_cost_rate,
-    )
 
     runner = EvolutionRunner(
         mutation_seed=config.mutation_seed,
@@ -354,8 +361,15 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
 
     store.save_run_record(run_record)
 
-    RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_file_path = RUN_LOG_DIR / f"run_{run_id}.txt"
+    if output_dir is None:
+        output_dir = RUN_LOG_DIR
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if log_name is None:
+        log_name = f"run_{run_id}.txt"
+
+    log_file_path = output_dir / log_name
 
     header_lines = [
         f"Config path: {config_path}",
@@ -373,7 +387,9 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         (
             f"Evolution score weights -> train={TRAIN_WEIGHT:.2f} | "
             f"validation={VALIDATION_WEIGHT:.2f} | "
-            f"gap_penalty={OVERFIT_GAP_WEIGHT:.2f}"
+            f"overfit_gap_penalty={OVERFIT_GAP_WEIGHT:.2f} | "
+            f"underfit_gap_penalty={UNDERFIT_GAP_WEIGHT:.2f} | "
+            f"validation_dispersion_penalty={VALIDATION_DISPERSION_WEIGHT:.2f}"
         ),
         "",
     ]
@@ -386,7 +402,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     )
     print(f"Trade cost rate: {config.trade_cost_rate}")
     print(f"Cost penalty weight: {config.cost_penalty_weight}")
-    print(f"Writing detailed log to {log_file_path}")
+    print(f"Writing log to {log_file_path}")
 
     random_generator = random.Random(config.mutation_seed)
 
@@ -513,6 +529,9 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
                 f"profit_gap={profit_gap:.4f}"
             ),
             (
+                f"Validation dispersion -> {best_validation_evaluation.dispersion:.4f}"
+            ),
+            (
                 f"Timing -> total={generation_duration:.2f}s | "
                 f"all_eval={eval_duration:.2f}s | "
                 f"next_generation={next_generation_duration:.2f}s"
@@ -556,6 +575,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
             f"train_profit={best_train_evaluation.median_profit:.4f} | "
             f"validation_selection={best_validation_evaluation.selection_score:.4f} | "
             f"validation_profit={best_validation_evaluation.median_profit:.4f} | "
+            f"validation_dispersion={best_validation_evaluation.dispersion:.4f} | "
             f"selection_gap={selection_gap:.4f} | "
             f"profit_gap={profit_gap:.4f} | "
             f"time={generation_duration:.2f}s | "
@@ -614,6 +634,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         config_name=config_path.name,
         run_id=run_id,
         log_file_path=log_file_path,
+        mutation_seed=config.mutation_seed,
         best_train_selection_score=best_train_selection_score,
         final_validation_selection_score=final_validation_selection_score,
         final_validation_profit=final_validation_profit,

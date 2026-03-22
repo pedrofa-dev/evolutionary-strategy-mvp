@@ -1,0 +1,13 @@
+Config path: configs\runs\run_a.json
+Run ID: 8a75cfbc-afaa-4979-9fc5-8adcc200fee7
+Mutation seed: 42
+Population size: 12
+Target population size: 12
+Survivors count: 4
+Generations planned: 25
+Trade cost rate: 0.0
+Cost penalty weight: 0.0
+Datasets -> train=8 | validation=4
+Train datasets: train\futures_um\BTCUSDT-1h-2025-10.csv, train\futures_um\BTCUSDT-1h-2025-12.csv, train\futures_um\ETHUSDT-1h-2025-10.csv, train\futures_um\ETHUSDT-1h-2025-12.csv, train\spot\BTCUSDT-1h-2025-10.csv, train\spot\BTCUSDT-1h-2025-12.csv, train\spot\ETHUSDT-1h-2025-10.csv, train\spot\ETHUSDT-1h-2025-12.csv
+Validation datasets: validation\futures_um\BTCUSDT-1h-2026-01.csv, validation\futures_um\ETHUSDT-1h-2026-01.csv, validation\spot\BTCUSDT-1h-2026-01.csv, validation\spot\ETHUSDT-1h-2026-01.csv
+

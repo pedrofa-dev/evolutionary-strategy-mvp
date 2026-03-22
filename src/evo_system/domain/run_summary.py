@@ -7,6 +7,7 @@ class HistoricalRunSummary:
     config_name: str
     run_id: str
     log_file_path: Path
+    mutation_seed: int
     best_train_selection_score: float
     final_validation_selection_score: float
     final_validation_profit: float
