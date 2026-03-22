@@ -1,4 +1,5 @@
 import random
+import time
 import uuid
 from pathlib import Path
 
@@ -85,9 +86,6 @@ def build_initial_population(population_size: int) -> list[Agent]:
 
     random_generator = random.Random(12345)
 
-    # Deliberately mixed:
-    # - first legacy genomes preserve the old search space
-    # - later genomes already activate the new feature-based path
     base_genomes = [
         Genome(
             threshold_open=0.80,
@@ -231,9 +229,12 @@ def build_initial_population(population_size: int) -> list[Agent]:
     return [Agent.create(genome) for genome in selected_genomes]
 
 
-def build_environment(dataset_path: Path) -> HistoricalEnvironment:
+def build_environment(
+    dataset_path: Path,
+    trade_cost_rate: float,
+) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
-    return HistoricalEnvironment(candles)
+    return HistoricalEnvironment(candles, trade_cost_rate=trade_cost_rate)
 
 
 def summarize_generation_scores(
@@ -289,15 +290,20 @@ def append_lines(log_file_path: Path, lines: list[str]) -> None:
 
 
 def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
+    run_start_time = time.perf_counter()
+
     config = load_run_config(str(config_path))
 
-    evaluator = AgentEvaluator()
+    evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
     loader = DatasetPoolLoader()
     train_dataset_paths, validation_dataset_paths = loader.load_paths(DATA_ROOT)
 
     run_id = str(uuid.uuid4())
 
-    bootstrap_environment = build_environment(train_dataset_paths[0])
+    bootstrap_environment = build_environment(
+        train_dataset_paths[0],
+        trade_cost_rate=config.trade_cost_rate,
+    )
 
     runner = EvolutionRunner(
         environment=bootstrap_environment,
@@ -331,6 +337,8 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         f"Target population size: {config.target_population_size}",
         f"Survivors count: {config.survivors_count}",
         f"Generations planned: {config.generations_planned}",
+        f"Trade cost rate: {config.trade_cost_rate}",
+        f"Cost penalty weight: {config.cost_penalty_weight}",
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
         f"Train datasets: {format_dataset_list(train_dataset_paths)}",
         f"Validation datasets: {format_dataset_list(validation_dataset_paths)}",
@@ -343,6 +351,8 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
     )
+    print(f"Trade cost rate: {config.trade_cost_rate}")
+    print(f"Cost penalty weight: {config.cost_penalty_weight}")
     print(f"Writing detailed log to {log_file_path}")
 
     random_generator = random.Random(config.mutation_seed)
@@ -355,19 +365,29 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     final_validation_trades = 0.0
     generation_of_best = 0
 
+    generation_durations: list[float] = []
+
     for generation_number in range(1, config.generations_planned + 1):
+        generation_start_time = time.perf_counter()
+
         sampled_train_paths = random_generator.sample(
             train_dataset_paths,
             k=min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths)),
         )
 
-        train_environments = [build_environment(path) for path in sampled_train_paths]
+        train_environments = [
+            build_environment(path, trade_cost_rate=config.trade_cost_rate)
+            for path in sampled_train_paths
+        ]
         validation_environments = [
-            build_environment(path) for path in validation_dataset_paths
+            build_environment(path, trade_cost_rate=config.trade_cost_rate)
+            for path in validation_dataset_paths
         ]
 
         evaluated_agents: list[tuple[Agent, float]] = []
         agent_evaluations: dict[str, AgentEvaluation] = {}
+
+        train_eval_start_time = time.perf_counter()
 
         for agent in population:
             evaluation = evaluator.evaluate(
@@ -377,6 +397,8 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
 
             evaluated_agents.append((agent, evaluation.selection_score))
             agent_evaluations[agent.id] = evaluation
+
+        train_eval_duration = time.perf_counter() - train_eval_start_time
 
         summary = runner.summarize_generation(
             generation_number=generation_number,
@@ -393,14 +415,33 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         )
         best_train_evaluation = agent_evaluations[best_agent.id]
 
+        validation_eval_start_time = time.perf_counter()
+
         validation_evaluation = evaluator.evaluate(
             agent=best_agent,
             environments=validation_environments,
         )
 
+        validation_eval_duration = time.perf_counter() - validation_eval_start_time
+
         train_best, train_average = summarize_generation_scores(
             list(agent_evaluations.values())
         )
+
+        next_generation_duration = 0.0
+        next_population: list[Agent] | None = None
+
+        if generation_number < config.generations_planned:
+            next_generation_start_time = time.perf_counter()
+            next_population = runner.build_next_generation(
+                evaluated_agents=evaluated_agents,
+                survivors_count=config.survivors_count,
+                target_population_size=config.target_population_size,
+            )
+            next_generation_duration = time.perf_counter() - next_generation_start_time
+
+        generation_duration = time.perf_counter() - generation_start_time
+        generation_durations.append(generation_duration)
 
         generation_lines = [
             "",
@@ -409,6 +450,12 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
             (
                 f"Selection scores -> best={train_best:.4f} | "
                 f"average={train_average:.4f}"
+            ),
+            (
+                f"Timing -> total={generation_duration:.2f}s | "
+                f"train_eval={train_eval_duration:.2f}s | "
+                f"validation_eval={validation_eval_duration:.2f}s | "
+                f"next_generation={next_generation_duration:.2f}s"
             ),
             f"Best genome -> {best_agent.genome}",
             format_evaluation("Train", best_train_evaluation),
@@ -446,6 +493,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
             f"Generation {generation_number} | "
             f"best={train_best:.4f} | "
             f"validation_profit={validation_evaluation.median_profit:.4f} | "
+            f"time={generation_duration:.2f}s | "
             f"log={log_file_path.name}"
         )
 
@@ -459,12 +507,15 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         final_validation_drawdown = validation_evaluation.median_drawdown
         final_validation_trades = validation_evaluation.median_trades
 
-        if generation_number < config.generations_planned:
-            population = runner.build_next_generation(
-                evaluated_agents=evaluated_agents,
-                survivors_count=config.survivors_count,
-                target_population_size=config.target_population_size,
-            )
+        if next_population is not None:
+            population = next_population
+
+    total_run_duration = time.perf_counter() - run_start_time
+    average_generation_duration = (
+        sum(generation_durations) / len(generation_durations)
+        if generation_durations
+        else 0.0
+    )
 
     summary_lines = [
         "",
@@ -476,9 +527,13 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         f"Final validation trades: {final_validation_trades:.1f}",
         f"Best genome found: {best_genome_repr}",
         f"Generation of best genome: {generation_of_best}",
+        f"Total run time: {total_run_duration:.2f}s",
+        f"Average generation time: {average_generation_duration:.2f}s",
     ]
     append_lines(log_file_path, summary_lines)
 
+    print(f"Total run time: {total_run_duration:.2f}s")
+    print(f"Average generation time: {average_generation_duration:.2f}s")
     print(f"Detailed run log saved to {log_file_path}")
 
     return HistoricalRunSummary(

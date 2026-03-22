@@ -1,26 +1,52 @@
 import json
-from pathlib import Path
 
 from evo_system.orchestration.config_loader import load_run_config
 
 
-def test_load_run_config_from_json(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.json"
-
-    data = {
-        "mutation_seed": 42,
-        "population_size": 4,
-        "target_population_size": 4,
-        "survivors_count": 2,
-        "generations_planned": 5,
-    }
-
-    config_path.write_text(json.dumps(data))
+def test_load_run_config_reads_required_and_optional_fields(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "trade_cost_rate": 0.001,
+                "cost_penalty_weight": 0.25,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     config = load_run_config(str(config_path))
 
     assert config.mutation_seed == 42
-    assert config.population_size == 4
-    assert config.target_population_size == 4
-    assert config.survivors_count == 2
-    assert config.generations_planned == 5
+    assert config.population_size == 12
+    assert config.target_population_size == 12
+    assert config.survivors_count == 4
+    assert config.generations_planned == 25
+    assert config.trade_cost_rate == 0.001
+    assert config.cost_penalty_weight == 0.25
+
+
+def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.trade_cost_rate == 0.0
+    assert config.cost_penalty_weight == 0.25

@@ -1,18 +1,17 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass(frozen=True)
 class RunConfig:
-    mutation_seed: int | None
+    mutation_seed: int
     population_size: int
     target_population_size: int
     survivors_count: int
     generations_planned: int
+    trade_cost_rate: float = 0.0
+    cost_penalty_weight: float = 0.25
 
-    def validate(self) -> None:
+    def __post_init__(self) -> None:
         if self.population_size <= 0:
             raise ValueError("population_size must be greater than 0")
 
@@ -28,14 +27,8 @@ class RunConfig:
         if self.target_population_size < self.survivors_count:
             raise ValueError("target_population_size cannot be smaller than survivors_count")
 
-        if self.population_size < self.survivors_count:
-            raise ValueError("population_size cannot be smaller than survivors_count")
+        if self.trade_cost_rate < 0.0:
+            raise ValueError("trade_cost_rate must be greater than or equal to 0.0")
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "mutation_seed": self.mutation_seed,
-            "population_size": self.population_size,
-            "target_population_size": self.target_population_size,
-            "survivors_count": self.survivors_count,
-            "generations_planned": self.generations_planned,
-        }
+        if self.cost_penalty_weight < 0.0:
+            raise ValueError("cost_penalty_weight must be greater than or equal to 0.0")

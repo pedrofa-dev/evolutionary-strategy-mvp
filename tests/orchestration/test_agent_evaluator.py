@@ -5,7 +5,7 @@ from evo_system.environment.historical_environment import HistoricalEnvironment
 from evo_system.orchestration.agent_evaluator import AgentEvaluator
 
 
-def build_environment() -> HistoricalEnvironment:
+def build_environment(trade_cost_rate: float = 0.0) -> HistoricalEnvironment:
     candles = [
         HistoricalCandle("1", 100, 110, 95, 105),
         HistoricalCandle("2", 105, 115, 100, 110),
@@ -14,7 +14,7 @@ def build_environment() -> HistoricalEnvironment:
         HistoricalCandle("5", 120, 130, 115, 125),
         HistoricalCandle("6", 125, 135, 120, 130),
     ]
-    return HistoricalEnvironment(candles)
+    return HistoricalEnvironment(candles, trade_cost_rate=trade_cost_rate)
 
 
 def test_agent_evaluator_penalizes_small_position_size() -> None:
@@ -141,3 +141,85 @@ def test_agent_evaluator_supports_feature_based_agents() -> None:
     assert isinstance(evaluation.dataset_scores, list)
     assert len(evaluation.dataset_scores) == 2
     assert isinstance(evaluation.violations, list)
+
+
+def test_agent_evaluator_penalizes_costly_environments() -> None:
+    evaluator = AgentEvaluator(cost_penalty_weight=0.25)
+
+    environments_without_cost = [
+        HistoricalEnvironment(
+            [
+                HistoricalCandle("1", 100, 100, 100, 100),
+                HistoricalCandle("2", 100, 100, 100, 120),
+                HistoricalCandle("3", 120, 140, 120, 140),
+                HistoricalCandle("4", 140, 140, 140, 140),
+                HistoricalCandle("5", 140, 140, 140, 140),
+                HistoricalCandle("6", 140, 140, 140, 140),
+            ],
+            trade_cost_rate=0.0,
+        )
+    ]
+    environments_with_cost = [
+        HistoricalEnvironment(
+            [
+                HistoricalCandle("1", 100, 100, 100, 100),
+                HistoricalCandle("2", 100, 100, 100, 120),
+                HistoricalCandle("3", 120, 140, 120, 140),
+                HistoricalCandle("4", 140, 140, 140, 140),
+                HistoricalCandle("5", 140, 140, 140, 140),
+                HistoricalCandle("6", 140, 140, 140, 140),
+            ],
+            trade_cost_rate=0.01,
+        )
+    ]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=0.0,
+            position_size=1.0,
+            stop_loss=0.5,
+            take_profit=0.1,
+        )
+    )
+
+    evaluation_without_cost = evaluator.evaluate(agent, environments_without_cost)
+    evaluation_with_cost = evaluator.evaluate(agent, environments_with_cost)
+
+    assert evaluation_with_cost.aggregated_score < evaluation_without_cost.aggregated_score
+    assert evaluation_with_cost.selection_score < evaluation_without_cost.selection_score
+
+
+def test_agent_evaluator_penalty_weight_can_be_disabled() -> None:
+    environments = [
+        HistoricalEnvironment(
+            [
+                HistoricalCandle("1", 100, 100, 100, 100),
+                HistoricalCandle("2", 100, 100, 100, 120),
+                HistoricalCandle("3", 120, 140, 120, 140),
+                HistoricalCandle("4", 140, 140, 140, 140),
+                HistoricalCandle("5", 140, 140, 140, 140),
+                HistoricalCandle("6", 140, 140, 140, 140),
+            ],
+            trade_cost_rate=0.01,
+        )
+    ]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=0.0,
+            position_size=1.0,
+            stop_loss=0.5,
+            take_profit=0.1,
+        )
+    )
+
+    evaluator_without_cost_penalty = AgentEvaluator(cost_penalty_weight=0.0)
+    evaluator_with_cost_penalty = AgentEvaluator(cost_penalty_weight=0.25)
+
+    evaluation_without_cost_penalty = evaluator_without_cost_penalty.evaluate(agent, environments)
+    evaluation_with_cost_penalty = evaluator_with_cost_penalty.evaluate(agent, environments)
+
+    assert evaluation_with_cost_penalty.aggregated_score < evaluation_without_cost_penalty.aggregated_score
+    assert evaluation_with_cost_penalty.selection_score < evaluation_without_cost_penalty.selection_score

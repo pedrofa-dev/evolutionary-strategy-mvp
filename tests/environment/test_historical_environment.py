@@ -212,3 +212,60 @@ def test_historical_environment_keeps_legacy_behavior_when_feature_weights_are_z
     assert legacy_result.trades == feature_result.trades
     assert legacy_result.profit == feature_result.profit
     assert legacy_result.drawdown == feature_result.drawdown
+
+
+def test_historical_environment_applies_trade_cost_to_closed_trade() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 100, 100, 120),
+        HistoricalCandle("3", 120, 140, 120, 140),
+    ]
+
+    environment_without_cost = HistoricalEnvironment(candles, trade_cost_rate=0.0)
+    environment_with_cost = HistoricalEnvironment(candles, trade_cost_rate=0.01)
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=0.0,
+            position_size=1.0,
+            stop_loss=0.5,
+            take_profit=0.1,
+        )
+    )
+
+    result_without_cost = environment_without_cost.run_episode(agent)
+    result_with_cost = environment_with_cost.run_episode(agent)
+
+    assert result_without_cost.trades == 1
+    assert result_with_cost.trades == 1
+    assert result_without_cost.profit == 20 / 120
+    assert result_with_cost.profit == (20 / 120) - 0.01
+    assert result_without_cost.cost == 0.0
+    assert result_with_cost.cost == 0.01
+
+
+def test_historical_environment_applies_trade_cost_on_forced_final_close() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 100, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+    ]
+
+    environment = HistoricalEnvironment(candles, trade_cost_rate=0.01)
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.05,
+            threshold_close=-1.0,
+            position_size=1.0,
+            stop_loss=0.5,
+            take_profit=1.0,
+        )
+    )
+
+    result = environment.run_episode(agent)
+
+    assert result.trades == 1
+    assert result.profit == (10 / 110) - 0.01
+    assert result.cost == 0.01
