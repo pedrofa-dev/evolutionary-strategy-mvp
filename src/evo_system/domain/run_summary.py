@@ -14,3 +14,5 @@ class HistoricalRunSummary:
     final_validation_trades: float
     best_genome_repr: str
     generation_of_best: int
+    train_validation_selection_gap: float
+    train_validation_profit_gap: float

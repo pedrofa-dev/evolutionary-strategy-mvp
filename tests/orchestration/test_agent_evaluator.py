@@ -253,6 +253,7 @@ def test_agent_evaluator_reports_zero_mad_for_identical_dataset_scores() -> None
     assert evaluation.dataset_scores == [0.0, 0.0, 0.0]
     assert evaluation.aggregated_score < evaluation.worst_dataset_score
 
+
 def test_agent_evaluator_bottom_quartile_matches_worst_score_with_three_datasets() -> None:
     evaluator = AgentEvaluator()
     environments = [build_environment(), build_environment(), build_environment()]

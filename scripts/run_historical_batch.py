@@ -1,21 +1,17 @@
 from datetime import datetime
 from pathlib import Path
 
-from run_historical import RUN_LOG_DIR, HistoricalRunSummary, execute_historical_run
+from run_historical import RUN_LOG_DIR, execute_historical_run
 from evo_system.domain.run_summary import HistoricalRunSummary
 
 
 CONFIGS_DIR = Path("configs/runs")
 
 
-def build_batch_summary_lines(
+def build_ranking_lines_by_selection(
     run_summaries: list[HistoricalRunSummary],
 ) -> list[str]:
     lines: list[str] = []
-
-    lines.append(f"Batch executed at: {datetime.now().isoformat(timespec='seconds')}")
-    lines.append(f"Runs executed: {len(run_summaries)}")
-    lines.append("")
 
     sorted_runs = sorted(
         run_summaries,
@@ -32,11 +28,59 @@ def build_batch_summary_lines(
             f"validation_selection={summary.final_validation_selection_score:.4f} | "
             f"validation_profit={summary.final_validation_profit:.4f} | "
             f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
-            f"validation_trades={summary.final_validation_trades:.1f}"
+            f"validation_trades={summary.final_validation_trades:.1f} | "
+            f"selection_gap={summary.train_validation_selection_gap:.4f} | "
+            f"profit_gap={summary.train_validation_profit_gap:.4f}"
         )
         lines.append(f"   best_genome={summary.best_genome_repr}")
         lines.append(f"   log={summary.log_file_path}")
         lines.append("")
+
+    return lines
+
+
+def build_ranking_lines_by_profit(
+    run_summaries: list[HistoricalRunSummary],
+) -> list[str]:
+    lines: list[str] = []
+
+    sorted_runs = sorted(
+        run_summaries,
+        key=lambda summary: summary.final_validation_profit,
+        reverse=True,
+    )
+
+    lines.append("Ranking by final validation profit")
+    for index, summary in enumerate(sorted_runs, start=1):
+        lines.append(
+            f"{index}. {summary.config_name} | "
+            f"run_id={summary.run_id} | "
+            f"validation_profit={summary.final_validation_profit:.4f} | "
+            f"validation_selection={summary.final_validation_selection_score:.4f} | "
+            f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
+            f"validation_trades={summary.final_validation_trades:.1f} | "
+            f"selection_gap={summary.train_validation_selection_gap:.4f} | "
+            f"profit_gap={summary.train_validation_profit_gap:.4f}"
+        )
+        lines.append(f"   best_genome={summary.best_genome_repr}")
+        lines.append(f"   log={summary.log_file_path}")
+        lines.append("")
+
+    return lines
+
+
+def build_batch_summary_lines(
+    run_summaries: list[HistoricalRunSummary],
+) -> list[str]:
+    lines: list[str] = []
+
+    lines.append(f"Batch executed at: {datetime.now().isoformat(timespec='seconds')}")
+    lines.append(f"Runs executed: {len(run_summaries)}")
+    lines.append("")
+
+    lines.extend(build_ranking_lines_by_selection(run_summaries))
+    lines.append("")
+    lines.extend(build_ranking_lines_by_profit(run_summaries))
 
     return lines
 

@@ -21,6 +21,12 @@ DATA_ROOT = Path("data/real")
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
 
+TRAIN_WEIGHT = 0.35
+VALIDATION_WEIGHT = 0.65
+OVERFIT_GAP_WEIGHT = 0.50
+INVALID_VALIDATION_PENALTY = 5.0
+NEGATIVE_VALIDATION_PENALTY = 2.0
+
 
 def build_random_genome(random_generator: random.Random) -> Genome:
     threshold_open = random_generator.uniform(0.35, 0.90)
@@ -238,9 +244,8 @@ def build_environment(
 
 
 def summarize_generation_scores(
-    evaluations: list[AgentEvaluation],
+    selection_scores: list[float],
 ) -> tuple[float, float]:
-    selection_scores = [evaluation.selection_score for evaluation in evaluations]
     best_score = max(selection_scores)
     average_score = sum(selection_scores) / len(selection_scores)
     return best_score, average_score
@@ -287,6 +292,30 @@ def build_dataset_breakdown_lines(
 def append_lines(log_file_path: Path, lines: list[str]) -> None:
     with log_file_path.open("a", encoding="utf-8") as log_file:
         log_file.write("\n".join(lines) + "\n")
+
+
+def build_evolution_selection_score(
+    train_evaluation: AgentEvaluation,
+    validation_evaluation: AgentEvaluation,
+) -> float:
+    overfit_gap = max(
+        0.0,
+        train_evaluation.selection_score - validation_evaluation.selection_score,
+    )
+
+    score = (
+        TRAIN_WEIGHT * train_evaluation.selection_score
+        + VALIDATION_WEIGHT * validation_evaluation.selection_score
+        - OVERFIT_GAP_WEIGHT * overfit_gap
+    )
+
+    if not validation_evaluation.is_valid:
+        score -= INVALID_VALIDATION_PENALTY
+
+    if validation_evaluation.selection_score < 0.0:
+        score -= NEGATIVE_VALIDATION_PENALTY
+
+    return score
 
 
 def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
@@ -342,6 +371,11 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
         f"Train datasets: {format_dataset_list(train_dataset_paths)}",
         f"Validation datasets: {format_dataset_list(validation_dataset_paths)}",
+        (
+            f"Evolution score weights -> train={TRAIN_WEIGHT:.2f} | "
+            f"validation={VALIDATION_WEIGHT:.2f} | "
+            f"gap_penalty={OVERFIT_GAP_WEIGHT:.2f}"
+        ),
         "",
     ]
     append_lines(log_file_path, header_lines)
@@ -358,6 +392,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     random_generator = random.Random(config.mutation_seed)
 
     best_train_selection_score = float("-inf")
+    best_train_profit = 0.0
     best_genome_repr = ""
     final_validation_selection_score = float("-inf")
     final_validation_profit = 0.0
@@ -385,20 +420,31 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         ]
 
         evaluated_agents: list[tuple[Agent, float]] = []
-        agent_evaluations: dict[str, AgentEvaluation] = {}
+        train_evaluations: dict[str, AgentEvaluation] = {}
+        validation_evaluations: dict[str, AgentEvaluation] = {}
 
-        train_eval_start_time = time.perf_counter()
+        eval_start_time = time.perf_counter()
 
         for agent in population:
-            evaluation = evaluator.evaluate(
+            train_evaluation = evaluator.evaluate(
                 agent=agent,
                 environments=train_environments,
             )
+            validation_evaluation = evaluator.evaluate(
+                agent=agent,
+                environments=validation_environments,
+            )
 
-            evaluated_agents.append((agent, evaluation.selection_score))
-            agent_evaluations[agent.id] = evaluation
+            evolution_selection_score = build_evolution_selection_score(
+                train_evaluation=train_evaluation,
+                validation_evaluation=validation_evaluation,
+            )
 
-        train_eval_duration = time.perf_counter() - train_eval_start_time
+            evaluated_agents.append((agent, evolution_selection_score))
+            train_evaluations[agent.id] = train_evaluation
+            validation_evaluations[agent.id] = validation_evaluation
+
+        eval_duration = time.perf_counter() - eval_start_time
 
         summary = runner.summarize_generation(
             generation_number=generation_number,
@@ -406,26 +452,21 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         )
         store.save_generation_result(run_id, summary)
 
-        best_agent = max(
-            population,
-            key=lambda agent: (
-                agent_evaluations[agent.id].is_valid,
-                agent_evaluations[agent.id].selection_score,
-            ),
+        best_agent, best_evolution_score = max(
+            evaluated_agents,
+            key=lambda item: item[1],
         )
-        best_train_evaluation = agent_evaluations[best_agent.id]
-
-        validation_eval_start_time = time.perf_counter()
-
-        validation_evaluation = evaluator.evaluate(
-            agent=best_agent,
-            environments=validation_environments,
-        )
-
-        validation_eval_duration = time.perf_counter() - validation_eval_start_time
+        best_train_evaluation = train_evaluations[best_agent.id]
+        best_validation_evaluation = validation_evaluations[best_agent.id]
 
         train_best, train_average = summarize_generation_scores(
-            list(agent_evaluations.values())
+            [evaluation.selection_score for evaluation in train_evaluations.values()]
+        )
+        validation_best, validation_average = summarize_generation_scores(
+            [evaluation.selection_score for evaluation in validation_evaluations.values()]
+        )
+        evolution_best, evolution_average = summarize_generation_scores(
+            [score for _, score in evaluated_agents]
         )
 
         next_generation_duration = 0.0
@@ -443,23 +484,44 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         generation_duration = time.perf_counter() - generation_start_time
         generation_durations.append(generation_duration)
 
+        selection_gap = (
+            best_train_evaluation.selection_score
+            - best_validation_evaluation.selection_score
+        )
+        profit_gap = (
+            best_train_evaluation.median_profit
+            - best_validation_evaluation.median_profit
+        )
+
         generation_lines = [
             "",
             f"Generation {generation_number}",
             f"Train sample -> {format_dataset_list(sampled_train_paths)}",
             (
-                f"Selection scores -> best={train_best:.4f} | "
+                f"Evolution scores -> best={evolution_best:.4f} | "
+                f"average={evolution_average:.4f}"
+            ),
+            (
+                f"Train selection -> best={train_best:.4f} | "
                 f"average={train_average:.4f}"
             ),
             (
+                f"Validation selection -> best={validation_best:.4f} | "
+                f"average={validation_average:.4f}"
+            ),
+            (
+                f"Gaps -> selection_gap={selection_gap:.4f} | "
+                f"profit_gap={profit_gap:.4f}"
+            ),
+            (
                 f"Timing -> total={generation_duration:.2f}s | "
-                f"train_eval={train_eval_duration:.2f}s | "
-                f"validation_eval={validation_eval_duration:.2f}s | "
+                f"all_eval={eval_duration:.2f}s | "
                 f"next_generation={next_generation_duration:.2f}s"
             ),
             f"Best genome -> {best_agent.genome}",
+            f"Evolution selection score -> {best_evolution_score:.4f}",
             format_evaluation("Train", best_train_evaluation),
-            format_evaluation("Validation", validation_evaluation),
+            format_evaluation("Validation", best_validation_evaluation),
         ]
 
         generation_lines.extend(
@@ -472,7 +534,7 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         generation_lines.extend(
             build_dataset_breakdown_lines(
                 validation_dataset_paths,
-                validation_evaluation,
+                best_validation_evaluation,
                 "Validation",
             )
         )
@@ -482,30 +544,35 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
                 f"Train violations -> {', '.join(best_train_evaluation.violations)}"
             )
 
-        if validation_evaluation.violations:
+        if best_validation_evaluation.violations:
             generation_lines.append(
-                f"Validation violations -> {', '.join(validation_evaluation.violations)}"
+                f"Validation violations -> {', '.join(best_validation_evaluation.violations)}"
             )
 
         append_lines(log_file_path, generation_lines)
 
         print(
             f"Generation {generation_number} | "
-            f"best={train_best:.4f} | "
-            f"validation_profit={validation_evaluation.median_profit:.4f} | "
+            f"evolution_best={evolution_best:.4f} | "
+            f"train_profit={best_train_evaluation.median_profit:.4f} | "
+            f"validation_selection={best_validation_evaluation.selection_score:.4f} | "
+            f"validation_profit={best_validation_evaluation.median_profit:.4f} | "
+            f"selection_gap={selection_gap:.4f} | "
+            f"profit_gap={profit_gap:.4f} | "
             f"time={generation_duration:.2f}s | "
             f"log={log_file_path.name}"
         )
 
-        if best_train_evaluation.selection_score > best_train_selection_score:
+        if best_evolution_score > float("-inf"):
             best_train_selection_score = best_train_evaluation.selection_score
+            best_train_profit = best_train_evaluation.median_profit
             best_genome_repr = repr(best_agent.genome)
             generation_of_best = generation_number
 
-        final_validation_selection_score = validation_evaluation.selection_score
-        final_validation_profit = validation_evaluation.median_profit
-        final_validation_drawdown = validation_evaluation.median_drawdown
-        final_validation_trades = validation_evaluation.median_trades
+        final_validation_selection_score = best_validation_evaluation.selection_score
+        final_validation_profit = best_validation_evaluation.median_profit
+        final_validation_drawdown = best_validation_evaluation.median_drawdown
+        final_validation_trades = best_validation_evaluation.median_trades
 
         if next_population is not None:
             population = next_population
@@ -517,14 +584,22 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         else 0.0
     )
 
+    train_validation_selection_gap = (
+        best_train_selection_score - final_validation_selection_score
+    )
+    train_validation_profit_gap = best_train_profit - final_validation_profit
+
     summary_lines = [
         "",
         "Final summary",
         f"Best train selection score: {best_train_selection_score:.4f}",
+        f"Best train profit: {best_train_profit:.4f}",
         f"Final validation selection score: {final_validation_selection_score:.4f}",
         f"Final validation profit: {final_validation_profit:.4f}",
         f"Final validation drawdown: {final_validation_drawdown:.4f}",
         f"Final validation trades: {final_validation_trades:.1f}",
+        f"Final selection gap: {train_validation_selection_gap:.4f}",
+        f"Final profit gap: {train_validation_profit_gap:.4f}",
         f"Best genome found: {best_genome_repr}",
         f"Generation of best genome: {generation_of_best}",
         f"Total run time: {total_run_duration:.2f}s",
@@ -547,6 +622,8 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
         final_validation_trades=final_validation_trades,
         best_genome_repr=best_genome_repr,
         generation_of_best=generation_of_best,
+        train_validation_selection_gap=train_validation_selection_gap,
+        train_validation_profit_gap=train_validation_profit_gap,
     )
 
 
