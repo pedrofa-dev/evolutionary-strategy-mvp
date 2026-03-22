@@ -335,7 +335,6 @@ def execute_historical_run(config_path: Path) -> HistoricalRunSummary:
     )
 
     runner = EvolutionRunner(
-        environment=bootstrap_environment,
         mutation_seed=config.mutation_seed,
     )
 

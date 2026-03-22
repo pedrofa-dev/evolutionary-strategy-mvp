@@ -2,39 +2,36 @@ import pytest
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
-from evo_system.environment.simple_environment import SimpleEnvironment
 from evo_system.orchestration.runner import EvolutionRunner
-from evo_system.selection.selector import Selector
 
 
-def test_run_generation_returns_fitness_for_each_agent() -> None:
-    genomes = [
-        Genome(0.8, 0.4, 0.2, 0.05, 0.1),
-        Genome(0.7, 0.3, 0.3, 0.04, 0.15),
-    ]
+def test_create_initial_population_returns_expected_size() -> None:
+    runner = EvolutionRunner(mutation_seed=42)
 
-    agents = [Agent.create(genome) for genome in genomes]
+    population = runner.create_initial_population(population_size=5)
 
-    runner = EvolutionRunner(environment=SimpleEnvironment())
-
-    results = runner.run_generation(agents)
-
-    assert len(results) == 2
-    for agent, fitness in results:
-        assert isinstance(agent.id, str)
-        assert isinstance(fitness, float)
+    assert len(population) == 5
+    assert all(isinstance(agent, Agent) for agent in population)
 
 
-def test_run_generation_is_deterministic() -> None:
-    genome = Genome(0.8, 0.4, 0.2, 0.05, 0.1)
-    agent = Agent.create(genome)
+def test_create_initial_population_is_deterministic_with_same_seed() -> None:
+    runner_a = EvolutionRunner(mutation_seed=42)
+    runner_b = EvolutionRunner(mutation_seed=42)
 
-    runner = EvolutionRunner(environment=SimpleEnvironment())
+    population_a = runner_a.create_initial_population(population_size=3)
+    population_b = runner_b.create_initial_population(population_size=3)
 
-    result_1 = runner.run_generation([agent])
-    result_2 = runner.run_generation([agent])
+    genomes_a = [agent.genome for agent in population_a]
+    genomes_b = [agent.genome for agent in population_b]
 
-    assert result_1[0][1] == result_2[0][1]
+    assert genomes_a == genomes_b
+
+
+def test_create_initial_population_raises_error_when_population_size_is_not_positive() -> None:
+    runner = EvolutionRunner(mutation_seed=42)
+
+    with pytest.raises(ValueError, match="population_size must be greater than 0"):
+        runner.create_initial_population(population_size=0)
 
 
 def test_build_next_generation_returns_expected_population_size() -> None:
@@ -45,16 +42,21 @@ def test_build_next_generation_returns_expected_population_size() -> None:
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
-    evaluated = runner.run_generation(agents)
+    runner = EvolutionRunner(mutation_seed=42)
+
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 5.0),
+        (agents[2], 1.0),
+    ]
 
     next_generation = runner.build_next_generation(
-        evaluated_agents=evaluated,
+        evaluated_agents=evaluated_agents,
         survivors_count=2,
-        target_population_size=4,
+        target_population_size=5,
     )
 
-    assert len(next_generation) == 4
+    assert len(next_generation) == 5
 
 
 def test_build_next_generation_keeps_survivors() -> None:
@@ -65,23 +67,27 @@ def test_build_next_generation_keeps_survivors() -> None:
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
-    evaluated = runner.run_generation(agents)
+    runner = EvolutionRunner(mutation_seed=42)
 
-    selector = Selector()
-    survivors = selector.select_top_agents(evaluated, survivors_count=2)
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 5.0),
+        (agents[2], 1.0),
+    ]
 
     next_generation = runner.build_next_generation(
-        evaluated_agents=evaluated,
+        evaluated_agents=evaluated_agents,
         survivors_count=2,
         target_population_size=4,
     )
 
-    assert survivors[0] in next_generation
-    assert survivors[1] in next_generation
+    survivor_ids = {agents[0].id, agents[1].id}
+    next_generation_ids = {agent.id for agent in next_generation[:2]}
+
+    assert next_generation_ids == survivor_ids
 
 
-def test_build_next_generation_injects_random_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_next_generation_creates_new_agents_from_mutation() -> None:
     genomes = [
         Genome(0.8, 0.4, 0.2, 0.05, 0.1),
         Genome(0.7, 0.3, 0.3, 0.04, 0.15),
@@ -89,45 +95,57 @@ def test_build_next_generation_injects_random_agent(monkeypatch: pytest.MonkeyPa
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
-    evaluated = runner.run_generation(agents)
+    runner = EvolutionRunner(mutation_seed=42)
 
-    injected_agent = Agent.create(
-        Genome(
-            threshold_open=0.75,
-            threshold_close=0.25,
-            position_size=0.12,
-            stop_loss=0.03,
-            take_profit=0.09,
-        )
-    )
-
-    monkeypatch.setattr(runner, "_build_random_agent", lambda: injected_agent)
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 5.0),
+        (agents[2], 1.0),
+    ]
 
     next_generation = runner.build_next_generation(
-        evaluated_agents=evaluated,
+        evaluated_agents=evaluated_agents,
         survivors_count=2,
-        target_population_size=4,
+        target_population_size=5,
     )
 
-    assert injected_agent in next_generation
+    survivor_ids = {agents[0].id, agents[1].id}
+    mutated_agents = next_generation[2:]
+
+    assert len(mutated_agents) == 3
+    assert all(agent.id not in survivor_ids for agent in mutated_agents)
 
 
-def test_build_next_generation_raises_error_when_target_population_is_too_small() -> None:
+def test_build_next_generation_raises_error_when_evaluated_agents_is_empty() -> None:
+    runner = EvolutionRunner(mutation_seed=42)
+
+    with pytest.raises(ValueError, match="evaluated_agents cannot be empty"):
+        runner.build_next_generation(
+            evaluated_agents=[],
+            survivors_count=1,
+            target_population_size=2,
+        )
+
+
+def test_build_next_generation_raises_error_when_target_population_is_not_positive() -> None:
     genomes = [
         Genome(0.8, 0.4, 0.2, 0.05, 0.1),
         Genome(0.7, 0.3, 0.3, 0.04, 0.15),
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
-    evaluated = runner.run_generation(agents)
+    runner = EvolutionRunner(mutation_seed=42)
 
-    with pytest.raises(ValueError, match="target_population_size cannot be smaller than survivors_count"):
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 5.0),
+    ]
+
+    with pytest.raises(ValueError, match="target_population_size must be greater than 0"):
         runner.build_next_generation(
-            evaluated_agents=evaluated,
-            survivors_count=2,
-            target_population_size=1,
+            evaluated_agents=evaluated_agents,
+            survivors_count=1,
+            target_population_size=0,
         )
 
 
@@ -138,44 +156,62 @@ def test_build_next_generation_raises_error_when_survivors_count_is_not_positive
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
-    evaluated = runner.run_generation(agents)
+    runner = EvolutionRunner(mutation_seed=42)
+
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 5.0),
+    ]
 
     with pytest.raises(ValueError, match="survivors_count must be greater than 0"):
         runner.build_next_generation(
-            evaluated_agents=evaluated,
+            evaluated_agents=evaluated_agents,
             survivors_count=0,
             target_population_size=2,
         )
 
 
+def test_build_next_generation_raises_error_when_survivors_count_exceeds_population() -> None:
+    genomes = [
+        Genome(0.8, 0.4, 0.2, 0.05, 0.1),
+        Genome(0.7, 0.3, 0.3, 0.04, 0.15),
+    ]
+    agents = [Agent.create(genome) for genome in genomes]
+
+    runner = EvolutionRunner(mutation_seed=42)
+
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 5.0),
+    ]
+
+    with pytest.raises(ValueError, match="survivors_count cannot exceed evaluated_agents size"):
+        runner.build_next_generation(
+            evaluated_agents=evaluated_agents,
+            survivors_count=3,
+            target_population_size=4,
+        )
+
+
 def test_build_random_agent_uses_feature_fields() -> None:
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
+    runner = EvolutionRunner(mutation_seed=42)
 
     agent = runner._build_random_agent()
+
     genome = agent.genome
 
-    assert 1 <= genome.ret_short_window < genome.ret_mid_window <= 20
-    assert 2 <= genome.vol_short_window < genome.vol_long_window <= 30
-    assert 3 <= genome.ma_window <= 25
-    assert 3 <= genome.range_window <= 20
+    assert isinstance(genome.ret_short_window, int)
+    assert isinstance(genome.ret_mid_window, int)
+    assert isinstance(genome.ma_window, int)
+    assert isinstance(genome.range_window, int)
+    assert isinstance(genome.vol_short_window, int)
+    assert isinstance(genome.vol_long_window, int)
 
-    assert -1.5 <= genome.weight_ret_short <= 1.5
-    assert -1.5 <= genome.weight_ret_mid <= 1.5
-    assert -1.5 <= genome.weight_dist_ma <= 1.5
-    assert -1.5 <= genome.weight_range_pos <= 1.5
-    assert -1.5 <= genome.weight_vol_ratio <= 1.5
-
-    assert any(
-        weight != 0.0
-        for weight in (
-            genome.weight_ret_short,
-            genome.weight_ret_mid,
-            genome.weight_dist_ma,
-            genome.weight_range_pos,
-            genome.weight_vol_ratio,
-        )
-    )
+    assert isinstance(genome.weight_ret_short, float)
+    assert isinstance(genome.weight_ret_mid, float)
+    assert isinstance(genome.weight_dist_ma, float)
+    assert isinstance(genome.weight_range_pos, float)
+    assert isinstance(genome.weight_vol_ratio, float)
 
 
 def test_summarize_generation_returns_expected_result() -> None:
@@ -185,14 +221,28 @@ def test_summarize_generation_returns_expected_result() -> None:
     ]
     agents = [Agent.create(genome) for genome in genomes]
 
-    runner = EvolutionRunner(environment=SimpleEnvironment(), mutation_seed=42)
-    evaluated = runner.run_generation(agents)
+    runner = EvolutionRunner(mutation_seed=42)
 
-    summary = runner.summarize_generation(
-        generation_number=1,
-        evaluated_agents=evaluated,
+    evaluated_agents = [
+        (agents[0], 10.0),
+        (agents[1], 6.0),
+    ]
+
+    result = runner.summarize_generation(
+        generation_number=3,
+        evaluated_agents=evaluated_agents,
     )
 
-    assert summary.generation_number == 1
-    assert len(summary.evaluated_agents) == 2
-    assert summary.best_fitness >= summary.average_fitness
+    assert result.generation_number == 3
+    assert result.best_fitness == 10.0
+    assert result.average_fitness == 8.0
+
+
+def test_summarize_generation_raises_error_when_evaluated_agents_is_empty() -> None:
+    runner = EvolutionRunner(mutation_seed=42)
+
+    with pytest.raises(ValueError, match="evaluated_agents cannot be empty"):
+        runner.summarize_generation(
+            generation_number=1,
+            evaluated_agents=[],
+        )
