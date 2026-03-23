@@ -26,7 +26,15 @@ def month_key_from_millis(value: int) -> str:
 
 
 def sanitize_symbol(symbol: str) -> str:
-    return symbol.replace("/", "").replace(":", "").upper()
+    clean = symbol.upper()
+
+    if ":" in clean:
+        base_part, contract_part = clean.split(":", 1)
+        base_part = base_part.replace("/", "").replace(":", "")
+        contract_part = contract_part.replace("/", "").replace(":", "")
+        return f"{base_part}_PERP_{contract_part}"
+
+    return clean.replace("/", "").replace(":", "")
 
 
 def ensure_directory(path: Path) -> None:
