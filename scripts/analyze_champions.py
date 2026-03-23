@@ -5,7 +5,7 @@ import csv
 import json
 import math
 import sqlite3
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +57,15 @@ KEY_METRIC_FIELDS = [
     "validation_trades",
     "selection_gap",
     "validation_dispersion",
+]
+
+CONTEXT_FIELDS = [
+    "context_name",
+    "dataset_root",
+    "train_sample_size",
+    "train_dataset_count_available",
+    "validation_dataset_count_available",
+    "dataset_signature",
 ]
 
 SIGNAL_PAIR_FIELDS = [
@@ -146,10 +155,6 @@ def load_champions(
         conditions.append("run_id = ?")
         params.append(run_id)
 
-    if config_name is not None:
-        conditions.append("config_name = ?")
-        params.append(config_name)
-
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
@@ -173,7 +178,14 @@ def load_champions(
                 )
             )
 
-    return rows
+    if config_name is None:
+        return rows
+
+    return [
+        row
+        for row in rows
+        if resolve_config_name(row) == config_name or row.config_name == config_name
+    ]
 
 
 def safe_mean(values: list[float]) -> float:
@@ -233,15 +245,130 @@ def normalize_bool(value: Any) -> bool:
     return bool(value)
 
 
+def is_temp_config_name(value: str | None) -> bool:
+    if not value:
+        return False
+    lowered = value.lower()
+    return lowered.startswith("tmp") and lowered.endswith(".json")
+
+
+def resolve_config_name(champion: ChampionRow) -> str | None:
+    metrics_config_name = champion.metrics.get("config_name")
+    if isinstance(metrics_config_name, str) and metrics_config_name.strip():
+        return metrics_config_name
+    return champion.config_name
+
+
+def resolve_dataset_root(champion: ChampionRow) -> str | None:
+    dataset_root = champion.metrics.get("dataset_root")
+    if isinstance(dataset_root, str) and dataset_root.strip():
+        return dataset_root
+    return None
+
+
+def resolve_context_name(champion: ChampionRow) -> str | None:
+    context_name = champion.metrics.get("context_name")
+    if isinstance(context_name, str) and context_name.strip():
+        return context_name
+    return None
+
+
+def resolve_dataset_signature(champion: ChampionRow) -> str | None:
+    dataset_signature = champion.metrics.get("dataset_signature")
+    if isinstance(dataset_signature, str) and dataset_signature.strip():
+        return dataset_signature
+    return None
+
+
+def resolve_list_metric(metrics: dict[str, Any], preferred_key: str, fallback_key: str) -> list[Any]:
+    preferred = metrics.get(preferred_key)
+    if isinstance(preferred, list):
+        return preferred
+    fallback = metrics.get(fallback_key)
+    if isinstance(fallback, list):
+        return fallback
+    return []
+
+
+def build_context_label(row: dict[str, Any]) -> str:
+    context_name = row.get("context_name")
+    if isinstance(context_name, str) and context_name.strip():
+        return context_name
+
+    dataset_signature = row.get("dataset_signature")
+    if isinstance(dataset_signature, str) and dataset_signature.strip():
+        return dataset_signature
+
+    return "unknown"
+
+
+def build_context_key(row: dict[str, Any]) -> str:
+    context_label = str(row.get("context_label") or "unknown")
+    dataset_root = str(row.get("dataset_root") or "unknown")
+    train_count = str(row.get("train_dataset_count_available") or "unknown")
+    validation_count = str(row.get("validation_dataset_count_available") or "unknown")
+    train_sample_size = str(row.get("train_sample_size") or "unknown")
+    dataset_signature = str(row.get("dataset_signature") or "unknown")
+    return " | ".join(
+        [
+            f"context={context_label}",
+            f"dataset_root={dataset_root}",
+            f"train_available={train_count}",
+            f"validation_available={validation_count}",
+            f"train_sample_size={train_sample_size}",
+            f"dataset_signature={dataset_signature}",
+        ]
+    )
+
+
 def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
+    effective_config_name = resolve_config_name(champion)
+    if is_temp_config_name(champion.config_name) and effective_config_name:
+        stored_config_name = effective_config_name
+    else:
+        stored_config_name = effective_config_name or champion.config_name
+
+    sampled_train_dataset_names = resolve_list_metric(
+        champion.metrics,
+        "sampled_train_dataset_names",
+        "train_dataset_names",
+    )
+    validation_dataset_names = resolve_list_metric(
+        champion.metrics,
+        "all_validation_dataset_names",
+        "validation_dataset_names",
+    )
+    all_train_dataset_names = resolve_list_metric(
+        champion.metrics,
+        "all_train_dataset_names",
+        "train_dataset_names",
+    )
+    all_validation_dataset_names = resolve_list_metric(
+        champion.metrics,
+        "all_validation_dataset_names",
+        "validation_dataset_names",
+    )
+
     flat: dict[str, Any] = {
         "id": champion.id,
         "run_id": champion.run_id,
         "generation_number": champion.generation_number,
         "mutation_seed": champion.mutation_seed,
-        "config_name": champion.config_name,
+        "config_name": stored_config_name,
+        "stored_config_name": champion.config_name,
         "created_at": champion.created_at,
+        "context_name": resolve_context_name(champion),
+        "dataset_root": resolve_dataset_root(champion),
+        "train_sample_size": champion.metrics.get("train_sample_size"),
+        "train_dataset_count_available": champion.metrics.get("train_dataset_count_available"),
+        "validation_dataset_count_available": champion.metrics.get("validation_dataset_count_available"),
+        "dataset_signature": resolve_dataset_signature(champion),
+        "all_train_dataset_names": all_train_dataset_names,
+        "all_validation_dataset_names": all_validation_dataset_names,
+        "sampled_train_dataset_names": sampled_train_dataset_names,
+        "validation_dataset_names": validation_dataset_names,
     }
+    flat["context_label"] = build_context_label(flat)
 
     for field in GENOME_BOOL_FIELDS:
         flat[field] = normalize_bool(champion.genome.get(field, False))
@@ -252,12 +379,13 @@ def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
     for field in KEY_METRIC_FIELDS:
         flat[field] = champion.metrics.get(field)
 
-    flat["train_dataset_count"] = len(champion.metrics.get("train_dataset_names", []))
-    flat["validation_dataset_count"] = len(champion.metrics.get("validation_dataset_names", []))
+    flat["train_dataset_count"] = len(sampled_train_dataset_names)
+    flat["validation_dataset_count"] = len(all_validation_dataset_names or validation_dataset_names)
     flat["train_violation_count"] = len(champion.metrics.get("train_violations", []))
     flat["validation_violation_count"] = len(champion.metrics.get("validation_violations", []))
     flat["train_is_valid"] = champion.metrics.get("train_is_valid")
     flat["validation_is_valid"] = champion.metrics.get("validation_is_valid")
+    flat["experimental_context"] = build_context_key(flat)
 
     train_scores = champion.metrics.get("train_dataset_scores", [])
     validation_scores = champion.metrics.get("validation_dataset_scores", [])
@@ -403,6 +531,88 @@ def build_config_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, floa
         }
 
     return summary
+
+
+def build_context_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for row in rows:
+        grouped[str(row.get("experimental_context") or "unknown")].append(row)
+
+    summary: dict[str, dict[str, Any]] = {}
+
+    for context_key, context_rows in sorted(grouped.items()):
+        validation_selection_values = [
+            float(row["validation_selection"])
+            for row in context_rows
+            if isinstance(row.get("validation_selection"), (int, float))
+        ]
+        validation_profit_values = [
+            float(row["validation_profit"])
+            for row in context_rows
+            if isinstance(row.get("validation_profit"), (int, float))
+        ]
+
+        first_row = context_rows[0]
+        summary[context_key] = {
+            "champion_count": float(len(context_rows)),
+            "context_label": first_row.get("context_label"),
+            "context_name": first_row.get("context_name"),
+            "config_name": first_row.get("config_name"),
+            "dataset_root": first_row.get("dataset_root"),
+            "train_dataset_count_available": first_row.get("train_dataset_count_available"),
+            "validation_dataset_count_available": first_row.get("validation_dataset_count_available"),
+            "train_sample_size": first_row.get("train_sample_size"),
+            "dataset_signature": first_row.get("dataset_signature"),
+            "mean_validation_selection": safe_mean(validation_selection_values),
+            "mean_validation_profit": safe_mean(validation_profit_values),
+        }
+
+    return summary
+
+
+def build_context_config_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for row in rows:
+        grouped[str(row.get("experimental_context") or "unknown")].append(row)
+
+    summary: dict[str, dict[str, dict[str, float]]] = {}
+
+    for context_key, context_rows in sorted(grouped.items()):
+        summary[context_key] = build_config_summary(context_rows)
+
+    return summary
+
+
+def build_context_mix_warnings(rows: list[dict[str, Any]]) -> list[str]:
+    warnings: list[str] = []
+    distinct_signatures = {
+        str(row.get("dataset_signature"))
+        for row in rows
+        if row.get("dataset_signature") is not None
+    }
+    distinct_contexts = {
+        str(row.get("experimental_context"))
+        for row in rows
+        if row.get("experimental_context") is not None
+    }
+    distinct_configs = {
+        str(row.get("config_name"))
+        for row in rows
+        if row.get("config_name") is not None
+    }
+
+    if len(distinct_signatures) > 1:
+        warnings.append(
+            "WARNING: multiple dataset_signature values detected. This report mixes different dataset pools or sampling contexts."
+        )
+    elif len(distinct_contexts) == 1 and len(distinct_configs) > 1:
+        warnings.append(
+            "Notice: multiple config_name values detected within the same experimental context."
+        )
+
+    return warnings
 
 
 def detect_recurrent_patterns(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -640,6 +850,79 @@ def format_config_summary_block(summary: dict[str, dict[str, float]]) -> list[st
     return lines
 
 
+def format_context_summary_block(summary: dict[str, dict[str, Any]]) -> list[str]:
+    lines = ["Experimental context summary"]
+
+    if not summary:
+        lines.append("  No data.")
+        lines.append("")
+        return lines
+
+    for _, stats in summary.items():
+        lines.append(
+            f"  context={stats.get('context_label') or 'unknown'} | "
+            f"context_name={stats.get('context_name') or 'none'} | "
+            f"dataset_root={stats.get('dataset_root') or 'unknown'} | "
+            f"train_dataset_count_available={stats.get('train_dataset_count_available', 'unknown')} | "
+            f"validation_dataset_count_available={stats.get('validation_dataset_count_available', 'unknown')} | "
+            f"train_sample_size={stats.get('train_sample_size', 'unknown')} | "
+            f"dataset_signature={stats.get('dataset_signature') or 'unknown'} | "
+            f"champions={int(stats['champion_count'])} | "
+            f"mean_validation_selection={stats['mean_validation_selection']:.6f} | "
+            f"mean_validation_profit={stats['mean_validation_profit']:.6f}"
+        )
+
+    lines.append("")
+    return lines
+
+
+def format_context_config_summary_block(
+    summary: dict[str, dict[str, dict[str, float]]],
+) -> list[str]:
+    lines = ["Config summary by context"]
+
+    if not summary:
+        lines.append("  No data.")
+        lines.append("")
+        return lines
+
+    for context_key, config_summary in summary.items():
+        lines.append(f"  Context: {context_key}")
+        if not config_summary:
+            lines.append("  No config data.")
+            continue
+
+        for config_name, stats in config_summary.items():
+            lines.append(
+                f"  {config_name}: "
+                f"champions={int(stats['champion_count'])} | "
+                f"mean_validation_selection={stats['mean_validation_selection']:.6f} | "
+                f"mean_validation_profit={stats['mean_validation_profit']:.6f} | "
+                f"mean_validation_drawdown={stats['mean_validation_drawdown']:.6f} | "
+                f"mean_validation_trades={stats['mean_validation_trades']:.2f} | "
+                f"mean_abs_selection_gap={stats['mean_abs_selection_gap']:.6f}"
+            )
+
+    lines.append("")
+    return lines
+
+
+def format_context_warning_block(warnings: list[str]) -> list[str]:
+    lines = ["Context consistency"]
+
+    if not warnings:
+        lines.append("  No mixed contexts detected.")
+        lines.append("")
+        return lines
+
+    lines.append("  Review context mixing before comparing champions.")
+    for warning in warnings:
+        lines.append(f"  {warning}")
+
+    lines.append("")
+    return lines
+
+
 def format_patterns_block(patterns: dict[str, Any]) -> list[str]:
     lines = ["Recurrent patterns"]
 
@@ -731,7 +1014,10 @@ def write_report(
     genome_bool_summary = summarize_bool_fields(rows, GENOME_BOOL_FIELDS)
     metric_summary = summarize_numeric_fields(rows, KEY_METRIC_FIELDS)
     pair_summary = build_signal_pair_summary(rows)
+    context_summary = build_context_summary(rows)
+    context_config_summary = build_context_config_summary(rows)
     config_summary = build_config_summary(rows)
+    context_warnings = build_context_mix_warnings(rows)
     patterns = detect_recurrent_patterns(rows)
     top_examples = build_top_examples(rows)
 
@@ -744,6 +1030,9 @@ def write_report(
         "",
     ]
 
+    lines.extend(format_context_warning_block(context_warnings))
+    lines.extend(format_context_summary_block(context_summary))
+    lines.extend(format_context_config_summary_block(context_config_summary))
     lines.extend(format_numeric_summary_block("Genome numeric summary", genome_numeric_summary))
     lines.extend(format_bool_summary_block("Signal usage summary", genome_bool_summary))
     lines.extend(format_numeric_summary_block("Metric summary", metric_summary))
@@ -759,6 +1048,9 @@ def write_report(
         "genome_bool_summary": genome_bool_summary,
         "metric_summary": metric_summary,
         "signal_pair_summary": pair_summary,
+        "context_summary": context_summary,
+        "context_config_summary": context_config_summary,
+        "context_warnings": context_warnings,
         "config_summary": config_summary,
         "patterns": patterns,
         "top_examples": top_examples,

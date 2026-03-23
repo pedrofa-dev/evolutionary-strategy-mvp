@@ -11,6 +11,7 @@ from run_historical import DEFAULT_DATASET_ROOT, execute_historical_run
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
 DEFAULT_SEEDS = [101, 102, 103, 104, 105]
+DEFAULT_CONTEXT_NAME: str | None = None
 
 
 def load_config(config_path: Path) -> dict:
@@ -67,6 +68,7 @@ def execute_multiseed_runs(
     seeds: list[int],
     output_dir: Path,
     dataset_root: Path,
+    context_name: str | None,
 ) -> list[HistoricalRunSummary]:
     summaries: list[HistoricalRunSummary] = []
 
@@ -76,6 +78,8 @@ def execute_multiseed_runs(
         for seed in seeds:
             print()
             print(f"=== Running {config_path.name} with seed {seed} ===")
+            if context_name:
+                print(f"Context: {context_name}")
 
             config_copy = dict(base_config)
             config_copy["mutation_seed"] = seed
@@ -86,26 +90,12 @@ def execute_multiseed_runs(
                     config_path=temp_config_path,
                     output_dir=output_dir,
                     log_name=build_log_name(config_path, seed),
+                    config_name_override=config_path.name,
                     dataset_root=dataset_root,
+                    context_name=context_name,
                 )
 
-                summaries.append(
-                    HistoricalRunSummary(
-                        config_name=config_path.name,
-                        run_id=summary.run_id,
-                        log_file_path=summary.log_file_path,
-                        mutation_seed=seed,
-                        best_train_selection_score=summary.best_train_selection_score,
-                        final_validation_selection_score=summary.final_validation_selection_score,
-                        final_validation_profit=summary.final_validation_profit,
-                        final_validation_drawdown=summary.final_validation_drawdown,
-                        final_validation_trades=summary.final_validation_trades,
-                        best_genome_repr=summary.best_genome_repr,
-                        generation_of_best=summary.generation_of_best,
-                        train_validation_selection_gap=summary.train_validation_selection_gap,
-                        train_validation_profit_gap=summary.train_validation_profit_gap,
-                    )
-                )
+                summaries.append(summary)
             finally:
                 temp_config_path.unlink(missing_ok=True)
 
@@ -225,11 +215,13 @@ def write_multiseed_summary(
     seeds: list[int],
     output_dir: Path,
     dataset_root: Path,
+    context_name: str | None,
 ) -> Path:
     summary_path = output_dir / "multiseed_summary.txt"
 
     lines = [
         f"Multiseed batch executed at: {datetime.now().isoformat(timespec='seconds')}",
+        f"Context name: {context_name or 'none'}",
         f"Dataset root: {dataset_root}",
         f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
         f"Seeds per config: {len(seeds)}",
@@ -258,9 +250,11 @@ def main() -> None:
         return
 
     dataset_root = DEFAULT_DATASET_ROOT
+    context_name = DEFAULT_CONTEXT_NAME
 
     print(f"Found {len(config_paths)} config files.")
     print(f"Using seeds: {DEFAULT_SEEDS}")
+    print(f"Context name: {context_name or 'none'}")
     print(f"Dataset root: {dataset_root}")
 
     output_dir = create_multiseed_dir()
@@ -271,6 +265,7 @@ def main() -> None:
         seeds=DEFAULT_SEEDS,
         output_dir=output_dir,
         dataset_root=dataset_root,
+        context_name=context_name,
     )
 
     summary_path = write_multiseed_summary(
@@ -278,6 +273,7 @@ def main() -> None:
         seeds=DEFAULT_SEEDS,
         output_dir=output_dir,
         dataset_root=dataset_root,
+        context_name=context_name,
     )
 
     print()

@@ -120,8 +120,8 @@ class SQLiteStore:
         genome: Genome,
         metrics: dict[str, Any],
     ) -> None:
-        genome_payload = json.dumps(genome.to_dict())
-        metrics_payload = json.dumps(metrics)
+        genome_payload = json.dumps(genome.to_dict(), ensure_ascii=False)
+        metrics_payload = json.dumps(metrics, ensure_ascii=False, sort_keys=True)
 
         with sqlite3.connect(self.database_path) as connection:
             connection.execute(
@@ -145,6 +145,15 @@ class SQLiteStore:
                 ),
             )
             connection.commit()
+
+    def _load_json_dict(self, payload: str | None) -> dict[str, Any]:
+        if not payload:
+            return {}
+
+        loaded = json.loads(payload)
+        if isinstance(loaded, dict):
+            return loaded
+        return {}
 
     def load_generation_result(self, run_id: str, generation_number: int) -> dict | None:
         with sqlite3.connect(self.database_path) as connection:
@@ -198,8 +207,8 @@ class SQLiteStore:
                     "generation_number": row[2],
                     "mutation_seed": row[3],
                     "config_name": row[4],
-                    "genome": json.loads(row[5]),
-                    "metrics": json.loads(row[6]),
+                    "genome": self._load_json_dict(row[5]),
+                    "metrics": self._load_json_dict(row[6]),
                     "created_at": row[7],
                 }
             )

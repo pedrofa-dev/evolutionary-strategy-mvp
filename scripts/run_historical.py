@@ -1,6 +1,8 @@
 import random
 import time
 import uuid
+from hashlib import sha256
+import json
 from pathlib import Path
 
 from evo_system.domain.agent import Agent
@@ -270,6 +272,29 @@ def format_dataset_list(paths: list[Path], dataset_root: Path) -> str:
     return ", ".join(format_dataset_path(path, dataset_root) for path in paths)
 
 
+def build_dataset_signature(
+    all_train_dataset_paths: list[Path],
+    validation_dataset_paths: list[Path],
+    dataset_root: Path,
+    train_sample_size: int,
+) -> str:
+    normalized_train_names = sorted(
+        format_dataset_path(path, dataset_root) for path in all_train_dataset_paths
+    )
+    normalized_validation_names = sorted(
+        format_dataset_path(path, dataset_root) for path in validation_dataset_paths
+    )
+    signature_source = {
+        "dataset_root": str(dataset_root),
+        "train_sample_size": train_sample_size,
+        "all_train_dataset_names": normalized_train_names,
+        "all_validation_dataset_names": normalized_validation_names,
+    }
+    return sha256(
+        json.dumps(signature_source, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
 def format_evaluation(label: str, evaluation: AgentEvaluation) -> str:
     return (
         f"{label} -> "
@@ -363,14 +388,44 @@ def build_champion_metrics(
     validation_evaluation: AgentEvaluation,
     train_dataset_paths: list[Path],
     validation_dataset_paths: list[Path],
+    all_train_dataset_paths: list[Path],
+    config_name: str,
+    context_name: str | None,
     dataset_root: Path,
 ) -> dict:
     selection_gap = (
         train_evaluation.selection_score
         - validation_evaluation.selection_score
     )
+    sampled_train_dataset_names = [
+        format_dataset_path(path, dataset_root) for path in train_dataset_paths
+    ]
+    validation_dataset_names = [
+        format_dataset_path(path, dataset_root) for path in validation_dataset_paths
+    ]
+    all_train_dataset_names = [
+        format_dataset_path(path, dataset_root) for path in all_train_dataset_paths
+    ]
+    dataset_signature = build_dataset_signature(
+        all_train_dataset_paths=all_train_dataset_paths,
+        validation_dataset_paths=validation_dataset_paths,
+        dataset_root=dataset_root,
+        train_sample_size=len(train_dataset_paths),
+    )
 
     return {
+        "config_name": config_name,
+        "context_name": context_name,
+        "dataset_root": str(dataset_root),
+        "train_sample_size": len(train_dataset_paths),
+        "train_dataset_count_available": len(all_train_dataset_paths),
+        "validation_dataset_count_available": len(validation_dataset_paths),
+        "all_train_dataset_names": all_train_dataset_names,
+        "all_validation_dataset_names": validation_dataset_names,
+        "sampled_train_dataset_names": sampled_train_dataset_names,
+        # Legacy alias kept for backward-compatible analyzers and old exports.
+        "validation_dataset_names": validation_dataset_names,
+        "dataset_signature": dataset_signature,
         "train_selection": train_evaluation.selection_score,
         "train_profit": train_evaluation.median_profit,
         "train_drawdown": train_evaluation.median_drawdown,
@@ -387,12 +442,7 @@ def build_champion_metrics(
         "validation_dataset_scores": validation_evaluation.dataset_scores,
         "validation_dataset_profits": validation_evaluation.dataset_profits,
         "validation_dataset_drawdowns": validation_evaluation.dataset_drawdowns,
-        "train_dataset_names": [
-            format_dataset_path(path, dataset_root) for path in train_dataset_paths
-        ],
-        "validation_dataset_names": [
-            format_dataset_path(path, dataset_root) for path in validation_dataset_paths
-        ],
+        "train_dataset_names": sampled_train_dataset_names,
         "train_violations": train_evaluation.violations,
         "validation_violations": validation_evaluation.violations,
         "train_is_valid": train_evaluation.is_valid,
@@ -406,6 +456,7 @@ def execute_historical_run(
     log_name: str | None = None,
     config_name_override: str | None = None,
     dataset_root: Path = DEFAULT_DATASET_ROOT,
+    context_name: str | None = None,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
@@ -415,6 +466,12 @@ def execute_historical_run(
     evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
     loader = DatasetPoolLoader()
     train_dataset_paths, validation_dataset_paths = loader.load_paths(dataset_root)
+    dataset_signature = build_dataset_signature(
+        all_train_dataset_paths=train_dataset_paths,
+        validation_dataset_paths=validation_dataset_paths,
+        dataset_root=dataset_root,
+        train_sample_size=min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths)),
+    )
 
     run_id = str(uuid.uuid4())
 
@@ -451,8 +508,10 @@ def execute_historical_run(
     header_lines = [
         f"Config path: {config_path}",
         f"Config name: {config_name}",
+        f"Context name: {context_name or 'none'}",
         f"Run ID: {run_id}",
         f"Dataset root: {dataset_root}",
+        f"Dataset signature: {dataset_signature}",
         f"Mutation seed: {config.mutation_seed}",
         f"Population size: {config.population_size}",
         f"Target population size: {config.target_population_size}",
@@ -461,6 +520,7 @@ def execute_historical_run(
         f"Trade cost rate: {config.trade_cost_rate}",
         f"Cost penalty weight: {config.cost_penalty_weight}",
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
+        f"Train sample size per generation: {min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths))}",
         f"Train datasets: {format_dataset_list(train_dataset_paths, dataset_root)}",
         f"Validation datasets: {format_dataset_list(validation_dataset_paths, dataset_root)}",
         (
@@ -476,7 +536,10 @@ def execute_historical_run(
 
     print(f"Run ID: {run_id}")
     print(f"Config name: {config_name}")
+    if context_name:
+        print(f"Context name: {context_name}")
     print(f"Dataset root: {dataset_root}")
+    print(f"Dataset signature: {dataset_signature}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
@@ -662,6 +725,9 @@ def execute_historical_run(
                 validation_evaluation=best_validation_evaluation,
                 train_dataset_paths=sampled_train_paths,
                 validation_dataset_paths=validation_dataset_paths,
+                all_train_dataset_paths=train_dataset_paths,
+                config_name=config_name,
+                context_name=context_name,
                 dataset_root=dataset_root,
             )
             store.save_champion(
@@ -674,6 +740,16 @@ def execute_historical_run(
             )
             saved_as_champion = True
             generation_lines.append("Champion persisted -> yes")
+            generation_lines.append(
+                "Champion context -> "
+                f"config_name={champion_metrics['config_name']} | "
+                f"context_name={champion_metrics['context_name'] or 'none'} | "
+                f"dataset_root={champion_metrics['dataset_root']} | "
+                f"train_sample_size={champion_metrics['train_sample_size']} | "
+                f"train_dataset_count_available={champion_metrics['train_dataset_count_available']} | "
+                f"validation_dataset_count_available={champion_metrics['validation_dataset_count_available']} | "
+                f"dataset_signature={champion_metrics['dataset_signature']}"
+            )
         elif is_final_generation:
             generation_lines.append("Champion persisted -> no")
 
