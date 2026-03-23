@@ -5,9 +5,8 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-from run_historical import execute_historical_run
 from evo_system.domain.run_summary import HistoricalRunSummary
-
+from run_historical import DEFAULT_DATASET_ROOT, execute_historical_run
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
@@ -25,8 +24,10 @@ def write_temp_config(config_data: dict) -> Path:
         delete=False,
         encoding="utf-8",
     )
+
     with temp_file:
         json.dump(config_data, temp_file, indent=2)
+
     return Path(temp_file.name)
 
 
@@ -65,6 +66,7 @@ def execute_multiseed_runs(
     config_paths: list[Path],
     seeds: list[int],
     output_dir: Path,
+    dataset_root: Path,
 ) -> list[HistoricalRunSummary]:
     summaries: list[HistoricalRunSummary] = []
 
@@ -77,13 +79,14 @@ def execute_multiseed_runs(
 
             config_copy = dict(base_config)
             config_copy["mutation_seed"] = seed
-
             temp_config_path = write_temp_config(config_copy)
+
             try:
                 summary = execute_historical_run(
                     config_path=temp_config_path,
                     output_dir=output_dir,
                     log_name=build_log_name(config_path, seed),
+                    dataset_root=dataset_root,
                 )
 
                 summaries.append(
@@ -113,6 +116,7 @@ def build_grouped_summary_lines(
     summaries: list[HistoricalRunSummary],
 ) -> list[str]:
     grouped: dict[str, list[HistoricalRunSummary]] = defaultdict(list)
+
     for summary in summaries:
         grouped[summary.config_name].append(summary)
 
@@ -135,6 +139,7 @@ def build_grouped_summary_lines(
             wins_by_config[winners[0].config_name] += 1
 
     aggregated_rows = []
+
     for config_name, runs in grouped.items():
         runs_sorted = sorted(runs, key=lambda run: run.mutation_seed)
 
@@ -182,7 +187,8 @@ def build_grouped_summary_lines(
 
     for index, row in enumerate(aggregated_rows, start=1):
         lines.append(
-            f"{index}. {row['config_name']} | "
+            f"{index}. "
+            f"{row['config_name']} | "
             f"champion_count={row['champion_count']} | "
             f"champion_rate={row['champion_rate']:.2f} | "
             f"wins={row['wins_count']} | "
@@ -199,7 +205,7 @@ def build_grouped_summary_lines(
 
         for run in row["runs"]:
             lines.append(
-                f"   seed={run.mutation_seed} | "
+                f" seed={run.mutation_seed} | "
                 f"champion={is_champion(run)} | "
                 f"validation_selection={run.final_validation_selection_score:.4f} | "
                 f"validation_profit={run.final_validation_profit:.4f} | "
@@ -208,6 +214,7 @@ def build_grouped_summary_lines(
                 f"selection_gap={run.train_validation_selection_gap:.4f} | "
                 f"log={run.log_file_path.name}"
             )
+
         lines.append("")
 
     return lines
@@ -217,26 +224,28 @@ def write_multiseed_summary(
     summaries: list[HistoricalRunSummary],
     seeds: list[int],
     output_dir: Path,
+    dataset_root: Path,
 ) -> Path:
     summary_path = output_dir / "multiseed_summary.txt"
 
     lines = [
         f"Multiseed batch executed at: {datetime.now().isoformat(timespec='seconds')}",
+        f"Dataset root: {dataset_root}",
         f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
         f"Seeds per config: {len(seeds)}",
         f"Seeds used: {', '.join(str(seed) for seed in seeds)}",
         f"Total runs: {len(summaries)}",
         "",
         "Champion criteria:",
-        "  validation_selection >= 1.5",
-        "  validation_profit >= 0.0018",
-        "  validation_drawdown <= 0.0015",
-        "  validation_trades >= 8.0",
-        "  abs(selection_gap) <= 1.0",
+        " validation_selection >= 1.5",
+        " validation_profit >= 0.0018",
+        " validation_drawdown <= 0.0015",
+        " validation_trades >= 8.0",
+        " abs(selection_gap) <= 1.0",
         "",
     ]
-    lines.extend(build_grouped_summary_lines(summaries))
 
+    lines.extend(build_grouped_summary_lines(summaries))
     summary_path.write_text("\n".join(lines), encoding="utf-8")
     return summary_path
 
@@ -248,8 +257,11 @@ def main() -> None:
         print("No config files found.")
         return
 
+    dataset_root = DEFAULT_DATASET_ROOT
+
     print(f"Found {len(config_paths)} config files.")
     print(f"Using seeds: {DEFAULT_SEEDS}")
+    print(f"Dataset root: {dataset_root}")
 
     output_dir = create_multiseed_dir()
     print(f"Writing multiseed artifacts to {output_dir}")
@@ -258,12 +270,14 @@ def main() -> None:
         config_paths=config_paths,
         seeds=DEFAULT_SEEDS,
         output_dir=output_dir,
+        dataset_root=dataset_root,
     )
 
     summary_path = write_multiseed_summary(
         summaries=summaries,
         seeds=DEFAULT_SEEDS,
         output_dir=output_dir,
+        dataset_root=dataset_root,
     )
 
     print()

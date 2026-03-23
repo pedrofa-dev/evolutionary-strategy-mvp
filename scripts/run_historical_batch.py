@@ -1,9 +1,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from run_historical import execute_historical_run
 from evo_system.domain.run_summary import HistoricalRunSummary
-
+from run_historical import DEFAULT_DATASET_ROOT, execute_historical_run
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
@@ -21,9 +20,11 @@ def build_ranking_lines_by_selection(
     )
 
     lines.append("Ranking by final validation selection score")
+
     for index, summary in enumerate(sorted_runs, start=1):
         lines.append(
-            f"{index}. {summary.config_name} | "
+            f"{index}. "
+            f"{summary.config_name} | "
             f"run_id={summary.run_id} | "
             f"mutation_seed={summary.mutation_seed} | "
             f"best_train={summary.best_train_selection_score:.4f} | "
@@ -34,8 +35,8 @@ def build_ranking_lines_by_selection(
             f"selection_gap={summary.train_validation_selection_gap:.4f} | "
             f"profit_gap={summary.train_validation_profit_gap:.4f}"
         )
-        lines.append(f"   best_genome={summary.best_genome_repr}")
-        lines.append(f"   log={summary.log_file_path}")
+        lines.append(f"  best_genome={summary.best_genome_repr}")
+        lines.append(f"  log={summary.log_file_path}")
         lines.append("")
 
     return lines
@@ -53,9 +54,11 @@ def build_ranking_lines_by_profit(
     )
 
     lines.append("Ranking by final validation profit")
+
     for index, summary in enumerate(sorted_runs, start=1):
         lines.append(
-            f"{index}. {summary.config_name} | "
+            f"{index}. "
+            f"{summary.config_name} | "
             f"run_id={summary.run_id} | "
             f"mutation_seed={summary.mutation_seed} | "
             f"validation_profit={summary.final_validation_profit:.4f} | "
@@ -65,8 +68,8 @@ def build_ranking_lines_by_profit(
             f"selection_gap={summary.train_validation_selection_gap:.4f} | "
             f"profit_gap={summary.train_validation_profit_gap:.4f}"
         )
-        lines.append(f"   best_genome={summary.best_genome_repr}")
-        lines.append(f"   log={summary.log_file_path}")
+        lines.append(f"  best_genome={summary.best_genome_repr}")
+        lines.append(f"  log={summary.log_file_path}")
         lines.append("")
 
     return lines
@@ -74,10 +77,12 @@ def build_ranking_lines_by_profit(
 
 def build_batch_summary_lines(
     run_summaries: list[HistoricalRunSummary],
+    dataset_root: Path,
 ) -> list[str]:
     lines: list[str] = []
 
     lines.append(f"Batch executed at: {datetime.now().isoformat(timespec='seconds')}")
+    lines.append(f"Dataset root: {dataset_root}")
     lines.append(f"Runs executed: {len(run_summaries)}")
     lines.append("")
 
@@ -102,9 +107,13 @@ def create_batch_dir() -> Path:
 def write_batch_summary(
     run_summaries: list[HistoricalRunSummary],
     batch_dir: Path,
+    dataset_root: Path,
 ) -> Path:
     batch_summary_path = batch_dir / "batch_summary.txt"
-    lines = build_batch_summary_lines(run_summaries)
+    lines = build_batch_summary_lines(
+        run_summaries=run_summaries,
+        dataset_root=dataset_root,
+    )
     batch_summary_path.write_text("\n".join(lines), encoding="utf-8")
     return batch_summary_path
 
@@ -116,7 +125,10 @@ def main() -> None:
         print("No config files found.")
         return
 
+    dataset_root = DEFAULT_DATASET_ROOT
+
     print(f"Found {len(config_files)} config files.")
+    print(f"Dataset root: {dataset_root}")
 
     batch_dir = create_batch_dir()
     print(f"Writing batch artifacts to {batch_dir}")
@@ -131,12 +143,14 @@ def main() -> None:
             config_path=config_path,
             output_dir=batch_dir,
             log_name=build_log_name(config_path),
+            dataset_root=dataset_root,
         )
         run_summaries.append(summary)
 
     batch_summary_path = write_batch_summary(
         run_summaries=run_summaries,
         batch_dir=batch_dir,
+        dataset_root=dataset_root,
     )
 
     print()

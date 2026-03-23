@@ -17,7 +17,7 @@ from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
 
 
-DATA_ROOT = Path("data/real")
+DEFAULT_DATASET_ROOT = Path("data/processed")
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
 
@@ -259,8 +259,15 @@ def summarize_generation_scores(
     return best_score, average_score
 
 
-def format_dataset_list(paths: list[Path]) -> str:
-    return ", ".join(str(path.relative_to(DATA_ROOT)) for path in paths)
+def format_dataset_path(path: Path, dataset_root: Path) -> str:
+    try:
+        return str(path.relative_to(dataset_root))
+    except ValueError:
+        return str(path)
+
+
+def format_dataset_list(paths: list[Path], dataset_root: Path) -> str:
+    return ", ".join(format_dataset_path(path, dataset_root) for path in paths)
 
 
 def format_evaluation(label: str, evaluation: AgentEvaluation) -> str:
@@ -280,6 +287,7 @@ def build_dataset_breakdown_lines(
     paths: list[Path],
     evaluation: AgentEvaluation,
     label: str,
+    dataset_root: Path,
 ) -> list[str]:
     lines = [f"{label} breakdown:"]
     for path, score, profit, drawdown in zip(
@@ -289,7 +297,7 @@ def build_dataset_breakdown_lines(
         evaluation.dataset_drawdowns,
     ):
         lines.append(
-            f"  {path.relative_to(DATA_ROOT)} -> "
+            f"  {format_dataset_path(path, dataset_root)} -> "
             f"score={score:.4f} | "
             f"profit={profit:.4f} | "
             f"dd={drawdown:.4f}"
@@ -355,6 +363,7 @@ def build_champion_metrics(
     validation_evaluation: AgentEvaluation,
     train_dataset_paths: list[Path],
     validation_dataset_paths: list[Path],
+    dataset_root: Path,
 ) -> dict:
     selection_gap = (
         train_evaluation.selection_score
@@ -379,10 +388,10 @@ def build_champion_metrics(
         "validation_dataset_profits": validation_evaluation.dataset_profits,
         "validation_dataset_drawdowns": validation_evaluation.dataset_drawdowns,
         "train_dataset_names": [
-            str(path.relative_to(DATA_ROOT)) for path in train_dataset_paths
+            format_dataset_path(path, dataset_root) for path in train_dataset_paths
         ],
         "validation_dataset_names": [
-            str(path.relative_to(DATA_ROOT)) for path in validation_dataset_paths
+            format_dataset_path(path, dataset_root) for path in validation_dataset_paths
         ],
         "train_violations": train_evaluation.violations,
         "validation_violations": validation_evaluation.violations,
@@ -396,6 +405,7 @@ def execute_historical_run(
     output_dir: Path | None = None,
     log_name: str | None = None,
     config_name_override: str | None = None,
+    dataset_root: Path = DEFAULT_DATASET_ROOT,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
@@ -404,7 +414,7 @@ def execute_historical_run(
 
     evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
     loader = DatasetPoolLoader()
-    train_dataset_paths, validation_dataset_paths = loader.load_paths(DATA_ROOT)
+    train_dataset_paths, validation_dataset_paths = loader.load_paths(dataset_root)
 
     run_id = str(uuid.uuid4())
 
@@ -442,6 +452,7 @@ def execute_historical_run(
         f"Config path: {config_path}",
         f"Config name: {config_name}",
         f"Run ID: {run_id}",
+        f"Dataset root: {dataset_root}",
         f"Mutation seed: {config.mutation_seed}",
         f"Population size: {config.population_size}",
         f"Target population size: {config.target_population_size}",
@@ -450,8 +461,8 @@ def execute_historical_run(
         f"Trade cost rate: {config.trade_cost_rate}",
         f"Cost penalty weight: {config.cost_penalty_weight}",
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
-        f"Train datasets: {format_dataset_list(train_dataset_paths)}",
-        f"Validation datasets: {format_dataset_list(validation_dataset_paths)}",
+        f"Train datasets: {format_dataset_list(train_dataset_paths, dataset_root)}",
+        f"Validation datasets: {format_dataset_list(validation_dataset_paths, dataset_root)}",
         (
             f"Evolution score weights -> train={TRAIN_WEIGHT:.2f} | "
             f"validation={VALIDATION_WEIGHT:.2f} | "
@@ -465,6 +476,7 @@ def execute_historical_run(
 
     print(f"Run ID: {run_id}")
     print(f"Config name: {config_name}")
+    print(f"Dataset root: {dataset_root}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
@@ -580,7 +592,7 @@ def execute_historical_run(
         generation_lines = [
             "",
             f"Generation {generation_number}",
-            f"Train sample -> {format_dataset_list(sampled_train_paths)}",
+            f"Train sample -> {format_dataset_list(sampled_train_paths, dataset_root)}",
             (
                 f"Evolution scores -> best={evolution_best:.4f} | "
                 f"average={evolution_average:.4f}"
@@ -616,6 +628,7 @@ def execute_historical_run(
                 sampled_train_paths,
                 best_train_evaluation,
                 "Train",
+                dataset_root,
             )
         )
         generation_lines.extend(
@@ -623,6 +636,7 @@ def execute_historical_run(
                 validation_dataset_paths,
                 best_validation_evaluation,
                 "Validation",
+                dataset_root,
             )
         )
 
@@ -648,6 +662,7 @@ def execute_historical_run(
                 validation_evaluation=best_validation_evaluation,
                 train_dataset_paths=sampled_train_paths,
                 validation_dataset_paths=validation_dataset_paths,
+                dataset_root=dataset_root,
             )
             store.save_champion(
                 run_id=run_id,
@@ -744,7 +759,10 @@ def execute_historical_run(
 
 
 def main() -> None:
-    execute_historical_run(Path("configs/run_config.json"))
+    execute_historical_run(
+        config_path=Path("configs/run_config.json"),
+        dataset_root=DEFAULT_DATASET_ROOT,
+    )
 
 
 if __name__ == "__main__":
