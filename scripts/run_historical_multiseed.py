@@ -41,6 +41,26 @@ def create_multiseed_dir() -> Path:
     return multiseed_dir
 
 
+def safe_mean(values: list[float]) -> float:
+    return statistics.mean(values) if values else 0.0
+
+
+def safe_stdev(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    return statistics.stdev(values)
+
+
+def is_champion(summary: HistoricalRunSummary) -> bool:
+    return (
+        summary.final_validation_selection_score >= 1.5
+        and summary.final_validation_profit >= 0.0018
+        and summary.final_validation_drawdown <= 0.0015
+        and summary.final_validation_trades >= 8.0
+        and abs(summary.train_validation_selection_gap) <= 1.0
+    )
+
+
 def execute_multiseed_runs(
     config_paths: list[Path],
     seeds: list[int],
@@ -89,16 +109,6 @@ def execute_multiseed_runs(
     return summaries
 
 
-def safe_mean(values: list[float]) -> float:
-    return statistics.mean(values) if values else 0.0
-
-
-def safe_stdev(values: list[float]) -> float:
-    if len(values) < 2:
-        return 0.0
-    return statistics.stdev(values)
-
-
 def build_grouped_summary_lines(
     summaries: list[HistoricalRunSummary],
 ) -> list[str]:
@@ -107,18 +117,22 @@ def build_grouped_summary_lines(
         grouped[summary.config_name].append(summary)
 
     wins_by_config: dict[str, int] = defaultdict(int)
+    sorted_grouped_items = sorted(grouped.items())
 
     for seed_runs in zip(
         *[
             sorted(runs, key=lambda run: run.mutation_seed)
-            for _, runs in sorted(grouped.items())
+            for _, runs in sorted_grouped_items
         ]
     ):
-        winner = max(
-            seed_runs,
-            key=lambda run: run.final_validation_selection_score,
-        )
-        wins_by_config[winner.config_name] += 1
+        best_score = max(run.final_validation_selection_score for run in seed_runs)
+        winners = [
+            run for run in seed_runs
+            if run.final_validation_selection_score == best_score
+        ]
+
+        if len(winners) == 1:
+            wins_by_config[winners[0].config_name] += 1
 
     aggregated_rows = []
     for config_name, runs in grouped.items():
@@ -129,6 +143,9 @@ def build_grouped_summary_lines(
         drawdowns = [r.final_validation_drawdown for r in runs_sorted]
         trades = [r.final_validation_trades for r in runs_sorted]
         abs_gaps = [abs(r.train_validation_selection_gap) for r in runs_sorted]
+
+        champion_count = sum(1 for run in runs_sorted if is_champion(run))
+        champion_rate = champion_count / len(runs_sorted) if runs_sorted else 0.0
 
         aggregated_rows.append(
             {
@@ -144,11 +161,14 @@ def build_grouped_summary_lines(
                 "mean_validation_trades": safe_mean(trades),
                 "mean_abs_selection_gap": safe_mean(abs_gaps),
                 "wins_count": wins_by_config[config_name],
+                "champion_count": champion_count,
+                "champion_rate": champion_rate,
             }
         )
 
     aggregated_rows.sort(
         key=lambda row: (
+            row["champion_rate"],
             row["mean_validation_selection"],
             row["mean_validation_profit"],
             -row["std_validation_selection"],
@@ -157,12 +177,15 @@ def build_grouped_summary_lines(
     )
 
     lines: list[str] = []
-    lines.append("Ranking by mean validation selection score")
+    lines.append("Ranking by champion rate and mean validation selection score")
     lines.append("")
 
     for index, row in enumerate(aggregated_rows, start=1):
         lines.append(
             f"{index}. {row['config_name']} | "
+            f"champion_count={row['champion_count']} | "
+            f"champion_rate={row['champion_rate']:.2f} | "
+            f"wins={row['wins_count']} | "
             f"mean_validation_selection={row['mean_validation_selection']:.4f} | "
             f"std_validation_selection={row['std_validation_selection']:.4f} | "
             f"best_validation_selection={row['best_validation_selection']:.4f} | "
@@ -171,13 +194,13 @@ def build_grouped_summary_lines(
             f"std_validation_profit={row['std_validation_profit']:.4f} | "
             f"mean_validation_drawdown={row['mean_validation_drawdown']:.4f} | "
             f"mean_validation_trades={row['mean_validation_trades']:.1f} | "
-            f"mean_abs_selection_gap={row['mean_abs_selection_gap']:.4f} | "
-            f"wins={row['wins_count']}"
+            f"mean_abs_selection_gap={row['mean_abs_selection_gap']:.4f}"
         )
 
         for run in row["runs"]:
             lines.append(
                 f"   seed={run.mutation_seed} | "
+                f"champion={is_champion(run)} | "
                 f"validation_selection={run.final_validation_selection_score:.4f} | "
                 f"validation_profit={run.final_validation_profit:.4f} | "
                 f"drawdown={run.final_validation_drawdown:.4f} | "
@@ -203,6 +226,13 @@ def write_multiseed_summary(
         f"Seeds per config: {len(seeds)}",
         f"Seeds used: {', '.join(str(seed) for seed in seeds)}",
         f"Total runs: {len(summaries)}",
+        "",
+        "Champion criteria:",
+        "  validation_selection >= 1.5",
+        "  validation_profit >= 0.0018",
+        "  validation_drawdown <= 0.0015",
+        "  validation_trades >= 8.0",
+        "  abs(selection_gap) <= 1.0",
         "",
     ]
     lines.extend(build_grouped_summary_lines(summaries))
