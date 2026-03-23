@@ -29,6 +29,12 @@ VALIDATION_DISPERSION_WEIGHT = 0.50
 INVALID_VALIDATION_PENALTY = 5.0
 NEGATIVE_VALIDATION_PENALTY = 2.0
 
+CHAMPION_MIN_VALIDATION_SELECTION = 1.5
+CHAMPION_MIN_VALIDATION_PROFIT = 0.0018
+CHAMPION_MAX_VALIDATION_DRAWDOWN = 0.0015
+CHAMPION_MIN_VALIDATION_TRADES = 8.0
+CHAMPION_MAX_ABS_SELECTION_GAP = 1.0
+
 
 def build_random_genome(random_generator: random.Random) -> Genome:
     threshold_open = random_generator.uniform(0.35, 0.90)
@@ -326,14 +332,75 @@ def build_evolution_selection_score(
     return score
 
 
+def is_champion(
+    train_evaluation: AgentEvaluation,
+    validation_evaluation: AgentEvaluation,
+) -> bool:
+    selection_gap = (
+        train_evaluation.selection_score
+        - validation_evaluation.selection_score
+    )
+
+    return (
+        validation_evaluation.selection_score >= CHAMPION_MIN_VALIDATION_SELECTION
+        and validation_evaluation.median_profit >= CHAMPION_MIN_VALIDATION_PROFIT
+        and validation_evaluation.median_drawdown <= CHAMPION_MAX_VALIDATION_DRAWDOWN
+        and validation_evaluation.median_trades >= CHAMPION_MIN_VALIDATION_TRADES
+        and abs(selection_gap) <= CHAMPION_MAX_ABS_SELECTION_GAP
+    )
+
+
+def build_champion_metrics(
+    train_evaluation: AgentEvaluation,
+    validation_evaluation: AgentEvaluation,
+    train_dataset_paths: list[Path],
+    validation_dataset_paths: list[Path],
+) -> dict:
+    selection_gap = (
+        train_evaluation.selection_score
+        - validation_evaluation.selection_score
+    )
+
+    return {
+        "train_selection": train_evaluation.selection_score,
+        "train_profit": train_evaluation.median_profit,
+        "train_drawdown": train_evaluation.median_drawdown,
+        "train_trades": train_evaluation.median_trades,
+        "validation_selection": validation_evaluation.selection_score,
+        "validation_profit": validation_evaluation.median_profit,
+        "validation_drawdown": validation_evaluation.median_drawdown,
+        "validation_trades": validation_evaluation.median_trades,
+        "selection_gap": selection_gap,
+        "validation_dispersion": validation_evaluation.dispersion,
+        "train_dataset_scores": train_evaluation.dataset_scores,
+        "train_dataset_profits": train_evaluation.dataset_profits,
+        "train_dataset_drawdowns": train_evaluation.dataset_drawdowns,
+        "validation_dataset_scores": validation_evaluation.dataset_scores,
+        "validation_dataset_profits": validation_evaluation.dataset_profits,
+        "validation_dataset_drawdowns": validation_evaluation.dataset_drawdowns,
+        "train_dataset_names": [
+            str(path.relative_to(DATA_ROOT)) for path in train_dataset_paths
+        ],
+        "validation_dataset_names": [
+            str(path.relative_to(DATA_ROOT)) for path in validation_dataset_paths
+        ],
+        "train_violations": train_evaluation.violations,
+        "validation_violations": validation_evaluation.violations,
+        "train_is_valid": train_evaluation.is_valid,
+        "validation_is_valid": validation_evaluation.is_valid,
+    }
+
+
 def execute_historical_run(
     config_path: Path,
     output_dir: Path | None = None,
     log_name: str | None = None,
+    config_name_override: str | None = None,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
     config = load_run_config(str(config_path))
+    config_name = config_name_override or config_path.name
 
     evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
     loader = DatasetPoolLoader()
@@ -373,6 +440,7 @@ def execute_historical_run(
 
     header_lines = [
         f"Config path: {config_path}",
+        f"Config name: {config_name}",
         f"Run ID: {run_id}",
         f"Mutation seed: {config.mutation_seed}",
         f"Population size: {config.population_size}",
@@ -396,6 +464,7 @@ def execute_historical_run(
     append_lines(log_file_path, header_lines)
 
     print(f"Run ID: {run_id}")
+    print(f"Config name: {config_name}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
@@ -567,6 +636,32 @@ def execute_historical_run(
                 f"Validation violations -> {', '.join(best_validation_evaluation.violations)}"
             )
 
+        is_final_generation = generation_number == config.generations_planned
+        saved_as_champion = False
+
+        if is_final_generation and is_champion(
+            train_evaluation=best_train_evaluation,
+            validation_evaluation=best_validation_evaluation,
+        ):
+            champion_metrics = build_champion_metrics(
+                train_evaluation=best_train_evaluation,
+                validation_evaluation=best_validation_evaluation,
+                train_dataset_paths=sampled_train_paths,
+                validation_dataset_paths=validation_dataset_paths,
+            )
+            store.save_champion(
+                run_id=run_id,
+                generation_number=generation_number,
+                mutation_seed=config.mutation_seed,
+                config_name=config_name,
+                genome=best_agent.genome,
+                metrics=champion_metrics,
+            )
+            saved_as_champion = True
+            generation_lines.append("Champion persisted -> yes")
+        elif is_final_generation:
+            generation_lines.append("Champion persisted -> no")
+
         append_lines(log_file_path, generation_lines)
 
         print(
@@ -578,6 +673,7 @@ def execute_historical_run(
             f"validation_dispersion={best_validation_evaluation.dispersion:.4f} | "
             f"selection_gap={selection_gap:.4f} | "
             f"profit_gap={profit_gap:.4f} | "
+            f"champion_saved={saved_as_champion} | "
             f"time={generation_duration:.2f}s | "
             f"log={log_file_path.name}"
         )
@@ -631,7 +727,7 @@ def execute_historical_run(
     print(f"Detailed run log saved to {log_file_path}")
 
     return HistoricalRunSummary(
-        config_name=config_path.name,
+        config_name=config_name,
         run_id=run_id,
         log_file_path=log_file_path,
         mutation_seed=config.mutation_seed,

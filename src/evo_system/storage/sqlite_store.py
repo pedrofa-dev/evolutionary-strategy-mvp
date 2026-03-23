@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from evo_system.domain.generation_result import GenerationResult
+from evo_system.domain.genome import Genome
 from evo_system.domain.run_record import RunRecord
 
 
@@ -41,6 +43,20 @@ class SQLiteStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS champions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    generation_number INTEGER,
+                    mutation_seed INTEGER,
+                    config_name TEXT,
+                    genome_json TEXT NOT NULL,
+                    metrics_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             connection.commit()
 
     def save_generation_result(self, run_id: str, result: GenerationResult) -> None:
@@ -66,6 +82,7 @@ class SQLiteStore:
                 ),
             )
             connection.commit()
+
     def save_run_record(self, run_record: RunRecord) -> None:
         payload = json.dumps(run_record.to_dict())
 
@@ -94,6 +111,41 @@ class SQLiteStore:
             )
             connection.commit()
 
+    def save_champion(
+        self,
+        run_id: str,
+        generation_number: int | None,
+        mutation_seed: int | None,
+        config_name: str | None,
+        genome: Genome,
+        metrics: dict[str, Any],
+    ) -> None:
+        genome_payload = json.dumps(genome.to_dict())
+        metrics_payload = json.dumps(metrics)
+
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO champions (
+                    run_id,
+                    generation_number,
+                    mutation_seed,
+                    config_name,
+                    genome_json,
+                    metrics_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    generation_number,
+                    mutation_seed,
+                    config_name,
+                    genome_payload,
+                    metrics_payload,
+                ),
+            )
+            connection.commit()
+
     def load_generation_result(self, run_id: str, generation_number: int) -> dict | None:
         with sqlite3.connect(self.database_path) as connection:
             cursor = connection.execute(
@@ -110,3 +162,46 @@ class SQLiteStore:
             return None
 
         return json.loads(row[0])
+
+    def load_champions(self, run_id: str | None = None) -> list[dict[str, Any]]:
+        query = """
+            SELECT
+                id,
+                run_id,
+                generation_number,
+                mutation_seed,
+                config_name,
+                genome_json,
+                metrics_json,
+                created_at
+            FROM champions
+        """
+        parameters: tuple[Any, ...] = ()
+
+        if run_id is not None:
+            query += " WHERE run_id = ?"
+            parameters = (run_id,)
+
+        query += " ORDER BY id ASC"
+
+        with sqlite3.connect(self.database_path) as connection:
+            cursor = connection.execute(query, parameters)
+            rows = cursor.fetchall()
+
+        champions: list[dict[str, Any]] = []
+
+        for row in rows:
+            champions.append(
+                {
+                    "id": row[0],
+                    "run_id": row[1],
+                    "generation_number": row[2],
+                    "mutation_seed": row[3],
+                    "config_name": row[4],
+                    "genome": json.loads(row[5]),
+                    "metrics": json.loads(row[6]),
+                    "created_at": row[7],
+                }
+            )
+
+        return champions
