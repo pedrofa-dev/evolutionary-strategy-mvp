@@ -3,7 +3,7 @@ import random
 from evo_system.domain.agent import Agent
 from evo_system.domain.generation_result import GenerationResult
 from evo_system.domain.genome import Genome
-from evo_system.mutation.mutator import MutationProfile, Mutator
+from evo_system.mutation.mutator import Mutator, MutationProfile
 from evo_system.selection.selector import Selector
 
 

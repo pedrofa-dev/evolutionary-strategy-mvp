@@ -14,12 +14,6 @@ class MutationProfile:
     weight_delta: float = 0.20
     window_step_mode: str = "default"  # "small", "default", "wide"
 
-    def __post_init__(self) -> None:
-        if self.window_step_mode not in {"small", "default", "wide"}:
-            raise ValueError(
-                "window_step_mode must be one of: small, default, wide"
-            )
-
 
 class Mutator:
     def __init__(
@@ -40,32 +34,36 @@ class Mutator:
     # =========================
 
     def _small_mutate(self, genome: Genome) -> Genome:
+        main_delta = 0.03 * self.profile.numeric_delta_scale
+        stop_loss_delta = 0.01 * self.profile.numeric_delta_scale
+        signal_delta = 0.001 * self.profile.numeric_delta_scale
+
         threshold_open = self._clamp(
-            genome.threshold_open + self._scaled_delta(0.03),
+            genome.threshold_open + self.random.uniform(-main_delta, main_delta),
             0.0,
             1.0,
         )
 
         threshold_close = self._clamp(
-            genome.threshold_close + self._scaled_delta(0.03),
+            genome.threshold_close + self.random.uniform(-main_delta, main_delta),
             0.0,
             1.0,
         )
 
         position_size = self._clamp(
-            genome.position_size + self._scaled_delta(0.03),
+            genome.position_size + self.random.uniform(-main_delta, main_delta),
             0.01,
             1.0,
         )
 
         stop_loss = self._clamp(
-            genome.stop_loss + self._scaled_delta(0.01),
+            genome.stop_loss + self.random.uniform(-stop_loss_delta, stop_loss_delta),
             0.01,
             1.0,
         )
 
         take_profit = self._clamp(
-            genome.take_profit + self._scaled_delta(0.03),
+            genome.take_profit + self.random.uniform(-main_delta, main_delta),
             0.01,
             2.0,
         )
@@ -82,10 +80,17 @@ class Mutator:
         if self.random.random() < self.profile.flag_flip_probability:
             use_exit_momentum = not use_exit_momentum
 
-        momentum_threshold = genome.momentum_threshold + self._scaled_delta(0.001)
-        trend_threshold = genome.trend_threshold + self._scaled_delta(0.001)
-        exit_momentum_threshold = (
-            genome.exit_momentum_threshold + self._scaled_delta(0.001)
+        momentum_threshold = genome.momentum_threshold + self.random.uniform(
+            -signal_delta,
+            signal_delta,
+        )
+        trend_threshold = genome.trend_threshold + self.random.uniform(
+            -signal_delta,
+            signal_delta,
+        )
+        exit_momentum_threshold = genome.exit_momentum_threshold + self.random.uniform(
+            -signal_delta,
+            signal_delta,
         )
 
         trend_window = self._mutate_window(genome.trend_window, 2, 50)
@@ -173,23 +178,17 @@ class Mutator:
     def _clamp(self, value: float, min_value: float, max_value: float) -> float:
         return max(min_value, min(max_value, value))
 
-    def _scaled_delta(self, base_delta: float) -> float:
-        delta = base_delta * self.profile.numeric_delta_scale
-        return self.random.uniform(-delta, delta)
-
     def _mutate_weight(self, value: float) -> float:
         delta = self.profile.weight_delta
         return self._clamp(value + self.random.uniform(-delta, delta), -3.0, 3.0)
 
     def _mutate_window(self, value: int, min_value: int, max_value: int) -> int:
-        step = self.random.choice(self._window_steps())
-        return int(self._clamp(value + step, min_value, max_value))
-
-    def _window_steps(self) -> list[int]:
         if self.profile.window_step_mode == "small":
-            return [-1, 1]
+            choices = [-1, 1]
+        elif self.profile.window_step_mode == "wide":
+            choices = [-3, -2, -1, 1, 2, 3]
+        else:
+            choices = [-2, -1, 1, 2]
 
-        if self.profile.window_step_mode == "wide":
-            return [-3, -2, -1, 1, 2, 3]
-
-        return [-2, -1, 1, 2]
+        step = self.random.choice(choices)
+        return int(self._clamp(value + step, min_value, max_value))
