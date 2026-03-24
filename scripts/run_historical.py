@@ -491,6 +491,7 @@ def execute_historical_run(
 
     runner = EvolutionRunner(
         mutation_seed=config.mutation_seed,
+        mutation_profile=config.mutation_profile,
     )
 
     store = SQLiteStore()
@@ -527,6 +528,7 @@ def execute_historical_run(
         f"Dataset root: {dataset_root}",
         f"Dataset signature: {dataset_signature}",
         f"Mutation seed: {config.mutation_seed}",
+        f"Mutation profile: {config.mutation_profile}",
         f"Population size: {config.population_size}",
         f"Target population size: {config.target_population_size}",
         f"Survivors count: {config.survivors_count}",
@@ -554,6 +556,7 @@ def execute_historical_run(
         print(f"Context name: {context_name}")
     print(f"Dataset root: {dataset_root}")
     print(f"Dataset signature: {dataset_signature}")
+    print(f"Mutation profile: {config.mutation_profile}")
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"

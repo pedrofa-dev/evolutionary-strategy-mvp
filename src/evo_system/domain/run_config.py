@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from evo_system.mutation.mutator import MutationProfile
 
 
 @dataclass(frozen=True)
@@ -8,6 +10,7 @@ class RunConfig:
     target_population_size: int
     survivors_count: int
     generations_planned: int
+    mutation_profile: MutationProfile = field(default_factory=MutationProfile)
     trade_cost_rate: float = 0.0
     cost_penalty_weight: float = 0.25
 

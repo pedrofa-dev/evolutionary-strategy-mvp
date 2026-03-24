@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 
 from evo_system.domain.genome import Genome
-from dataclasses import dataclass
+
 
 @dataclass(frozen=True)
 class MutationProfile:
@@ -13,14 +14,24 @@ class MutationProfile:
     weight_delta: float = 0.20
     window_step_mode: str = "default"  # "small", "default", "wide"
 
-class Mutator:
-    STRONG_MUTATION_PROBABILITY = 0.1
+    def __post_init__(self) -> None:
+        if self.window_step_mode not in {"small", "default", "wide"}:
+            raise ValueError(
+                "window_step_mode must be one of: small, default, wide"
+            )
 
-    def __init__(self, seed: int | None = None) -> None:
+
+class Mutator:
+    def __init__(
+        self,
+        seed: int | None = None,
+        profile: MutationProfile | None = None,
+    ) -> None:
         self.random = random.Random(seed)
+        self.profile = profile or MutationProfile()
 
     def mutate(self, genome: Genome) -> Genome:
-        if self.random.random() < self.STRONG_MUTATION_PROBABILITY:
+        if self.random.random() < self.profile.strong_mutation_probability:
             return self._strong_mutate(genome)
         return self._small_mutate(genome)
 
@@ -30,55 +41,55 @@ class Mutator:
 
     def _small_mutate(self, genome: Genome) -> Genome:
         threshold_open = self._clamp(
-            genome.threshold_open + self.random.uniform(-0.03, 0.03),
+            genome.threshold_open + self._scaled_delta(0.03),
             0.0,
             1.0,
         )
 
         threshold_close = self._clamp(
-            genome.threshold_close + self.random.uniform(-0.03, 0.03),
+            genome.threshold_close + self._scaled_delta(0.03),
             0.0,
             1.0,
         )
 
         position_size = self._clamp(
-            genome.position_size + self.random.uniform(-0.03, 0.03),
+            genome.position_size + self._scaled_delta(0.03),
             0.01,
             1.0,
         )
 
         stop_loss = self._clamp(
-            genome.stop_loss + self.random.uniform(-0.01, 0.01),
+            genome.stop_loss + self._scaled_delta(0.01),
             0.01,
             1.0,
         )
 
         take_profit = self._clamp(
-            genome.take_profit + self.random.uniform(-0.03, 0.03),
+            genome.take_profit + self._scaled_delta(0.03),
             0.01,
             2.0,
         )
 
-        # Legacy flags (rare flips)
         use_momentum = genome.use_momentum
-        if self.random.random() < 0.05:
+        if self.random.random() < self.profile.flag_flip_probability:
             use_momentum = not use_momentum
 
         use_trend = genome.use_trend
-        if self.random.random() < 0.05:
+        if self.random.random() < self.profile.flag_flip_probability:
             use_trend = not use_trend
 
         use_exit_momentum = genome.use_exit_momentum
-        if self.random.random() < 0.05:
+        if self.random.random() < self.profile.flag_flip_probability:
             use_exit_momentum = not use_exit_momentum
 
-        momentum_threshold = genome.momentum_threshold + self.random.uniform(-0.001, 0.001)
-        trend_threshold = genome.trend_threshold + self.random.uniform(-0.001, 0.001)
-        exit_momentum_threshold = genome.exit_momentum_threshold + self.random.uniform(-0.001, 0.001)
+        momentum_threshold = genome.momentum_threshold + self._scaled_delta(0.001)
+        trend_threshold = genome.trend_threshold + self._scaled_delta(0.001)
+        exit_momentum_threshold = (
+            genome.exit_momentum_threshold + self._scaled_delta(0.001)
+        )
 
         trend_window = self._mutate_window(genome.trend_window, 2, 50)
 
-        # New feature windows
         ret_short_window = self._mutate_window(genome.ret_short_window, 2, 10)
         ret_mid_window = self._mutate_window(genome.ret_mid_window, 5, 50)
         ma_window = self._mutate_window(genome.ma_window, 5, 100)
@@ -86,14 +97,12 @@ class Mutator:
         vol_short_window = self._mutate_window(genome.vol_short_window, 2, 20)
         vol_long_window = self._mutate_window(genome.vol_long_window, 10, 100)
 
-        # Fix constraints
         if ret_short_window >= ret_mid_window:
             ret_short_window = max(2, ret_mid_window - 1)
 
         if vol_short_window >= vol_long_window:
             vol_short_window = max(2, vol_long_window - 1)
 
-        # Weights
         weight_ret_short = self._mutate_weight(genome.weight_ret_short)
         weight_ret_mid = self._mutate_weight(genome.weight_ret_mid)
         weight_dist_ma = self._mutate_weight(genome.weight_dist_ma)
@@ -164,9 +173,23 @@ class Mutator:
     def _clamp(self, value: float, min_value: float, max_value: float) -> float:
         return max(min_value, min(max_value, value))
 
+    def _scaled_delta(self, base_delta: float) -> float:
+        delta = base_delta * self.profile.numeric_delta_scale
+        return self.random.uniform(-delta, delta)
+
     def _mutate_weight(self, value: float) -> float:
-        return self._clamp(value + self.random.uniform(-0.2, 0.2), -3.0, 3.0)
+        delta = self.profile.weight_delta
+        return self._clamp(value + self.random.uniform(-delta, delta), -3.0, 3.0)
 
     def _mutate_window(self, value: int, min_value: int, max_value: int) -> int:
-        step = self.random.choice([-2, -1, 1, 2])
+        step = self.random.choice(self._window_steps())
         return int(self._clamp(value + step, min_value, max_value))
+
+    def _window_steps(self) -> list[int]:
+        if self.profile.window_step_mode == "small":
+            return [-1, 1]
+
+        if self.profile.window_step_mode == "wide":
+            return [-3, -2, -1, 1, 2, 3]
+
+        return [-2, -1, 1, 2]

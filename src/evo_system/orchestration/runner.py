@@ -3,14 +3,18 @@ import random
 from evo_system.domain.agent import Agent
 from evo_system.domain.generation_result import GenerationResult
 from evo_system.domain.genome import Genome
-from evo_system.mutation.mutator import Mutator
+from evo_system.mutation.mutator import MutationProfile, Mutator
 from evo_system.selection.selector import Selector
 
 
 class EvolutionRunner:
-    def __init__(self, mutation_seed: int = 42) -> None:
+    def __init__(
+        self,
+        mutation_seed: int = 42,
+        mutation_profile: MutationProfile | None = None,
+    ) -> None:
         self._random = random.Random(mutation_seed)
-        self.mutator = Mutator(seed=mutation_seed)
+        self.mutator = Mutator(seed=mutation_seed, profile=mutation_profile)
         self.selector = Selector()
 
     def create_initial_population(self, population_size: int) -> list[Agent]:

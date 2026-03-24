@@ -313,6 +313,7 @@ def main() -> None:
         dataset_root=dataset_root,
         context_name=context_name,
         preset_name=args.preset,
+        effective_generations=effective_generations,
     )
 
     print()
