@@ -1,3 +1,4 @@
+import argparse
 import json
 import statistics
 import tempfile
@@ -6,11 +7,17 @@ from datetime import datetime
 from pathlib import Path
 
 from evo_system.domain.run_summary import HistoricalRunSummary
+from experiment_presets import (
+    apply_preset_to_config_data,
+    apply_preset_to_seeds,
+    get_available_preset_names,
+    get_preset_by_name,
+)
 from run_historical import DEFAULT_DATASET_ROOT, execute_historical_run
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
-DEFAULT_SEEDS = [101, 102, 103, 104, 105]
+DEFAULT_SEEDS = [101, 102, 103]
 DEFAULT_CONTEXT_NAME: str | None = None
 
 
@@ -69,19 +76,27 @@ def execute_multiseed_runs(
     output_dir: Path,
     dataset_root: Path,
     context_name: str | None,
+    preset_name: str | None = None,
 ) -> list[HistoricalRunSummary]:
     summaries: list[HistoricalRunSummary] = []
+    preset = get_preset_by_name(preset_name)
 
     for config_path in config_paths:
         base_config = load_config(config_path)
+        effective_config = apply_preset_to_config_data(base_config, preset)
 
         for seed in seeds:
             print()
             print(f"=== Running {config_path.name} with seed {seed} ===")
             if context_name:
                 print(f"Context: {context_name}")
+            if preset is not None:
+                print(
+                    f"Preset: {preset.name} | "
+                    f"generations={effective_config['generations_planned']}"
+                )
 
-            config_copy = dict(base_config)
+            config_copy = dict(effective_config)
             config_copy["mutation_seed"] = seed
             temp_config_path = write_temp_config(config_copy)
 
@@ -216,11 +231,15 @@ def write_multiseed_summary(
     output_dir: Path,
     dataset_root: Path,
     context_name: str | None,
+    preset_name: str | None,
+    effective_generations: int | None,
 ) -> Path:
     summary_path = output_dir / "multiseed_summary.txt"
 
     lines = [
         f"Multiseed batch executed at: {datetime.now().isoformat(timespec='seconds')}",
+        f"Preset: {preset_name or 'none'}",
+        f"Effective generations: {effective_generations if effective_generations is not None else 'config-defined'}",
         f"Context name: {context_name or 'none'}",
         f"Dataset root: {dataset_root}",
         f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
@@ -243,6 +262,16 @@ def write_multiseed_summary(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Execute historical multiseed runs.")
+    parser.add_argument(
+        "--preset",
+        type=str,
+        choices=get_available_preset_names(),
+        default=None,
+        help="Optional execution preset overriding generations and seeds/max_seeds.",
+    )
+    args = parser.parse_args()
+
     config_paths = sorted(CONFIGS_DIR.glob("*.json"))
 
     if not config_paths:
@@ -251,9 +280,17 @@ def main() -> None:
 
     dataset_root = DEFAULT_DATASET_ROOT
     context_name = DEFAULT_CONTEXT_NAME
+    preset = get_preset_by_name(args.preset)
+    seeds = apply_preset_to_seeds(DEFAULT_SEEDS, preset)
+    effective_generations = preset.generations if preset is not None else None
 
     print(f"Found {len(config_paths)} config files.")
-    print(f"Using seeds: {DEFAULT_SEEDS}")
+    print(f"Using seeds: {seeds}")
+    print(f"Preset: {args.preset or 'none'}")
+    print(
+        "Effective generations: "
+        f"{effective_generations if effective_generations is not None else 'config-defined'}"
+    )
     print(f"Context name: {context_name or 'none'}")
     print(f"Dataset root: {dataset_root}")
 
@@ -262,18 +299,20 @@ def main() -> None:
 
     summaries = execute_multiseed_runs(
         config_paths=config_paths,
-        seeds=DEFAULT_SEEDS,
+        seeds=seeds,
         output_dir=output_dir,
         dataset_root=dataset_root,
         context_name=context_name,
-    )
+        preset_name=args.preset,
+)
 
     summary_path = write_multiseed_summary(
         summaries=summaries,
-        seeds=DEFAULT_SEEDS,
+        seeds=seeds,
         output_dir=output_dir,
         dataset_root=dataset_root,
         context_name=context_name,
+        preset_name=args.preset,
     )
 
     print()

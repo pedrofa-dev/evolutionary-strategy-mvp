@@ -1,8 +1,10 @@
+import argparse
+import json
 import random
 import time
 import uuid
+from dataclasses import replace
 from hashlib import sha256
-import json
 from pathlib import Path
 
 from evo_system.domain.agent import Agent
@@ -17,6 +19,11 @@ from evo_system.orchestration.agent_evaluator import AgentEvaluator
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
+from experiment_presets import (
+    apply_preset_to_config_data,
+    get_available_preset_names,
+    get_preset_by_name,
+)
 
 
 DEFAULT_DATASET_ROOT = Path("data/processed")
@@ -335,6 +342,10 @@ def append_lines(log_file_path: Path, lines: list[str]) -> None:
         log_file.write("\n".join(lines) + "\n")
 
 
+def load_config_data(config_path: Path) -> dict:
+    return json.loads(config_path.read_text(encoding="utf-8"))
+
+
 def build_evolution_selection_score(
     train_evaluation: AgentEvaluation,
     validation_evaluation: AgentEvaluation,
@@ -457,10 +468,13 @@ def execute_historical_run(
     config_name_override: str | None = None,
     dataset_root: Path = DEFAULT_DATASET_ROOT,
     context_name: str | None = None,
+    generations_override: int | None = None,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
     config = load_run_config(str(config_path))
+    if generations_override is not None:
+        config = replace(config, generations_planned=generations_override)
     config_name = config_name_override or config_path.name
 
     evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
@@ -835,9 +849,39 @@ def execute_historical_run(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Execute a single historical run.")
+    parser.add_argument(
+        "--config-path",
+        type=Path,
+        default=Path("configs/run_config.json"),
+        help="Path to the run config JSON.",
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        choices=get_available_preset_names(),
+        default=None,
+        help="Optional execution preset overriding generations only.",
+    )
+    args = parser.parse_args()
+
+    preset = get_preset_by_name(args.preset)
+    generations_override: int | None = None
+
+    if preset is not None:
+        preset_config = apply_preset_to_config_data(
+            load_config_data(args.config_path),
+            preset,
+        )
+        generations_override = int(preset_config["generations_planned"])
+        print(
+            f"Using preset '{preset.name}' -> generations={generations_override}"
+        )
+
     execute_historical_run(
-        config_path=Path("configs/run_config.json"),
+        config_path=args.config_path,
         dataset_root=DEFAULT_DATASET_ROOT,
+        generations_override=generations_override,
     )
 
 

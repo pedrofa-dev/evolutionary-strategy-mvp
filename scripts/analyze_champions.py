@@ -754,6 +754,164 @@ def build_top_examples(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return examples
 
 
+def safe_list_std(values: list[float]) -> float | None:
+    if len(values) < 2:
+        return None
+    return safe_std(values)
+
+
+def build_best_and_worst_dataset(
+    dataset_names: list[Any],
+    dataset_scores: list[Any],
+) -> tuple[str | None, str | None]:
+    pairs = [
+        (str(name), float(score))
+        for name, score in zip(dataset_names, dataset_scores)
+        if isinstance(score, (int, float))
+    ]
+
+    if not pairs:
+        return None, None
+
+    best_dataset = max(pairs, key=lambda item: item[1])[0]
+    worst_dataset = min(pairs, key=lambda item: item[1])[0]
+    return best_dataset, worst_dataset
+
+
+def count_distribution(values: list[Any]) -> tuple[int | None, int | None]:
+    numeric_values = [float(value) for value in values if isinstance(value, (int, float))]
+    if not numeric_values:
+        return None, None
+
+    positive_count = sum(1 for value in numeric_values if value > 0.0)
+    negative_count = sum(1 for value in numeric_values if value < 0.0)
+    return positive_count, negative_count
+
+
+def build_genome_summary(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "threshold_open": row.get("threshold_open"),
+        "threshold_close": row.get("threshold_close"),
+        "stop_loss": row.get("stop_loss"),
+        "take_profit": row.get("take_profit"),
+        "use_momentum": row.get("use_momentum"),
+        "use_trend": row.get("use_trend"),
+        "use_exit_momentum": row.get("use_exit_momentum"),
+        "ret_short_window": row.get("ret_short_window"),
+        "ret_mid_window": row.get("ret_mid_window"),
+        "ma_window": row.get("ma_window"),
+        "range_window": row.get("range_window"),
+        "vol_short_window": row.get("vol_short_window"),
+        "vol_long_window": row.get("vol_long_window"),
+    }
+
+
+def classify_champion(card: dict[str, Any]) -> str:
+    scores = card.get("scores", {})
+    stability = card.get("stability", {})
+    distribution = card.get("distribution", {})
+
+    validation_profit = scores.get("validation_profit")
+    validation_drawdown = scores.get("validation_drawdown")
+    selection_gap = scores.get("selection_gap")
+    validation_std = stability.get("validation_std")
+    positive_datasets = distribution.get("positive_datasets")
+    negative_datasets = distribution.get("negative_datasets")
+
+    if not isinstance(validation_profit, (int, float)):
+        return "unstable"
+
+    if (
+        isinstance(validation_std, (int, float))
+        and isinstance(selection_gap, (int, float))
+        and isinstance(positive_datasets, int)
+        and isinstance(negative_datasets, int)
+        and validation_profit > 0.0
+        and (validation_drawdown is None or float(validation_drawdown) <= 0.0020)
+        and validation_std <= 0.50
+        and abs(float(selection_gap)) <= 0.75
+        and positive_datasets >= negative_datasets
+    ):
+        return "robust"
+
+    if (
+        isinstance(positive_datasets, int)
+        and isinstance(negative_datasets, int)
+        and isinstance(selection_gap, (int, float))
+        and validation_profit > 0.0
+        and abs(float(selection_gap)) <= 1.00
+        and positive_datasets > 0
+        and negative_datasets > 0
+        and positive_datasets < negative_datasets
+    ):
+        return "specialist"
+
+    return "unstable"
+
+
+def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
+    validation_dataset_names = row.get("all_validation_dataset_names") or row.get(
+        "validation_dataset_names",
+        [],
+    )
+    validation_dataset_scores = row.get("validation_dataset_scores", [])
+    validation_dataset_profits = row.get("validation_dataset_profits", [])
+    best_dataset, worst_dataset = build_best_and_worst_dataset(
+        validation_dataset_names,
+        validation_dataset_scores,
+    )
+    positive_datasets, negative_datasets = count_distribution(
+        validation_dataset_profits
+    )
+
+    card = {
+        "champion_id": row.get("id"),
+        "config_name": row.get("config_name"),
+        "seed": row.get("mutation_seed"),
+        "type": None,
+        "scores": {
+            "train_selection": row.get("train_selection"),
+            "validation_selection": row.get("validation_selection"),
+            "selection_gap": row.get("selection_gap"),
+            "validation_profit": row.get("validation_profit"),
+            "validation_drawdown": row.get("validation_drawdown"),
+            "validation_trades": row.get("validation_trades"),
+        },
+        "stability": {
+            "validation_std": safe_list_std(validation_dataset_scores),
+            "best_dataset": best_dataset,
+            "worst_dataset": worst_dataset,
+        },
+        "distribution": {
+            "positive_datasets": positive_datasets,
+            "negative_datasets": negative_datasets,
+        },
+        "genome_summary": build_genome_summary(row),
+    }
+    card["type"] = classify_champion(card)
+    return card
+
+
+def select_primary_champion_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    ranked_rows = [
+        row
+        for row in rows
+        if isinstance(row.get("validation_selection"), (int, float))
+    ]
+    if not ranked_rows:
+        return rows[0] if rows else None
+
+    return sorted(
+        ranked_rows,
+        key=lambda row: (
+            float(row.get("validation_selection", 0.0)),
+            float(row.get("validation_profit", 0.0)),
+            -abs(float(row.get("selection_gap", 0.0))),
+        ),
+        reverse=True,
+    )[0]
+
+
 def format_numeric_summary_block(
     title: str,
     stats_by_field: dict[str, dict[str, float]],
@@ -1088,6 +1246,7 @@ def main() -> None:
     csv_path = output_dir / "champions_flat.csv"
     report_path = output_dir / "champion_report.txt"
     patterns_path = output_dir / "patterns.json"
+    champion_card_path = output_dir / "champion_card.json"
 
     export_flat_csv(flat_rows, csv_path)
     report_data = write_report(
@@ -1096,9 +1255,15 @@ def main() -> None:
         run_id=args.run_id,
         config_name=args.config_name,
     )
+    primary_row = select_primary_champion_row(flat_rows)
+    champion_card = build_champion_card(primary_row) if primary_row is not None else {}
 
     patterns_path.write_text(
         json.dumps(make_json_safe(report_data), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    champion_card_path.write_text(
+        json.dumps(make_json_safe(champion_card), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
 
@@ -1106,6 +1271,7 @@ def main() -> None:
     print(f"CSV exported to: {csv_path}")
     print(f"Report exported to: {report_path}")
     print(f"Patterns exported to: {patterns_path}")
+    print(f"Champion card exported to: {champion_card_path}")
 
 
 if __name__ == "__main__":

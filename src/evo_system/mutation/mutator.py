@@ -3,7 +3,15 @@ from __future__ import annotations
 import random
 
 from evo_system.domain.genome import Genome
+from dataclasses import dataclass
 
+@dataclass(frozen=True)
+class MutationProfile:
+    strong_mutation_probability: float = 0.10
+    numeric_delta_scale: float = 1.0
+    flag_flip_probability: float = 0.05
+    weight_delta: float = 0.20
+    window_step_mode: str = "default"  # "small", "default", "wide"
 
 class Mutator:
     STRONG_MUTATION_PROBABILITY = 0.1
