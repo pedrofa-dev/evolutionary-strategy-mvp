@@ -51,8 +51,8 @@ class Mutator:
         )
 
         position_size = self._clamp(
-            genome.position_size + self.random.uniform(-main_delta, main_delta),
-            0.01,
+            genome.position_size + self._scaled_delta(0.03),
+            0.05,
             1.0,
         )
 
@@ -148,7 +148,7 @@ class Mutator:
         return Genome(
             threshold_open=self.random.uniform(0.4, 1.0),
             threshold_close=self.random.uniform(0.0, 0.5),
-            position_size=self.random.uniform(0.01, 1.0),
+            position_size=self.random.uniform(0.05, 1.0),
             stop_loss=self.random.uniform(0.01, 1.0),
             take_profit=self.random.uniform(0.01, 2.0),
             use_momentum=self.random.choice([True, False]),
@@ -177,6 +177,10 @@ class Mutator:
 
     def _clamp(self, value: float, min_value: float, max_value: float) -> float:
         return max(min_value, min(max_value, value))
+
+    def _scaled_delta(self, base_delta: float) -> float:
+        delta = base_delta * self.profile.numeric_delta_scale
+        return self.random.uniform(-delta, delta)
 
     def _mutate_weight(self, value: float) -> float:
         delta = self.profile.weight_delta

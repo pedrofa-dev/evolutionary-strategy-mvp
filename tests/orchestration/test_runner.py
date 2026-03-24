@@ -3,6 +3,7 @@ import pytest
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
 from evo_system.orchestration.runner import EvolutionRunner
+from evo_system.mutation.mutator import MutationProfile
 
 
 def test_create_initial_population_returns_expected_size() -> None:
@@ -25,6 +26,20 @@ def test_create_initial_population_is_deterministic_with_same_seed() -> None:
     genomes_b = [agent.genome for agent in population_b]
 
     assert genomes_a == genomes_b
+
+
+def test_runner_passes_mutation_profile_to_mutator() -> None:
+    profile = MutationProfile(
+        strong_mutation_probability=0.20,
+        numeric_delta_scale=1.25,
+        flag_flip_probability=0.08,
+        weight_delta=0.30,
+        window_step_mode="small",
+    )
+
+    runner = EvolutionRunner(mutation_seed=42, mutation_profile=profile)
+
+    assert runner.mutator.profile == profile
 
 
 def test_create_initial_population_raises_error_when_population_size_is_not_positive() -> None:

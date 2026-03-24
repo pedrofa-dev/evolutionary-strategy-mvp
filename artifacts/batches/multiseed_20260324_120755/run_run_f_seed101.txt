@@ -1,0 +1,297 @@
+Config path: C:\Users\Pedro\AppData\Local\Temp\tmp5vn6wa9o.json
+Config name: run_f.json
+Context name: none
+Run ID: 280891a0-46f3-4d9e-a3bb-c8419ed4e92c
+Dataset root: data\processed
+Dataset signature: 6b28a5577be6cec687558d3771b3818431916d2057e594b8694fa4547b79e4f7
+Mutation seed: 101
+Mutation profile: MutationProfile(strong_mutation_probability=0.12, numeric_delta_scale=1.4, flag_flip_probability=0.08, weight_delta=0.3, window_step_mode='wide')
+Population size: 20
+Target population size: 20
+Survivors count: 3
+Generations planned: 10
+Trade cost rate: 0.0
+Cost penalty weight: 0.0
+Datasets -> train=6 | validation=6
+Train sample size per generation: 4
+Train datasets: train\BTCUSDT\1h\BTCUSDT-1h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv, train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv
+Validation datasets: validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv, validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv, validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv, validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv, validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv, validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv
+Evolution score weights -> train=0.30 | validation=0.70 | overfit_gap_penalty=0.75 | underfit_gap_penalty=0.50 | validation_dispersion_penalty=0.50
+
+
+Generation 1
+Train sample -> train\ETHUSDT\4h\ETHUSDT-4h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv
+Evolution scores -> best=-9.5000 | average=-64.3224
+Train selection -> best=-2.5000 | average=-47.0041
+Validation selection -> best=-2.5000 | average=-18.2784
+Gaps -> selection_gap=0.0000 | profit_gap=0.0000
+Validation dispersion -> 0.0000
+Timing -> total=53.39s | all_eval=53.22s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.8, threshold_close=0.4, position_size=0.2, stop_loss=0.05, take_profit=0.1, use_momentum=False, momentum_threshold=0.0, use_trend=False, trend_threshold=0.0, trend_window=5, use_exit_momentum=True, exit_momentum_threshold=-0.0005, ret_short_window=3, ret_mid_window=12, ma_window=20, range_window=20, vol_short_window=5, vol_long_window=20, weight_ret_short=0.0, weight_ret_mid=0.0, weight_dist_ma=0.0, weight_range_pos=0.0, weight_vol_ratio=0.0)
+Evolution selection score -> -9.5000
+Train -> valid=False | score=-2.5000 | selection=-2.5000 | dispersion=0.0000 | profit=0.0000 | drawdown=0.0000 | trades=0.0
+Validation -> valid=False | score=-2.5000 | selection=-2.5000 | dispersion=0.0000 | profit=0.0000 | drawdown=0.0000 | trades=0.0
+Train breakdown:
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=0.0000 | profit=0.0000 | dd=0.0000
+Train violations -> too_few_trades
+Validation violations -> too_few_trades
+
+Generation 2
+Train sample -> train\BTCUSDT\1h\BTCUSDT-1h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv
+Evolution scores -> best=-4.2215 | average=-35.0521
+Train selection -> best=13.4666 | average=-28.0046
+Validation selection -> best=3.4030 | average=-3.9668
+Gaps -> selection_gap=-5.2257 | profit_gap=0.0017
+Validation dispersion -> 6.8877
+Timing -> total=62.98s | all_eval=62.78s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.4649267645978356, threshold_close=0.10737829135989754, position_size=0.05753148862477473, stop_loss=0.022473038018569612, take_profit=0.16656749854378902, use_momentum=True, momentum_threshold=6.12375846489857e-05, use_trend=True, trend_threshold=0.0020526137981750478, trend_window=6, use_exit_momentum=False, exit_momentum_threshold=-0.0003659202414018649, ret_short_window=4, ret_mid_window=5, ma_window=5, range_window=5, vol_short_window=8, vol_long_window=15, weight_ret_short=1.0756019599554398, weight_ret_mid=1.2090598888996822, weight_dist_ma=0.735289095563981, weight_range_pos=-0.7506973501886716, weight_vol_ratio=-1.4746797273387666)
+Evolution selection score -> -4.2215
+Train -> valid=True | score=1.2417 | selection=-1.8227 | dispersion=30.5598 | profit=0.0114 | drawdown=0.0199 | trades=60.0
+Validation -> valid=True | score=4.0955 | selection=3.4030 | dispersion=6.8877 | profit=0.0098 | drawdown=0.0124 | trades=22.0
+Train breakdown:
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=25.4861 | profit=0.0337 | dd=0.0181
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=-5.0738 | profit=0.0044 | dd=0.0201
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=1.8258 | profit=0.0130 | dd=0.0232
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=0.6576 | profit=0.0099 | dd=0.0197
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=-0.5321 | profit=0.0032 | dd=0.0079
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=0.5356 | profit=0.0071 | dd=0.0134
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=3.3893 | profit=0.0094 | dd=0.0123
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=6.3557 | profit=0.0124 | dd=0.0130
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=5.0337 | profit=0.0101 | dd=0.0105
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=4.8018 | profit=0.0108 | dd=0.0125
+
+Generation 3
+Train sample -> train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv
+Evolution scores -> best=-8.8481 | average=-77.1108
+Train selection -> best=-3.3113 | average=-54.8669
+Validation selection -> best=8.5369 | average=-17.0342
+Gaps -> selection_gap=-11.0091 | profit_gap=-0.0026
+Validation dispersion -> 6.8877
+Timing -> total=76.27s | all_eval=76.06s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.4649267645978356, threshold_close=0.10737829135989754, position_size=0.05753148862477473, stop_loss=0.022473038018569612, take_profit=0.16656749854378902, use_momentum=True, momentum_threshold=6.12375846489857e-05, use_trend=True, trend_threshold=0.0020526137981750478, trend_window=6, use_exit_momentum=False, exit_momentum_threshold=-0.0003659202414018649, ret_short_window=4, ret_mid_window=5, ma_window=5, range_window=5, vol_short_window=8, vol_long_window=15, weight_ret_short=1.0756019599554398, weight_ret_mid=1.2090598888996822, weight_dist_ma=0.735289095563981, weight_range_pos=-0.7506973501886716, weight_vol_ratio=-1.4746797273387666)
+Evolution selection score -> -8.8481
+Train -> valid=True | score=-2.2081 | selection=-7.6061 | dispersion=12.7335 | profit=0.0071 | drawdown=0.0216 | trades=60.0
+Validation -> valid=True | score=4.0955 | selection=3.4030 | dispersion=6.8877 | profit=0.0098 | drawdown=0.0124 | trades=22.0
+Train breakdown:
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=1.8258 | profit=0.0130 | dd=0.0232
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=0.6576 | profit=0.0099 | dd=0.0197
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-10.9077 | profit=0.0017 | dd=0.0278
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=-5.0738 | profit=0.0044 | dd=0.0201
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=-0.5321 | profit=0.0032 | dd=0.0079
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=0.5356 | profit=0.0071 | dd=0.0134
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=3.3893 | profit=0.0094 | dd=0.0123
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=6.3557 | profit=0.0124 | dd=0.0130
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=5.0337 | profit=0.0101 | dd=0.0105
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=4.8018 | profit=0.0108 | dd=0.0125
+
+Generation 4
+Train sample -> train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\BTCUSDT\1h\BTCUSDT-1h-train.csv
+Evolution scores -> best=-5.7276 | average=-16.0607
+Train selection -> best=3.4841 | average=-5.5357
+Validation selection -> best=4.0543 | average=-1.7726
+Gaps -> selection_gap=-2.1773 | profit_gap=0.0112
+Validation dispersion -> 3.8313
+Timing -> total=114.31s | all_eval=113.95s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.4696866580861902, threshold_close=0.09345621915275697, position_size=0.04583204285088352, stop_loss=0.022585453083143255, take_profit=0.1658982382190164, use_momentum=True, momentum_threshold=-0.0011404706504347505, use_trend=True, trend_threshold=0.0014303679283609594, trend_window=5, use_exit_momentum=False, exit_momentum_threshold=0.0008196690583262395, ret_short_window=4, ret_mid_window=5, ma_window=5, range_window=8, vol_short_window=5, vol_long_window=16, weight_ret_short=0.7897405768026853, weight_ret_mid=1.2691233618008269, weight_dist_ma=0.8715061541061042, weight_range_pos=-0.9337069051355138, weight_vol_ratio=-1.4128165031055628)
+Evolution selection score -> -5.7276
+Train -> valid=False | score=11.8694 | selection=0.7526 | dispersion=49.5577 | profit=0.0192 | drawdown=0.0143 | trades=79.5
+Validation -> valid=False | score=3.1705 | selection=2.9299 | dispersion=3.8313 | profit=0.0079 | drawdown=0.0095 | trades=26.5
+Train breakdown:
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=9.9986 | profit=0.0161 | dd=0.0132
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=15.7403 | profit=0.0222 | dd=0.0142
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-20.7318 | profit=-0.0090 | dd=0.0268
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=28.8258 | profit=0.0351 | dd=0.0144
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=4.8618 | profit=0.0073 | dd=0.0057
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=1.2583 | profit=0.0062 | dd=0.0103
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=4.4930 | profit=0.0087 | dd=0.0089
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=1.2522 | profit=0.0055 | dd=0.0102
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=5.0834 | profit=0.0089 | dd=0.0079
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=3.8481 | profit=0.0086 | dd=0.0101
+Train violations -> position_size_too_small
+Validation violations -> position_size_too_small
+
+Generation 5
+Train sample -> train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv, train\BTCUSDT\1h\BTCUSDT-1h-train.csv
+Evolution scores -> best=-4.0461 | average=-51.6628
+Train selection -> best=15.1134 | average=-19.5430
+Validation selection -> best=5.4881 | average=-19.0669
+Gaps -> selection_gap=0.1341 | profit_gap=0.0112
+Validation dispersion -> 3.8313
+Timing -> total=106.16s | all_eval=105.86s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.4696866580861902, threshold_close=0.09345621915275697, position_size=0.04583204285088352, stop_loss=0.022585453083143255, take_profit=0.1658982382190164, use_momentum=True, momentum_threshold=-0.0011404706504347505, use_trend=True, trend_threshold=0.0014303679283609594, trend_window=5, use_exit_momentum=False, exit_momentum_threshold=0.0008196690583262395, ret_short_window=4, ret_mid_window=5, ma_window=5, range_window=8, vol_short_window=5, vol_long_window=16, weight_ret_short=0.7897405768026853, weight_ret_mid=1.2691233618008269, weight_dist_ma=0.8715061541061042, weight_range_pos=-0.9337069051355138, weight_vol_ratio=-1.4128165031055628)
+Evolution selection score -> -4.0461
+Train -> valid=False | score=11.8694 | selection=3.0640 | dispersion=43.7792 | profit=0.0192 | drawdown=0.0143 | trades=63.0
+Validation -> valid=False | score=3.1705 | selection=2.9299 | dispersion=3.8313 | profit=0.0079 | drawdown=0.0095 | trades=26.5
+Train breakdown:
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=15.7403 | profit=0.0222 | dd=0.0142
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=9.9986 | profit=0.0161 | dd=0.0132
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=-14.9534 | profit=-0.0026 | dd=0.0259
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=28.8258 | profit=0.0351 | dd=0.0144
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=4.8618 | profit=0.0073 | dd=0.0057
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=1.2583 | profit=0.0062 | dd=0.0103
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=4.4930 | profit=0.0087 | dd=0.0089
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=1.2522 | profit=0.0055 | dd=0.0102
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=5.0834 | profit=0.0089 | dd=0.0079
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=3.8481 | profit=0.0086 | dd=0.0101
+Train violations -> position_size_too_small
+Validation violations -> position_size_too_small
+
+Generation 6
+Train sample -> train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\BTCUSDT\1h\BTCUSDT-1h-train.csv
+Evolution scores -> best=-9.4080 | average=-47.7996
+Train selection -> best=-2.8927 | average=-40.6943
+Validation selection -> best=5.4881 | average=-9.5481
+Gaps -> selection_gap=-11.7089 | profit_gap=-0.0026
+Validation dispersion -> 6.8877
+Timing -> total=132.86s | all_eval=132.57s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.4649267645978356, threshold_close=0.10737829135989754, position_size=0.05753148862477473, stop_loss=0.022473038018569612, take_profit=0.16656749854378902, use_momentum=True, momentum_threshold=6.12375846489857e-05, use_trend=True, trend_threshold=0.0020526137981750478, trend_window=6, use_exit_momentum=False, exit_momentum_threshold=-0.0003659202414018649, ret_short_window=4, ret_mid_window=5, ma_window=5, range_window=5, vol_short_window=8, vol_long_window=15, weight_ret_short=1.0756019599554398, weight_ret_mid=1.2090598888996822, weight_dist_ma=0.735289095563981, weight_range_pos=-0.7506973501886716, weight_vol_ratio=-1.4746797273387666)
+Evolution selection score -> -9.4080
+Train -> valid=True | score=-2.2081 | selection=-8.3060 | dispersion=36.3938 | profit=0.0071 | drawdown=0.0199 | trades=75.5
+Validation -> valid=True | score=4.0955 | selection=3.4030 | dispersion=6.8877 | profit=0.0098 | drawdown=0.0124 | trades=22.0
+Train breakdown:
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-10.9077 | profit=0.0017 | dd=0.0278
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=-5.0738 | profit=0.0044 | dd=0.0201
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=0.6576 | profit=0.0099 | dd=0.0197
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=25.4861 | profit=0.0337 | dd=0.0181
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=-0.5321 | profit=0.0032 | dd=0.0079
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=0.5356 | profit=0.0071 | dd=0.0134
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=3.3893 | profit=0.0094 | dd=0.0123
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=6.3557 | profit=0.0124 | dd=0.0130
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=5.0337 | profit=0.0101 | dd=0.0105
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=4.8018 | profit=0.0108 | dd=0.0125
+
+Generation 7
+Train sample -> train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv
+Evolution scores -> best=-8.8481 | average=-67.7063
+Train selection -> best=4.8306 | average=-63.3583
+Validation selection -> best=4.9589 | average=-11.5790
+Gaps -> selection_gap=-11.0091 | profit_gap=-0.0026
+Validation dispersion -> 6.8877
+Timing -> total=93.84s | all_eval=93.49s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.4649267645978356, threshold_close=0.10737829135989754, position_size=0.05753148862477473, stop_loss=0.022473038018569612, take_profit=0.16656749854378902, use_momentum=True, momentum_threshold=6.12375846489857e-05, use_trend=True, trend_threshold=0.0020526137981750478, trend_window=6, use_exit_momentum=False, exit_momentum_threshold=-0.0003659202414018649, ret_short_window=4, ret_mid_window=5, ma_window=5, range_window=5, vol_short_window=8, vol_long_window=15, weight_ret_short=1.0756019599554398, weight_ret_mid=1.2090598888996822, weight_dist_ma=0.735289095563981, weight_range_pos=-0.7506973501886716, weight_vol_ratio=-1.4746797273387666)
+Evolution selection score -> -8.8481
+Train -> valid=True | score=-2.2081 | selection=-7.6061 | dispersion=12.7335 | profit=0.0071 | drawdown=0.0216 | trades=60.0
+Validation -> valid=True | score=4.0955 | selection=3.4030 | dispersion=6.8877 | profit=0.0098 | drawdown=0.0124 | trades=22.0
+Train breakdown:
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-10.9077 | profit=0.0017 | dd=0.0278
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=0.6576 | profit=0.0099 | dd=0.0197
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=1.8258 | profit=0.0130 | dd=0.0232
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=-5.0738 | profit=0.0044 | dd=0.0201
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=-0.5321 | profit=0.0032 | dd=0.0079
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=0.5356 | profit=0.0071 | dd=0.0134
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=3.3893 | profit=0.0094 | dd=0.0123
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=6.3557 | profit=0.0124 | dd=0.0130
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=5.0337 | profit=0.0101 | dd=0.0105
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=4.8018 | profit=0.0108 | dd=0.0125
+
+Generation 8
+Train sample -> train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv, train\BTCUSDT\1h\BTCUSDT-1h-train.csv
+Evolution scores -> best=-9.1862 | average=-81.4837
+Train selection -> best=1.9395 | average=-63.2021
+Validation selection -> best=3.7257 | average=-28.7680
+Gaps -> selection_gap=-1.1857 | profit_gap=0.0011
+Validation dispersion -> 1.3511
+Timing -> total=139.53s | all_eval=139.23s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.38984322346153777, threshold_close=0.1285104637462875, position_size=0.01, stop_loss=0.03990110359246954, take_profit=0.19941767641749036, use_momentum=True, momentum_threshold=-0.00224258184923184, use_trend=True, trend_threshold=-0.0005159907187646611, trend_window=7, use_exit_momentum=False, exit_momentum_threshold=0.0023453762666291182, ret_short_window=2, ret_mid_window=7, ma_window=6, range_window=8, vol_short_window=10, vol_long_window=14, weight_ret_short=0.46253547364720293, weight_ret_mid=1.7047519989146145, weight_dist_ma=1.0087108391243829, weight_range_pos=-0.7853928696563395, weight_vol_ratio=-1.3106965851152532)
+Evolution selection score -> -9.1862
+Train -> valid=False | score=-0.1790 | selection=-1.7478 | dispersion=6.4744 | profit=0.0023 | drawdown=0.0045 | trades=82.0
+Validation -> valid=False | score=-0.4422 | selection=-0.5621 | dispersion=1.3511 | profit=0.0012 | drawdown=0.0020 | trades=21.5
+Train breakdown:
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-2.2291 | profit=-0.0005 | dd=0.0064
+  train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv -> score=-0.6435 | profit=0.0008 | dd=0.0049
+  train\BTCUSDT\4h\BTCUSDT-4h-train.csv -> score=2.2856 | profit=0.0037 | dd=0.0038
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=4.2453 | profit=0.0057 | dd=0.0041
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=0.5705 | profit=0.0009 | dd=0.0014
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=0.5452 | profit=0.0012 | dd=0.0015
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=1.3246 | profit=0.0020 | dd=0.0018
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=0.4132 | profit=0.0013 | dd=0.0029
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=-0.0265 | profit=0.0010 | dd=0.0024
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=1.2852 | profit=0.0022 | dd=0.0022
+Train violations -> position_size_too_small
+Validation violations -> position_size_too_small
+
+Generation 9
+Train sample -> train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\BTCUSDT\1h\BTCUSDT-1h-train.csv
+Evolution scores -> best=-5.4675 | average=-74.7954
+Train selection -> best=1.8891 | average=-59.0203
+Validation selection -> best=1.0012 | average=-27.6045
+Gaps -> selection_gap=1.3529 | profit_gap=0.0005
+Validation dispersion -> 0.7898
+Timing -> total=148.22s | all_eval=147.77s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.3880766767281534, threshold_close=0.14349368913012955, position_size=0.01, stop_loss=0.01, take_profit=0.14953606153622118, use_momentum=True, momentum_threshold=-0.0033054010963668584, use_trend=False, trend_threshold=-0.0006206086438000843, trend_window=3, use_exit_momentum=False, exit_momentum_threshold=0.0014680357794933992, ret_short_window=2, ret_mid_window=5, ma_window=6, range_window=5, vol_short_window=3, vol_long_window=24, weight_ret_short=0.574014433380408, weight_ret_mid=1.2323826634853496, weight_dist_ma=0.7917221916889168, weight_range_pos=-1.0142404759241193, weight_vol_ratio=-1.038621240684865)
+Evolution selection score -> -5.4675
+Train -> valid=False | score=2.7894 | selection=1.8891 | dispersion=6.8819 | profit=0.0017 | drawdown=0.0056 | trades=479.5
+Validation -> valid=False | score=0.5997 | selection=0.5362 | dispersion=0.7898 | profit=0.0012 | drawdown=0.0018 | trades=126.0
+Train breakdown:
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-0.3130 | profit=-0.0039 | dd=0.0096
+  train\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-train.csv -> score=1.4015 | profit=-0.0013 | dd=0.0073
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=6.1772 | profit=0.0048 | dd=0.0028
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=6.5689 | profit=0.0053 | dd=0.0038
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=1.7877 | profit=0.0001 | dd=0.0013
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=1.2576 | profit=0.0018 | dd=0.0018
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=1.5326 | profit=0.0011 | dd=0.0018
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=1.6668 | profit=0.0002 | dd=0.0028
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=1.8353 | profit=0.0024 | dd=0.0018
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=1.0455 | profit=0.0013 | dd=0.0030
+Train violations -> position_size_too_small
+Validation violations -> position_size_too_small
+
+Generation 10
+Train sample -> train\BTCUSDT\1h\BTCUSDT-1h-train.csv, train\ETHUSDT\4h\ETHUSDT-4h-train.csv, train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv, train\ETHUSDT\1h\ETHUSDT-1h-train.csv
+Evolution scores -> best=-5.3164 | average=-68.8138
+Train selection -> best=43.1243 | average=-42.8132
+Validation selection -> best=2.5274 | average=-15.1329
+Gaps -> selection_gap=-0.5722 | profit_gap=0.0008
+Validation dispersion -> 0.7898
+Timing -> total=138.64s | all_eval=138.32s | next_generation=0.00s
+Best genome -> Genome(threshold_open=0.3880766767281534, threshold_close=0.14349368913012955, position_size=0.01, stop_loss=0.01, take_profit=0.14953606153622118, use_momentum=True, momentum_threshold=-0.0033054010963668584, use_trend=False, trend_threshold=-0.0006206086438000843, trend_window=3, use_exit_momentum=False, exit_momentum_threshold=0.0014680357794933992, ret_short_window=2, ret_mid_window=5, ma_window=6, range_window=5, vol_short_window=3, vol_long_window=24, weight_ret_short=0.574014433380408, weight_ret_mid=1.2323826634853496, weight_dist_ma=0.7917221916889168, weight_range_pos=-1.0142404759241193, weight_vol_ratio=-1.038621240684865)
+Evolution selection score -> -5.3164
+Train -> valid=False | score=1.9321 | selection=-0.0360 | dispersion=8.9085 | profit=0.0020 | drawdown=0.0051 | trades=300.0
+Validation -> valid=False | score=0.5997 | selection=0.5362 | dispersion=0.7898 | profit=0.0012 | drawdown=0.0018 | trades=126.0
+Train breakdown:
+  train\BTCUSDT\1h\BTCUSDT-1h-train.csv -> score=6.5689 | profit=0.0053 | dd=0.0038
+  train\ETHUSDT\4h\ETHUSDT-4h-train.csv -> score=-2.3396 | profit=-0.0007 | dd=0.0064
+  train\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-train.csv -> score=6.1772 | profit=0.0048 | dd=0.0028
+  train\ETHUSDT\1h\ETHUSDT-1h-train.csv -> score=-0.3130 | profit=-0.0039 | dd=0.0096
+Validation breakdown:
+  validation\BTCUSDT\1h\BTCUSDT-1h-validation.csv -> score=1.7877 | profit=0.0001 | dd=0.0013
+  validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv -> score=1.2576 | profit=0.0018 | dd=0.0018
+  validation\BTCUSDT_PERP_USDT\1h\BTCUSDT_PERP_USDT-1h-validation.csv -> score=1.5326 | profit=0.0011 | dd=0.0018
+  validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv -> score=1.6668 | profit=0.0002 | dd=0.0028
+  validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv -> score=1.8353 | profit=0.0024 | dd=0.0018
+  validation\ETHUSDT_PERP_USDT\1h\ETHUSDT_PERP_USDT-1h-validation.csv -> score=1.0455 | profit=0.0013 | dd=0.0030
+Train violations -> position_size_too_small
+Validation violations -> position_size_too_small
+Champion persisted -> no
+
+Final summary
+Best train selection score: -0.0360
+Best train profit: 0.0020
+Final validation selection score: 0.5362
+Final validation profit: 0.0012
+Final validation drawdown: 0.0018
+Final validation trades: 126.0
+Final selection gap: -0.5722
+Final profit gap: 0.0008
+Best genome found: Genome(threshold_open=0.3880766767281534, threshold_close=0.14349368913012955, position_size=0.01, stop_loss=0.01, take_profit=0.14953606153622118, use_momentum=True, momentum_threshold=-0.0033054010963668584, use_trend=False, trend_threshold=-0.0006206086438000843, trend_window=3, use_exit_momentum=False, exit_momentum_threshold=0.0014680357794933992, ret_short_window=2, ret_mid_window=5, ma_window=6, range_window=5, vol_short_window=3, vol_long_window=24, weight_ret_short=0.574014433380408, weight_ret_mid=1.2323826634853496, weight_dist_ma=0.7917221916889168, weight_range_pos=-1.0142404759241193, weight_vol_ratio=-1.038621240684865)
+Generation of best genome: 10
+Total run time: 1066.22s
+Average generation time: 106.62s

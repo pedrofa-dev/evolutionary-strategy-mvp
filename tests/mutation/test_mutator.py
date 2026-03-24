@@ -1,5 +1,25 @@
 from evo_system.domain.genome import Genome
-from evo_system.mutation.mutator import Mutator
+from evo_system.mutation.mutator import MutationProfile, Mutator
+
+
+def test_mutator_uses_default_mutation_profile_when_not_provided() -> None:
+    mutator = Mutator(seed=42)
+
+    assert mutator.profile == MutationProfile()
+
+
+def test_mutator_accepts_custom_mutation_profile() -> None:
+    profile = MutationProfile(
+        strong_mutation_probability=0.25,
+        numeric_delta_scale=1.5,
+        flag_flip_probability=0.10,
+        weight_delta=0.35,
+        window_step_mode="wide",
+    )
+
+    mutator = Mutator(seed=42, profile=profile)
+
+    assert mutator.profile == profile
 
 
 def test_mutate_returns_new_genome() -> None:

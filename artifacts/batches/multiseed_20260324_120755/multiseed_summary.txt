@@ -1,0 +1,27 @@
+Multiseed batch executed at: 2026-03-24T12:48:39
+Preset: quick
+Effective generations: 10
+Context name: none
+Dataset root: data\processed
+Configs executed: 3
+Seeds per config: 1
+Seeds used: 101
+Total runs: 3
+
+Champion criteria:
+ validation_selection >= 1.5
+ validation_profit >= 0.0018
+ validation_drawdown <= 0.0015
+ validation_trades >= 8.0
+ abs(selection_gap) <= 1.0
+
+Ranking by champion rate and mean validation selection score
+
+1. run_d.json | champion_count=0 | champion_rate=0.00 | wins=1 | mean_validation_selection=8.2099 | std_validation_selection=0.0000 | best_validation_selection=8.2099 | worst_validation_selection=8.2099 | mean_validation_profit=0.0148 | std_validation_profit=0.0000 | mean_validation_drawdown=0.0120 | mean_validation_trades=43.5 | mean_abs_selection_gap=11.1568
+ seed=101 | champion=False | validation_selection=8.2099 | validation_profit=0.0148 | drawdown=0.0120 | trades=43.5 | selection_gap=-11.1568 | log=run_run_d_seed101.txt
+
+2. run_e.json | champion_count=0 | champion_rate=0.00 | wins=0 | mean_validation_selection=6.0541 | std_validation_selection=0.0000 | best_validation_selection=6.0541 | worst_validation_selection=6.0541 | mean_validation_profit=0.0114 | std_validation_profit=0.0000 | mean_validation_drawdown=0.0135 | mean_validation_trades=30.5 | mean_abs_selection_gap=2.1117
+ seed=101 | champion=False | validation_selection=6.0541 | validation_profit=0.0114 | drawdown=0.0135 | trades=30.5 | selection_gap=-2.1117 | log=run_run_e_seed101.txt
+
+3. run_f.json | champion_count=0 | champion_rate=0.00 | wins=0 | mean_validation_selection=0.5362 | std_validation_selection=0.0000 | best_validation_selection=0.5362 | worst_validation_selection=0.5362 | mean_validation_profit=0.0012 | std_validation_profit=0.0000 | mean_validation_drawdown=0.0018 | mean_validation_trades=126.0 | mean_abs_selection_gap=0.5722
+ seed=101 | champion=False | validation_selection=0.5362 | validation_profit=0.0012 | drawdown=0.0018 | trades=126.0 | selection_gap=-0.5722 | log=run_run_f_seed101.txt
