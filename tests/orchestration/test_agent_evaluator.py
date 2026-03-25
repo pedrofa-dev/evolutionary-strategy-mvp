@@ -1,8 +1,8 @@
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
 from evo_system.domain.historical_candle import HistoricalCandle
+from evo_system.evaluation import AgentEvaluator
 from evo_system.environment.historical_environment import HistoricalEnvironment
-from evo_system.orchestration.agent_evaluator import AgentEvaluator
 
 
 def build_environment(trade_cost_rate: float = 0.0) -> HistoricalEnvironment:
