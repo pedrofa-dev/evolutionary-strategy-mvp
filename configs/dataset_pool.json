@@ -1,10 +1,13 @@
 {
   "train": [
     "train/BTCUSDT/1h/BTCUSDT-1h-train.csv",
-    "train/ETHUSDT/1h/ETHUSDT-1h-train.csv"
+    "train/ETHUSDT/1h/ETHUSDT-1h-train.csv",
+    "train/BTCUSDT/4h/BTCUSDT-4h-train.csv"
   ],
   "validation": [
     "validation/BTCUSDT/4h/BTCUSDT-4h-validation.csv",
-    "validation/ETHUSDT/4h/ETHUSDT-4h-validation.csv"
+    "validation/ETHUSDT/4h/ETHUSDT-4h-validation.csv",
+    "validation/ETHUSDT/1h/ETHUSDT-1h-validation.csv"
+
   ]
 }

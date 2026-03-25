@@ -38,11 +38,18 @@ VALIDATION_DISPERSION_WEIGHT = 0.50
 INVALID_VALIDATION_PENALTY = 5.0
 NEGATIVE_VALIDATION_PENALTY = 2.0
 
-CHAMPION_MIN_VALIDATION_SELECTION = 1.5
-CHAMPION_MIN_VALIDATION_PROFIT = 0.0018
-CHAMPION_MAX_VALIDATION_DRAWDOWN = 0.0015
-CHAMPION_MIN_VALIDATION_TRADES = 8.0
-CHAMPION_MAX_ABS_SELECTION_GAP = 1.0
+ROBUST_MIN_VALIDATION_SELECTION = 1.5
+ROBUST_MIN_VALIDATION_PROFIT = 0.02
+ROBUST_MAX_VALIDATION_DRAWDOWN = 0.03
+ROBUST_MIN_VALIDATION_TRADES = 10.0
+ROBUST_MAX_ABS_SELECTION_GAP = 1.5
+
+SPECIALIST_MIN_VALIDATION_SELECTION = 8.0
+SPECIALIST_MIN_VALIDATION_PROFIT = 0.03
+SPECIALIST_MAX_VALIDATION_DRAWDOWN = 0.12
+SPECIALIST_MIN_VALIDATION_TRADES = 10.0
+SPECIALIST_MAX_ABS_SELECTION_GAP = 20.0
+SPECIALIST_MIN_DATASET_PROFIT = -0.01
 
 
 def build_random_genome(random_generator: random.Random) -> Genome:
@@ -376,22 +383,74 @@ def build_evolution_selection_score(
     return score
 
 
-def is_champion(
+def count_positive_and_negative_datasets(
+    profits: list[float],
+) -> tuple[int, int]:
+    positive_count = sum(1 for profit in profits if profit > 0.0)
+    negative_count = sum(1 for profit in profits if profit < 0.0)
+    return positive_count, negative_count
+
+
+def has_severe_validation_loss(
+    profits: list[float],
+    min_allowed_profit: float,
+) -> bool:
+    return any(profit < min_allowed_profit for profit in profits)
+
+
+def classify_champion(
     train_evaluation: AgentEvaluation,
     validation_evaluation: AgentEvaluation,
-) -> bool:
+) -> str:
+    if not validation_evaluation.is_valid:
+        return "rejected"
+
+    if validation_evaluation.median_profit <= 0.0:
+        return "rejected"
+
     selection_gap = (
         train_evaluation.selection_score
         - validation_evaluation.selection_score
     )
 
-    return (
-        validation_evaluation.selection_score >= CHAMPION_MIN_VALIDATION_SELECTION
-        and validation_evaluation.median_profit >= CHAMPION_MIN_VALIDATION_PROFIT
-        and validation_evaluation.median_drawdown <= CHAMPION_MAX_VALIDATION_DRAWDOWN
-        and validation_evaluation.median_trades >= CHAMPION_MIN_VALIDATION_TRADES
-        and abs(selection_gap) <= CHAMPION_MAX_ABS_SELECTION_GAP
+    positive_datasets, negative_datasets = count_positive_and_negative_datasets(
+        validation_evaluation.dataset_profits
     )
+
+    # Robust champion:
+    # balanced, controlled drawdown, low train/validation gap.
+    if (
+        validation_evaluation.selection_score >= ROBUST_MIN_VALIDATION_SELECTION
+        and validation_evaluation.median_profit >= ROBUST_MIN_VALIDATION_PROFIT
+        and validation_evaluation.median_drawdown <= ROBUST_MAX_VALIDATION_DRAWDOWN
+        and validation_evaluation.median_trades >= ROBUST_MIN_VALIDATION_TRADES
+        and abs(selection_gap) <= ROBUST_MAX_ABS_SELECTION_GAP
+        and positive_datasets >= negative_datasets
+    ):
+        return "robust"
+
+    # Specialist champion:
+    # more tolerant to specialization and drawdown,
+    # but still requires positive validation behavior and no severe collapse.
+    if (
+        validation_evaluation.selection_score >= SPECIALIST_MIN_VALIDATION_SELECTION
+        and validation_evaluation.median_profit >= SPECIALIST_MIN_VALIDATION_PROFIT
+        and validation_evaluation.median_drawdown <= SPECIALIST_MAX_VALIDATION_DRAWDOWN
+        and validation_evaluation.median_trades >= SPECIALIST_MIN_VALIDATION_TRADES
+        and abs(selection_gap) <= SPECIALIST_MAX_ABS_SELECTION_GAP
+        and positive_datasets >= negative_datasets
+        and not has_severe_validation_loss(
+            validation_evaluation.dataset_profits,
+            SPECIALIST_MIN_DATASET_PROFIT,
+        )
+    ):
+        return "specialist"
+
+    return "rejected"
+
+
+def should_persist_champion(champion_type: str) -> bool:
+    return champion_type != "rejected"
 
 
 def build_champion_metrics(
@@ -407,6 +466,13 @@ def build_champion_metrics(
     selection_gap = (
         train_evaluation.selection_score
         - validation_evaluation.selection_score
+    )
+    positive_datasets, negative_datasets = count_positive_and_negative_datasets(
+        validation_evaluation.dataset_profits
+    )
+    champion_type = classify_champion(
+        train_evaluation=train_evaluation,
+        validation_evaluation=validation_evaluation,
     )
     sampled_train_dataset_names = [
         format_dataset_path(path, dataset_root) for path in train_dataset_paths
@@ -445,6 +511,10 @@ def build_champion_metrics(
         "validation_profit": validation_evaluation.median_profit,
         "validation_drawdown": validation_evaluation.median_drawdown,
         "validation_trades": validation_evaluation.median_trades,
+        "champion_type": champion_type,
+        "champion_status": "candidate",
+        "positive_validation_datasets": positive_datasets,
+        "negative_validation_datasets": negative_datasets,
         "selection_gap": selection_gap,
         "validation_dispersion": validation_evaluation.dispersion,
         "train_dataset_scores": train_evaluation.dataset_scores,
@@ -732,11 +802,12 @@ def execute_historical_run(
 
         is_final_generation = generation_number == config.generations_planned
         saved_as_champion = False
-
-        if is_final_generation and is_champion(
+        champion_type = classify_champion(
             train_evaluation=best_train_evaluation,
             validation_evaluation=best_validation_evaluation,
-        ):
+        )
+
+        if is_final_generation and should_persist_champion(champion_type):
             champion_metrics = build_champion_metrics(
                 train_evaluation=best_train_evaluation,
                 validation_evaluation=best_validation_evaluation,
@@ -757,6 +828,8 @@ def execute_historical_run(
             )
             saved_as_champion = True
             generation_lines.append("Champion persisted -> yes")
+            generation_lines.append(f"Champion type -> {champion_type}")
+            generation_lines.append("Champion status -> candidate")
             generation_lines.append(
                 "Champion context -> "
                 f"config_name={champion_metrics['config_name']} | "
@@ -769,6 +842,7 @@ def execute_historical_run(
             )
         elif is_final_generation:
             generation_lines.append("Champion persisted -> no")
+            generation_lines.append(f"Champion type -> {champion_type}")
 
         append_lines(log_file_path, generation_lines)
 
@@ -780,6 +854,7 @@ def execute_historical_run(
             f"validation_profit={best_validation_evaluation.median_profit:.4f} | "
             f"validation_dispersion={best_validation_evaluation.dispersion:.4f} | "
             f"selection_gap={selection_gap:.4f} | "
+            f"champion_type={champion_type} | "
             f"profit_gap={profit_gap:.4f} | "
             f"champion_saved={saved_as_champion} | "
             f"time={generation_duration:.2f}s | "

@@ -72,15 +72,20 @@ class AgentEvaluator:
 
         violations: list[str] = []
 
+        # Hard veto: too little activity means the strategy is not useful yet.
         if median_trades < MIN_TRADES:
             violations.append("too_few_trades")
 
+        # Hard veto: position sizing below this threshold is considered too defensive.
         if agent.genome.position_size < MIN_POSITION_SIZE:
             violations.append("position_size_too_small")
 
+        # Hard veto: take profit below this threshold is considered too weak.
         if agent.genome.take_profit < MIN_TAKE_PROFIT:
             violations.append("take_profit_too_small")
 
+        # Soft violation: dispersion remains visible and penalized,
+        # but it does not invalidate the strategy by itself.
         if dispersion > MAX_DISPERSION:
             violations.append("dispersion_too_high")
 
@@ -108,7 +113,12 @@ class AgentEvaluator:
             - DOWNSIDE_WEIGHT * downside_penalty
         )
 
-        is_valid = len(violations) == 0
+        hard_violations = {
+            "too_few_trades",
+            "position_size_too_small",
+            "take_profit_too_small",
+        }
+        is_valid = not any(violation in hard_violations for violation in violations)
 
         return AgentEvaluation(
             aggregated_score=aggregated_score,

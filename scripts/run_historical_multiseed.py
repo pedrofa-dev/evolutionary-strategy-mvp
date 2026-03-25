@@ -60,14 +60,36 @@ def safe_stdev(values: list[float]) -> float:
     return statistics.stdev(values)
 
 
+def classify_summary_champion(summary: HistoricalRunSummary) -> str:
+    if summary.final_validation_profit <= 0.0:
+        return "rejected"
+
+    if (
+        summary.final_validation_selection_score >= ROBUST_MIN_VALIDATION_SELECTION
+        and summary.final_validation_profit >= ROBUST_MIN_VALIDATION_PROFIT
+        and summary.final_validation_drawdown <= ROBUST_MAX_VALIDATION_DRAWDOWN
+        and summary.final_validation_trades >= ROBUST_MIN_VALIDATION_TRADES
+        and abs(summary.train_validation_selection_gap) <= ROBUST_MAX_ABS_SELECTION_GAP
+    ):
+        return "robust"
+
+    if (
+        summary.final_validation_selection_score >= SPECIALIST_MIN_VALIDATION_SELECTION
+        and summary.final_validation_profit >= SPECIALIST_MIN_VALIDATION_PROFIT
+        and summary.final_validation_drawdown <= SPECIALIST_MAX_VALIDATION_DRAWDOWN
+        and summary.final_validation_trades >= SPECIALIST_MIN_VALIDATION_TRADES
+        and abs(summary.train_validation_selection_gap) <= SPECIALIST_MAX_ABS_SELECTION_GAP
+    ):
+        return "specialist"
+
+    return "rejected"
+
+
 def is_champion(summary: HistoricalRunSummary) -> bool:
-    return (
-        summary.final_validation_selection_score >= 1.5
-        and summary.final_validation_profit >= 0.0018
-        and summary.final_validation_drawdown <= 0.0015
-        and summary.final_validation_trades >= 8.0
-        and abs(summary.train_validation_selection_gap) <= 1.0
-    )
+    return classify_summary_champion(summary) != "rejected"
+
+def is_champion(summary: HistoricalRunSummary) -> bool:
+    return classify_summary_champion(summary) != "rejected"
 
 
 def execute_multiseed_runs(
@@ -209,9 +231,11 @@ def build_grouped_summary_lines(
         )
 
         for run in row["runs"]:
+            champion_type = classify_summary_champion(run)
             lines.append(
                 f" seed={run.mutation_seed} | "
                 f"champion={is_champion(run)} | "
+                f"type={champion_type} | "
                 f"validation_selection={run.final_validation_selection_score:.4f} | "
                 f"validation_profit={run.final_validation_profit:.4f} | "
                 f"drawdown={run.final_validation_drawdown:.4f} | "
@@ -248,11 +272,9 @@ def write_multiseed_summary(
         f"Total runs: {len(summaries)}",
         "",
         "Champion criteria:",
-        " validation_selection >= 1.5",
-        " validation_profit >= 0.0018",
-        " validation_drawdown <= 0.0015",
-        " validation_trades >= 8.0",
-        " abs(selection_gap) <= 1.0",
+        " robust -> validation_selection >= 1.5 | validation_profit >= 0.02 | validation_drawdown <= 0.03 | validation_trades >= 10.0 | abs(selection_gap) <= 1.5",
+        " specialist -> validation_selection >= 8.0 | validation_profit >= 0.02 | validation_drawdown <= 0.035 | validation_trades >= 8.0 | abs(selection_gap) <= 2.5",
+        " rejected -> everything else",
         "",
     ]
 

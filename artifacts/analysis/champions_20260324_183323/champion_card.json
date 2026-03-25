@@ -1,0 +1,38 @@
+{
+  "champion_id": 1,
+  "config_name": "run_f.json",
+  "seed": 42,
+  "type": "robust",
+  "scores": {
+    "train_selection": 13.473884754354621,
+    "validation_selection": 14.66287887490697,
+    "selection_gap": -1.1889941205523478,
+    "validation_profit": 0.025400792622915294,
+    "validation_drawdown": 0.021594479912223498,
+    "validation_trades": 12.5
+  },
+  "stability": {
+    "validation_std": null,
+    "best_dataset": null,
+    "worst_dataset": null
+  },
+  "distribution": {
+    "positive_datasets": null,
+    "negative_datasets": null
+  },
+  "genome_summary": {
+    "threshold_open": 0.4704118870633331,
+    "threshold_close": 0.10186377728756614,
+    "stop_loss": 0.033642536235412586,
+    "take_profit": 0.19227756744154187,
+    "use_momentum": true,
+    "use_trend": false,
+    "use_exit_momentum": false,
+    "ret_short_window": 2,
+    "ret_mid_window": 9,
+    "ma_window": 6,
+    "range_window": 10,
+    "vol_short_window": 8,
+    "vol_long_window": 11
+  }
+}

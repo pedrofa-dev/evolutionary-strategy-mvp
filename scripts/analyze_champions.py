@@ -280,6 +280,12 @@ def resolve_dataset_signature(champion: ChampionRow) -> str | None:
     return None
 
 
+def resolve_champion_type(champion: ChampionRow) -> str | None:
+    champion_type = champion.metrics.get("champion_type")
+    if isinstance(champion_type, str) and champion_type.strip():
+        return champion_type
+    return None
+
 def resolve_list_metric(metrics: dict[str, Any], preferred_key: str, fallback_key: str) -> list[Any]:
     preferred = metrics.get(preferred_key)
     if isinstance(preferred, list):
@@ -322,94 +328,52 @@ def build_context_key(row: dict[str, Any]) -> str:
 
 
 def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
-    effective_config_name = resolve_config_name(champion)
-    if is_temp_config_name(champion.config_name) and effective_config_name:
-        stored_config_name = effective_config_name
-    else:
-        stored_config_name = effective_config_name or champion.config_name
+    stored_config_name = resolve_config_name(champion)
 
-    sampled_train_dataset_names = resolve_list_metric(
-        champion.metrics,
-        "sampled_train_dataset_names",
-        "train_dataset_names",
-    )
-    validation_dataset_names = resolve_list_metric(
-        champion.metrics,
-        "all_validation_dataset_names",
-        "validation_dataset_names",
-    )
-    all_train_dataset_names = resolve_list_metric(
-        champion.metrics,
-        "all_train_dataset_names",
-        "train_dataset_names",
-    )
-    all_validation_dataset_names = resolve_list_metric(
-        champion.metrics,
-        "all_validation_dataset_names",
-        "validation_dataset_names",
-    )
-
-    flat: dict[str, Any] = {
+    return {
         "id": champion.id,
         "run_id": champion.run_id,
         "generation_number": champion.generation_number,
         "mutation_seed": champion.mutation_seed,
         "config_name": stored_config_name,
+        "champion_type": resolve_champion_type(champion),
         "stored_config_name": champion.config_name,
         "created_at": champion.created_at,
         "context_name": resolve_context_name(champion),
         "dataset_root": resolve_dataset_root(champion),
+        "dataset_signature": resolve_dataset_signature(champion),
         "train_sample_size": champion.metrics.get("train_sample_size"),
         "train_dataset_count_available": champion.metrics.get("train_dataset_count_available"),
         "validation_dataset_count_available": champion.metrics.get("validation_dataset_count_available"),
-        "dataset_signature": resolve_dataset_signature(champion),
-        "all_train_dataset_names": all_train_dataset_names,
-        "all_validation_dataset_names": all_validation_dataset_names,
-        "sampled_train_dataset_names": sampled_train_dataset_names,
-        "validation_dataset_names": validation_dataset_names,
+        "all_train_dataset_names": champion.metrics.get("all_train_dataset_names", []),
+        "all_validation_dataset_names": champion.metrics.get("all_validation_dataset_names", []),
+        "sampled_train_dataset_names": champion.metrics.get("sampled_train_dataset_names", []),
+        "validation_dataset_names": champion.metrics.get("validation_dataset_names", []),
+        "train_selection": champion.metrics.get("train_selection"),
+        "train_profit": champion.metrics.get("train_profit"),
+        "train_drawdown": champion.metrics.get("train_drawdown"),
+        "train_trades": champion.metrics.get("train_trades"),
+        "validation_selection": champion.metrics.get("validation_selection"),
+        "validation_profit": champion.metrics.get("validation_profit"),
+        "validation_drawdown": champion.metrics.get("validation_drawdown"),
+        "validation_trades": champion.metrics.get("validation_trades"),
+        "selection_gap": champion.metrics.get("selection_gap"),
+        "validation_dispersion": champion.metrics.get("validation_dispersion"),
+        "positive_validation_datasets": champion.metrics.get("positive_validation_datasets"),
+        "negative_validation_datasets": champion.metrics.get("negative_validation_datasets"),
+        "train_dataset_scores": champion.metrics.get("train_dataset_scores", []),
+        "train_dataset_profits": champion.metrics.get("train_dataset_profits", []),
+        "train_dataset_drawdowns": champion.metrics.get("train_dataset_drawdowns", []),
+        "validation_dataset_scores": champion.metrics.get("validation_dataset_scores", []),
+        "validation_dataset_profits": champion.metrics.get("validation_dataset_profits", []),
+        "validation_dataset_drawdowns": champion.metrics.get("validation_dataset_drawdowns", []),
+        "train_dataset_names": champion.metrics.get("train_dataset_names", []),
+        "train_violations": champion.metrics.get("train_violations", []),
+        "validation_violations": champion.metrics.get("validation_violations", []),
+        "train_is_valid": champion.metrics.get("train_is_valid"),
+        "validation_is_valid": champion.metrics.get("validation_is_valid"),
+        **champion.genome,
     }
-    flat["context_label"] = build_context_label(flat)
-
-    for field in GENOME_BOOL_FIELDS:
-        flat[field] = normalize_bool(champion.genome.get(field, False))
-
-    for field in GENOME_NUMERIC_FIELDS:
-        flat[field] = champion.genome.get(field)
-
-    for field in KEY_METRIC_FIELDS:
-        flat[field] = champion.metrics.get(field)
-
-    flat["train_dataset_count"] = len(sampled_train_dataset_names)
-    flat["validation_dataset_count"] = len(all_validation_dataset_names or validation_dataset_names)
-    flat["train_violation_count"] = len(champion.metrics.get("train_violations", []))
-    flat["validation_violation_count"] = len(champion.metrics.get("validation_violations", []))
-    flat["train_is_valid"] = champion.metrics.get("train_is_valid")
-    flat["validation_is_valid"] = champion.metrics.get("validation_is_valid")
-    flat["experimental_context"] = build_context_key(flat)
-
-    train_scores = champion.metrics.get("train_dataset_scores", [])
-    validation_scores = champion.metrics.get("validation_dataset_scores", [])
-    train_profits = champion.metrics.get("train_dataset_profits", [])
-    validation_profits = champion.metrics.get("validation_dataset_profits", [])
-    train_drawdowns = champion.metrics.get("train_dataset_drawdowns", [])
-    validation_drawdowns = champion.metrics.get("validation_dataset_drawdowns", [])
-
-    flat["train_score_best"] = safe_max(train_scores)
-    flat["train_score_worst"] = safe_min(train_scores)
-    flat["validation_score_best"] = safe_max(validation_scores)
-    flat["validation_score_worst"] = safe_min(validation_scores)
-
-    flat["train_profit_best"] = safe_max(train_profits)
-    flat["train_profit_worst"] = safe_min(train_profits)
-    flat["validation_profit_best"] = safe_max(validation_profits)
-    flat["validation_profit_worst"] = safe_min(validation_profits)
-
-    flat["train_drawdown_best"] = safe_min(train_drawdowns)
-    flat["train_drawdown_worst"] = safe_max(train_drawdowns)
-    flat["validation_drawdown_best"] = safe_min(validation_drawdowns)
-    flat["validation_drawdown_worst"] = safe_max(validation_drawdowns)
-
-    return flat
 
 
 def export_flat_csv(rows: list[dict[str, Any]], csv_path: Path) -> None:
@@ -806,7 +770,7 @@ def build_genome_summary(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def classify_champion(card: dict[str, Any]) -> str:
+def classify_champion_fallback(card: dict[str, Any]) -> str:
     scores = card.get("scores", {})
     stability = card.get("stability", {})
     distribution = card.get("distribution", {})
@@ -848,7 +812,6 @@ def classify_champion(card: dict[str, Any]) -> str:
 
     return "unstable"
 
-
 def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
     validation_dataset_names = row.get("all_validation_dataset_names") or row.get(
         "validation_dataset_names",
@@ -856,6 +819,7 @@ def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
     )
     validation_dataset_scores = row.get("validation_dataset_scores", [])
     validation_dataset_profits = row.get("validation_dataset_profits", [])
+
     best_dataset, worst_dataset = build_best_and_worst_dataset(
         validation_dataset_names,
         validation_dataset_scores,
@@ -868,7 +832,7 @@ def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
         "champion_id": row.get("id"),
         "config_name": row.get("config_name"),
         "seed": row.get("mutation_seed"),
-        "type": None,
+        "type": row.get("champion_type"),
         "scores": {
             "train_selection": row.get("train_selection"),
             "validation_selection": row.get("validation_selection"),
@@ -888,9 +852,14 @@ def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
         },
         "genome_summary": build_genome_summary(row),
     }
-    card["type"] = classify_champion(card)
-    return card
 
+    # Source of truth:
+    # if the run already persisted champion_type, respect it.
+    # Only use legacy classification as fallback for older champions.
+    if not isinstance(card["type"], str) or not card["type"].strip():
+        card["type"] = classify_champion_fallback(card)
+
+    return card
 
 def select_primary_champion_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     ranked_rows = [

@@ -214,3 +214,38 @@ class SQLiteStore:
             )
 
         return champions
+
+    def delete_champion(self, champion_id: int) -> None:
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                """
+                DELETE FROM champions
+                WHERE id = ?
+                """,
+                (champion_id,),
+            )
+            connection.commit()
+
+    def delete_champions(
+        self,
+        run_id: str | None = None,
+        champion_type: str | None = None,
+    ) -> None:
+        query = "DELETE FROM champions"
+        conditions: list[str] = []
+        parameters: list[Any] = []
+
+        if run_id is not None:
+            conditions.append("run_id = ?")
+            parameters.append(run_id)
+
+        if champion_type is not None:
+            conditions.append("json_extract(metrics_json, '$.champion_type') = ?")
+            parameters.append(champion_type)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(query, tuple(parameters))
+            connection.commit()
