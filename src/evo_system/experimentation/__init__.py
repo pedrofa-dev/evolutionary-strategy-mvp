@@ -1,19 +1,15 @@
+from evo_system.experimentation.batch_run import run_batch_experiment
+from evo_system.experimentation.multiseed_run import run_multiseed_experiment
 from evo_system.experimentation.single_run import (
     DEFAULT_DATASET_ROOT,
     execute_historical_run,
-    main,
     run_single_experiment,
 )
-
-# TODO: Legacy wrapper. Prefer scripts/run_experiment.py single.
 
 __all__ = [
     "DEFAULT_DATASET_ROOT",
     "execute_historical_run",
-    "main",
+    "run_batch_experiment",
+    "run_multiseed_experiment",
     "run_single_experiment",
 ]
-
-
-if __name__ == "__main__":
-    main()
