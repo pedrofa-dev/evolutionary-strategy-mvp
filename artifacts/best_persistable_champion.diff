@@ -1,0 +1,278 @@
+﻿diff --git a/src/evo_system/champions/__init__.py b/src/evo_system/champions/__init__.py
+index 4fc5fc1..f6b2e88 100644
+--- a/src/evo_system/champions/__init__.py
++++ b/src/evo_system/champions/__init__.py
+@@ -1,5 +1,6 @@
+ from evo_system.champions.classifier import (
+     classify_champion,
++    is_better_persistable_champion,
+     should_persist_champion,
+ )
+ from evo_system.champions.metrics import build_champion_metrics
+@@ -9,5 +10,6 @@ __all__ = [
+     "ChampionType",
+     "build_champion_metrics",
+     "classify_champion",
++    "is_better_persistable_champion",
+     "should_persist_champion",
+ ]
+diff --git a/src/evo_system/champions/classifier.py b/src/evo_system/champions/classifier.py
+index beafb24..9642eb4 100644
+--- a/src/evo_system/champions/classifier.py
++++ b/src/evo_system/champions/classifier.py
+@@ -78,3 +78,38 @@ def classify_champion(
+ 
+ def should_persist_champion(champion_type: ChampionType) -> bool:
+     return champion_type != "rejected"
++
++
++def is_better_persistable_champion(
++    candidate_train_evaluation: AgentEvaluation,
++    candidate_validation_evaluation: AgentEvaluation,
++    candidate_generation_number: int,
++    current_train_evaluation: AgentEvaluation,
++    current_validation_evaluation: AgentEvaluation,
++    current_generation_number: int,
++) -> bool:
++    candidate_selection_gap = abs(
++        candidate_train_evaluation.selection_score
++        - candidate_validation_evaluation.selection_score
++    )
++    current_selection_gap = abs(
++        current_train_evaluation.selection_score
++        - current_validation_evaluation.selection_score
++    )
++
++    candidate_key = (
++        candidate_validation_evaluation.selection_score,
++        candidate_validation_evaluation.median_profit,
++        -candidate_validation_evaluation.median_drawdown,
++        -candidate_selection_gap,
++        -candidate_generation_number,
++    )
++    current_key = (
++        current_validation_evaluation.selection_score,
++        current_validation_evaluation.median_profit,
++        -current_validation_evaluation.median_drawdown,
++        -current_selection_gap,
++        -current_generation_number,
++    )
++
++    return candidate_key > current_key
+diff --git a/src/evo_system/experimentation/single_run.py b/src/evo_system/experimentation/single_run.py
+index f8c47ac..d3c1660 100644
+--- a/src/evo_system/experimentation/single_run.py
++++ b/src/evo_system/experimentation/single_run.py
+@@ -3,12 +3,13 @@ import json
+ import random
+ import time
+ import uuid
+-from dataclasses import replace
++from dataclasses import dataclass, replace
+ from pathlib import Path
+ 
+ from evo_system.champions import (
+     build_champion_metrics,
+     classify_champion,
++    is_better_persistable_champion,
+     should_persist_champion,
+ )
+ from evo_system.champions.metrics import (
+@@ -47,6 +48,22 @@ INVALID_VALIDATION_PENALTY = 5.0
+ NEGATIVE_VALIDATION_PENALTY = 2.0
+ 
+ 
++@dataclass(frozen=True)
++class PersistableChampionCandidate:
++    genome: Genome
++    champion_type: str
++    generation_number: int
++    mutation_seed: int
++    train_evaluation: AgentEvaluation
++    validation_evaluation: AgentEvaluation
++    train_dataset_paths: list[Path]
++    validation_dataset_paths: list[Path]
++    all_train_dataset_paths: list[Path]
++    config_name: str
++    context_name: str | None
++    dataset_root: Path
++
++
+ def build_random_genome(random_generator: random.Random) -> Genome:
+     threshold_open = random_generator.uniform(0.35, 0.90)
+     threshold_close = random_generator.uniform(0.05, min(0.45, threshold_open))
+@@ -462,6 +479,7 @@ def execute_historical_run(
+     final_validation_drawdown = 0.0
+     final_validation_trades = 0.0
+     generation_of_best = 0
++    best_persistable_champion: PersistableChampionCandidate | None = None
+ 
+     generation_durations: list[float] = []
+ 
+@@ -617,49 +635,56 @@ def execute_historical_run(
+                 f"Validation violations -> {', '.join(best_validation_evaluation.violations)}"
+             )
+ 
+-        is_final_generation = generation_number == config.generations_planned
+-        saved_as_champion = False
+         champion_type = classify_champion(
+             train_evaluation=best_train_evaluation,
+             validation_evaluation=best_validation_evaluation,
+         )
++        champion_tracking_updated = False
+ 
+-        if is_final_generation and should_persist_champion(champion_type):
+-            champion_metrics = build_champion_metrics(
++        if should_persist_champion(champion_type):
++            candidate = PersistableChampionCandidate(
++                genome=best_agent.genome,
++                champion_type=champion_type,
++                generation_number=generation_number,
++                mutation_seed=config.mutation_seed,
+                 train_evaluation=best_train_evaluation,
+                 validation_evaluation=best_validation_evaluation,
+-                train_dataset_paths=sampled_train_paths,
+-                validation_dataset_paths=validation_dataset_paths,
+-                all_train_dataset_paths=train_dataset_paths,
++                train_dataset_paths=list(sampled_train_paths),
++                validation_dataset_paths=list(validation_dataset_paths),
++                all_train_dataset_paths=list(train_dataset_paths),
+                 config_name=config_name,
+                 context_name=context_name,
+                 dataset_root=dataset_root,
+             )
+-            store.save_champion(
+-                run_id=run_id,
+-                generation_number=generation_number,
+-                mutation_seed=config.mutation_seed,
+-                config_name=config_name,
+-                genome=best_agent.genome,
+-                metrics=champion_metrics,
+-            )
+-            saved_as_champion = True
+-            generation_lines.append("Champion persisted -> yes")
+-            generation_lines.append(f"Champion type -> {champion_type}")
+-            generation_lines.append("Champion status -> candidate")
++
++            if best_persistable_champion is None or is_better_persistable_champion(
++                candidate_train_evaluation=candidate.train_evaluation,
++                candidate_validation_evaluation=candidate.validation_evaluation,
++                candidate_generation_number=candidate.generation_number,
++                current_train_evaluation=best_persistable_champion.train_evaluation,
++                current_validation_evaluation=best_persistable_champion.validation_evaluation,
++                current_generation_number=best_persistable_champion.generation_number,
++            ):
++                best_persistable_champion = candidate
++                champion_tracking_updated = True
++
++        if champion_tracking_updated:
++            generation_lines.append("Best persistable champion updated -> yes")
++            generation_lines.append(f"Best persistable champion type -> {champion_type}")
+             generation_lines.append(
+-                "Champion context -> "
+-                f"config_name={champion_metrics['config_name']} | "
+-                f"context_name={champion_metrics['context_name'] or 'none'} | "
+-                f"dataset_root={champion_metrics['dataset_root']} | "
+-                f"train_sample_size={champion_metrics['train_sample_size']} | "
+-                f"train_dataset_count_available={champion_metrics['train_dataset_count_available']} | "
+-                f"validation_dataset_count_available={champion_metrics['validation_dataset_count_available']} | "
+-                f"dataset_signature={champion_metrics['dataset_signature']}"
++                "Best persistable champion snapshot -> "
++                f"generation={generation_number} | "
++                f"validation_selection={best_validation_evaluation.selection_score:.4f} | "
++                f"validation_profit={best_validation_evaluation.median_profit:.4f} | "
++                f"validation_drawdown={best_validation_evaluation.median_drawdown:.4f} | "
++                f"selection_gap={selection_gap:.4f}"
+             )
+-        elif is_final_generation:
+-            generation_lines.append("Champion persisted -> no")
+-            generation_lines.append(f"Champion type -> {champion_type}")
++        elif should_persist_champion(champion_type):
++            generation_lines.append("Best persistable champion updated -> no")
++            generation_lines.append(f"Best persistable champion type -> {champion_type}")
++        else:
++            generation_lines.append("Best persistable champion updated -> no")
++            generation_lines.append(f"Best persistable champion type -> {champion_type}")
+ 
+         append_lines(log_file_path, generation_lines)
+ 
+@@ -673,7 +698,7 @@ def execute_historical_run(
+             f"selection_gap={selection_gap:.4f} | "
+             f"champion_type={champion_type} | "
+             f"profit_gap={profit_gap:.4f} | "
+-            f"champion_saved={saved_as_champion} | "
++            f"best_persistable_updated={champion_tracking_updated} | "
+             f"time={generation_duration:.2f}s | "
+             f"log={log_file_path.name}"
+         )
+@@ -704,6 +729,31 @@ def execute_historical_run(
+     )
+     train_validation_profit_gap = best_train_profit - final_validation_profit
+ 
++    persisted_champion_generation: int | None = None
++    persisted_champion_type: str | None = None
++
++    if best_persistable_champion is not None:
++        champion_metrics = build_champion_metrics(
++            train_evaluation=best_persistable_champion.train_evaluation,
++            validation_evaluation=best_persistable_champion.validation_evaluation,
++            train_dataset_paths=best_persistable_champion.train_dataset_paths,
++            validation_dataset_paths=best_persistable_champion.validation_dataset_paths,
++            all_train_dataset_paths=best_persistable_champion.all_train_dataset_paths,
++            config_name=best_persistable_champion.config_name,
++            context_name=best_persistable_champion.context_name,
++            dataset_root=best_persistable_champion.dataset_root,
++        )
++        store.save_champion(
++            run_id=run_id,
++            generation_number=best_persistable_champion.generation_number,
++            mutation_seed=best_persistable_champion.mutation_seed,
++            config_name=best_persistable_champion.config_name,
++            genome=best_persistable_champion.genome,
++            metrics=champion_metrics,
++        )
++        persisted_champion_generation = best_persistable_champion.generation_number
++        persisted_champion_type = best_persistable_champion.champion_type
++
+     summary_lines = [
+         "",
+         "Final summary",
+@@ -717,13 +767,37 @@ def execute_historical_run(
+         f"Final profit gap: {train_validation_profit_gap:.4f}",
+         f"Best genome found: {best_genome_repr}",
+         f"Generation of best genome: {generation_of_best}",
++        f"Champion persisted at end -> {'yes' if best_persistable_champion is not None else 'no'}",
+         f"Total run time: {total_run_duration:.2f}s",
+         f"Average generation time: {average_generation_duration:.2f}s",
+     ]
++
++    if best_persistable_champion is not None and persisted_champion_generation is not None:
++        summary_lines.extend(
++            [
++                f"Persisted champion generation: {persisted_champion_generation}",
++                f"Persisted champion type: {persisted_champion_type}",
++                (
++                    "Persisted champion context -> "
++                    f"config_name={best_persistable_champion.config_name} | "
++                    f"context_name={best_persistable_champion.context_name or 'none'} | "
++                    f"dataset_root={best_persistable_champion.dataset_root}"
++                ),
++            ]
++        )
++
+     append_lines(log_file_path, summary_lines)
+ 
+     print(f"Total run time: {total_run_duration:.2f}s")
+     print(f"Average generation time: {average_generation_duration:.2f}s")
++    if best_persistable_champion is not None and persisted_champion_generation is not None:
++        print(
++            "Persisted champion -> "
++            f"generation={persisted_champion_generation} | "
++            f"type={persisted_champion_type}"
++        )
++    else:
++        print("Persisted champion -> none")
+     print(f"Detailed run log saved to {log_file_path}")
+ 
+     return HistoricalRunSummary(
+

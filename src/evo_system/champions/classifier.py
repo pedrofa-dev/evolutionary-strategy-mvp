@@ -78,3 +78,38 @@ def classify_champion(
 
 def should_persist_champion(champion_type: ChampionType) -> bool:
     return champion_type != "rejected"
+
+
+def is_better_persistable_champion(
+    candidate_train_evaluation: AgentEvaluation,
+    candidate_validation_evaluation: AgentEvaluation,
+    candidate_generation_number: int,
+    current_train_evaluation: AgentEvaluation,
+    current_validation_evaluation: AgentEvaluation,
+    current_generation_number: int,
+) -> bool:
+    candidate_selection_gap = abs(
+        candidate_train_evaluation.selection_score
+        - candidate_validation_evaluation.selection_score
+    )
+    current_selection_gap = abs(
+        current_train_evaluation.selection_score
+        - current_validation_evaluation.selection_score
+    )
+
+    candidate_key = (
+        candidate_validation_evaluation.selection_score,
+        candidate_validation_evaluation.median_profit,
+        -candidate_validation_evaluation.median_drawdown,
+        -candidate_selection_gap,
+        -candidate_generation_number,
+    )
+    current_key = (
+        current_validation_evaluation.selection_score,
+        current_validation_evaluation.median_profit,
+        -current_validation_evaluation.median_drawdown,
+        -current_selection_gap,
+        -current_generation_number,
+    )
+
+    return candidate_key > current_key
