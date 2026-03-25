@@ -24,7 +24,19 @@ from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.environment.csv_loader import load_historical_candles
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.environment.historical_environment import HistoricalEnvironment
-from evo_system.orchestration.agent_evaluator import AgentEvaluator
+from evo_system.evaluation import (
+    AgentEvaluator,
+    INVALID_VALIDATION_PENALTY,
+    NEGATIVE_VALIDATION_PENALTY,
+    build_evolution_selection_score,
+)
+from evo_system.evaluation.scoring import (
+    OVERFIT_GAP_WEIGHT,
+    TRAIN_WEIGHT,
+    UNDERFIT_GAP_WEIGHT,
+    VALIDATION_DISPERSION_WEIGHT,
+    VALIDATION_WEIGHT,
+)
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
@@ -38,14 +50,6 @@ from evo_system.experimentation.presets import (
 DEFAULT_DATASET_ROOT = Path("data/processed")
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
-
-TRAIN_WEIGHT = 0.30
-VALIDATION_WEIGHT = 0.70
-OVERFIT_GAP_WEIGHT = 0.75
-UNDERFIT_GAP_WEIGHT = 0.50
-VALIDATION_DISPERSION_WEIGHT = 0.50
-INVALID_VALIDATION_PENALTY = 5.0
-NEGATIVE_VALIDATION_PENALTY = 2.0
 
 
 @dataclass(frozen=True)
@@ -335,36 +339,6 @@ def load_config_data(config_path: Path) -> dict:
     return json.loads(config_path.read_text(encoding="utf-8"))
 
 
-def build_evolution_selection_score(
-    train_evaluation: AgentEvaluation,
-    validation_evaluation: AgentEvaluation,
-) -> float:
-    selection_gap = (
-        train_evaluation.selection_score
-        - validation_evaluation.selection_score
-    )
-
-    overfit_penalty = max(0.0, selection_gap)
-    underfit_penalty = max(0.0, -selection_gap)
-    validation_dispersion_penalty = validation_evaluation.dispersion
-
-    score = (
-        TRAIN_WEIGHT * train_evaluation.selection_score
-        + VALIDATION_WEIGHT * validation_evaluation.selection_score
-        - OVERFIT_GAP_WEIGHT * overfit_penalty
-        - UNDERFIT_GAP_WEIGHT * underfit_penalty
-        - VALIDATION_DISPERSION_WEIGHT * validation_dispersion_penalty
-    )
-
-    if not validation_evaluation.is_valid:
-        score -= INVALID_VALIDATION_PENALTY
-
-    if validation_evaluation.selection_score < 0.0:
-        score -= NEGATIVE_VALIDATION_PENALTY
-
-    return score
-
-
 def execute_historical_run(
     config_path: Path,
     output_dir: Path | None = None,
@@ -519,6 +493,8 @@ def execute_historical_run(
             evolution_selection_score = build_evolution_selection_score(
                 train_evaluation=train_evaluation,
                 validation_evaluation=validation_evaluation,
+                invalid_validation_penalty=INVALID_VALIDATION_PENALTY,
+                negative_validation_penalty=NEGATIVE_VALIDATION_PENALTY,
             )
 
             evaluated_agents.append((agent, evolution_selection_score))
