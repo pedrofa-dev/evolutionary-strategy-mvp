@@ -14,7 +14,7 @@ def test_load_paths_returns_train_and_validation_csvs(tmp_path: Path) -> None:
     (train_spot / "ETHUSDT-1h-2025-10.csv").write_text("x", encoding="utf-8")
     (validation_spot / "BTCUSDT-1h-2026-01.csv").write_text("x", encoding="utf-8")
 
-    loader = DatasetPoolLoader()
+    loader = DatasetPoolLoader(pool_config_path=tmp_path / "missing_dataset_pool.json")
 
     train_paths, validation_paths = loader.load_paths(tmp_path)
 
