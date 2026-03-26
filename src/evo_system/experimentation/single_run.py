@@ -37,6 +37,10 @@ from evo_system.evaluation.scoring import (
     VALIDATION_DISPERSION_WEIGHT,
     VALIDATION_WEIGHT,
 )
+from evo_system.experimentation.external_validation import (
+    build_external_validation_metrics,
+    run_external_validation,
+)
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
@@ -48,6 +52,7 @@ from evo_system.experimentation.presets import (
 
 
 DEFAULT_DATASET_ROOT = Path("data/processed")
+DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
 
@@ -339,6 +344,12 @@ def load_config_data(config_path: Path) -> dict:
     return json.loads(config_path.read_text(encoding="utf-8"))
 
 
+def resolve_external_validation_dataset_paths(
+    external_validation_dir: Path,
+) -> list[Path]:
+    return sorted(external_validation_dir.rglob("*.csv"))
+
+
 def execute_historical_run(
     config_path: Path,
     output_dir: Path | None = None,
@@ -347,6 +358,8 @@ def execute_historical_run(
     dataset_root: Path = DEFAULT_DATASET_ROOT,
     context_name: str | None = None,
     generations_override: int | None = None,
+    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
+    skip_external_validation: bool = False,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
@@ -707,6 +720,7 @@ def execute_historical_run(
 
     persisted_champion_generation: int | None = None
     persisted_champion_type: str | None = None
+    external_validation_status = "not_run"
 
     if best_persistable_champion is not None:
         champion_metrics = build_champion_metrics(
@@ -719,6 +733,117 @@ def execute_historical_run(
             context_name=best_persistable_champion.context_name,
             dataset_root=best_persistable_champion.dataset_root,
         )
+        persisted_champion_generation = best_persistable_champion.generation_number
+        persisted_champion_type = best_persistable_champion.champion_type
+
+        if skip_external_validation:
+            external_validation_status = "skipped_by_flag"
+            warning_lines = [
+                "",
+                "External validation",
+                "WARNING: external validation skipped -> flag enabled",
+            ]
+            append_lines(log_file_path, warning_lines)
+            print("WARNING: external validation skipped -> flag enabled")
+        elif not external_validation_dir.exists():
+            external_validation_status = "skipped_missing_dir"
+            warning_lines = [
+                "",
+                "External validation",
+                (
+                    "WARNING: external validation skipped -> directory not found: "
+                    f"{external_validation_dir}"
+                ),
+            ]
+            append_lines(log_file_path, warning_lines)
+            print(
+                "WARNING: external validation skipped -> "
+                f"directory not found: {external_validation_dir}"
+            )
+        else:
+            # TODO: External validation datasets should remain disjoint from
+            # train/validation pools to avoid leakage across evaluation layers.
+            external_dataset_paths = resolve_external_validation_dataset_paths(
+                external_validation_dir
+            )
+            if not external_dataset_paths:
+                external_validation_status = "skipped_no_datasets"
+                warning_lines = [
+                    "",
+                    "External validation",
+                    (
+                        "WARNING: external validation skipped -> no datasets found under "
+                        f"{external_validation_dir}"
+                    ),
+                ]
+                append_lines(log_file_path, warning_lines)
+                print(
+                    "WARNING: external validation skipped -> "
+                    f"no datasets found under {external_validation_dir}"
+                )
+            else:
+                external_validation_status = "completed"
+                start_lines = [
+                    "",
+                    "External validation",
+                    "External validation started",
+                    f"External validation directory: {external_validation_dir}",
+                    (
+                        "External validation dataset count: "
+                        f"{len(external_dataset_paths)}"
+                    ),
+                    (
+                        "External validation datasets: "
+                        f"{format_dataset_list(external_dataset_paths, external_validation_dir)}"
+                    ),
+                ]
+                append_lines(log_file_path, start_lines)
+                print(
+                    "External validation started -> "
+                    f"datasets={len(external_dataset_paths)}"
+                )
+
+                external_validation_evaluation = run_external_validation(
+                    agent=Agent.create(best_persistable_champion.genome),
+                    external_dataset_paths=external_dataset_paths,
+                    cost_penalty_weight=config.cost_penalty_weight,
+                    trade_cost_rate=config.trade_cost_rate,
+                )
+                external_validation_metrics = build_external_validation_metrics(
+                    evaluation=external_validation_evaluation,
+                    dataset_paths=external_dataset_paths,
+                    dataset_root=external_validation_dir,
+                )
+                champion_metrics.update(external_validation_metrics)
+
+                completion_lines = [
+                    format_evaluation(
+                        "External validation",
+                        external_validation_evaluation,
+                    ),
+                    "External validation completed",
+                ]
+                completion_lines.extend(
+                    build_dataset_breakdown_lines(
+                        external_dataset_paths,
+                        external_validation_evaluation,
+                        "External validation",
+                        external_validation_dir,
+                    )
+                )
+                if external_validation_evaluation.violations:
+                    completion_lines.append(
+                        "External validation violations -> "
+                        f"{', '.join(external_validation_evaluation.violations)}"
+                    )
+                append_lines(log_file_path, completion_lines)
+                print(
+                    "External validation completed -> "
+                    f"selection={external_validation_evaluation.selection_score:.4f} | "
+                    f"profit={external_validation_evaluation.median_profit:.4f} | "
+                    f"drawdown={external_validation_evaluation.median_drawdown:.4f}"
+                )
+
         store.save_champion(
             run_id=run_id,
             generation_number=best_persistable_champion.generation_number,
@@ -727,8 +852,6 @@ def execute_historical_run(
             genome=best_persistable_champion.genome,
             metrics=champion_metrics,
         )
-        persisted_champion_generation = best_persistable_champion.generation_number
-        persisted_champion_type = best_persistable_champion.champion_type
 
     summary_lines = [
         "",
@@ -744,6 +867,7 @@ def execute_historical_run(
         f"Best genome found: {best_genome_repr}",
         f"Generation of best genome: {generation_of_best}",
         f"Champion persisted at end -> {'yes' if best_persistable_champion is not None else 'no'}",
+        f"External validation status: {external_validation_status}",
         f"Total run time: {total_run_duration:.2f}s",
         f"Average generation time: {average_generation_duration:.2f}s",
     ]
@@ -797,6 +921,8 @@ def run_single_experiment(
     config_path: Path = Path("configs/run_config.json"),
     dataset_root: Path = DEFAULT_DATASET_ROOT,
     preset_name: str | None = None,
+    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
+    skip_external_validation: bool = False,
 ) -> HistoricalRunSummary:
     preset = get_preset_by_name(preset_name)
     generations_override: int | None = None
@@ -815,6 +941,8 @@ def run_single_experiment(
         config_path=config_path,
         dataset_root=dataset_root,
         generations_override=generations_override,
+        external_validation_dir=external_validation_dir,
+        skip_external_validation=skip_external_validation,
     )
 
 
@@ -833,12 +961,25 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Optional execution preset overriding generations only.",
     )
+    parser.add_argument(
+        "--external-validation-dir",
+        type=Path,
+        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
+        help="Directory containing external validation CSV datasets.",
+    )
+    parser.add_argument(
+        "--skip-external-validation",
+        action="store_true",
+        help="Skip post-run external validation.",
+    )
     args = parser.parse_args(argv)
 
     run_single_experiment(
         config_path=args.config_path,
         dataset_root=DEFAULT_DATASET_ROOT,
         preset_name=args.preset,
+        external_validation_dir=args.external_validation_dir,
+        skip_external_validation=args.skip_external_validation,
     )
 
 

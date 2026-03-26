@@ -9,6 +9,7 @@ from evo_system.experimentation.multiseed_run import run_multiseed_experiment
 from evo_system.experimentation.presets import get_available_preset_names
 from evo_system.experimentation.single_run import (
     DEFAULT_DATASET_ROOT,
+    DEFAULT_EXTERNAL_VALIDATION_DIR,
     run_single_experiment,
 )
 
@@ -41,6 +42,17 @@ def build_parser() -> argparse.ArgumentParser:
         choices=get_available_preset_names(),
         default=None,
         help="Optional execution preset overriding generations only.",
+    )
+    single_parser.add_argument(
+        "--external-validation-dir",
+        type=Path,
+        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
+        help="Directory containing external validation CSV datasets.",
+    )
+    single_parser.add_argument(
+        "--skip-external-validation",
+        action="store_true",
+        help="Skip post-run external validation.",
     )
 
     batch_parser = subparsers.add_parser(
@@ -96,6 +108,8 @@ def main(argv: list[str] | None = None) -> None:
             config_path=args.config_path,
             dataset_root=args.dataset_root,
             preset_name=args.preset,
+            external_validation_dir=args.external_validation_dir,
+            skip_external_validation=args.skip_external_validation,
         )
         return
 

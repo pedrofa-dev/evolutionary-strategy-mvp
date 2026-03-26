@@ -214,3 +214,4 @@ def test_load_champions_can_filter_by_run_id(tmp_path: Path) -> None:
     assert len(loaded) == 1
     assert loaded[0]["run_id"] == "run-001"
     assert loaded[0]["config_name"] == "config_a"
+
