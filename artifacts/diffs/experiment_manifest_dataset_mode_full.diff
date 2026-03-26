@@ -1,0 +1,284 @@
+diff --git a/src/evo_system/domain/run_config.py b/src/evo_system/domain/run_config.py
+index 03996f5..5526243 100644
+--- a/src/evo_system/domain/run_config.py
++++ b/src/evo_system/domain/run_config.py
+@@ -13,6 +13,8 @@ class RunConfig:
+     mutation_profile: MutationProfile = field(default_factory=MutationProfile)
+     trade_cost_rate: float = 0.0
+     cost_penalty_weight: float = 0.25
++    dataset_mode: str = "legacy"
++    dataset_catalog_id: str | None = None
+ 
+     def __post_init__(self) -> None:
+         if self.population_size <= 0:
+@@ -35,3 +37,10 @@ class RunConfig:
+ 
+         if self.cost_penalty_weight < 0.0:
+             raise ValueError("cost_penalty_weight must be greater than or equal to 0.0")
++
++        if self.dataset_mode not in {"legacy", "manifest"}:
++            raise ValueError("dataset_mode must be either 'legacy' or 'manifest'")
++
++        if self.dataset_mode == "manifest":
++            if not isinstance(self.dataset_catalog_id, str) or not self.dataset_catalog_id.strip():
++                raise ValueError("dataset_catalog_id is required when dataset_mode is 'manifest'")
+diff --git a/src/evo_system/environment/dataset_pool_loader.py b/src/evo_system/environment/dataset_pool_loader.py
+index 584ff45..469a1ad 100644
+--- a/src/evo_system/environment/dataset_pool_loader.py
++++ b/src/evo_system/environment/dataset_pool_loader.py
+@@ -11,12 +11,46 @@ class DatasetPoolLoader:
+     ) -> None:
+         self.pool_config_path = pool_config_path
+ 
+-    def load_paths(self, dataset_root: Path) -> tuple[list[Path], list[Path]]:
++    def load_paths(
++        self,
++        dataset_root: Path,
++        dataset_mode: str = "legacy",
++        dataset_catalog_id: str | None = None,
++    ) -> tuple[list[Path], list[Path]]:
++        if dataset_mode == "manifest":
++            return self._load_from_manifest_root(
++                dataset_root=dataset_root,
++                dataset_catalog_id=dataset_catalog_id,
++            )
++
+         if self.pool_config_path.exists():
+             return self._load_from_pool_config(dataset_root)
+ 
+         return self._load_all_available_paths(dataset_root)
+ 
++    def _load_from_manifest_root(
++        self,
++        dataset_root: Path,
++        dataset_catalog_id: str | None,
++    ) -> tuple[list[Path], list[Path]]:
++        if not dataset_catalog_id:
++            raise ValueError("dataset_catalog_id is required for manifest dataset mode")
++
++        catalog_root = dataset_root / dataset_catalog_id
++        train_root = catalog_root / "train"
++        validation_root = catalog_root / "validation"
++
++        train_paths = sorted(train_root.rglob("candles.csv"))
++        validation_paths = sorted(validation_root.rglob("candles.csv"))
++
++        if not train_paths:
++            raise FileNotFoundError(f"No train datasets found under {train_root}")
++
++        if not validation_paths:
++            raise FileNotFoundError(f"No validation datasets found under {validation_root}")
++
++        return train_paths, validation_paths
++
+     def _load_from_pool_config(self, dataset_root: Path) -> tuple[list[Path], list[Path]]:
+         data = json.loads(self.pool_config_path.read_text(encoding="utf-8"))
+ 
+@@ -56,4 +90,4 @@ class DatasetPoolLoader:
+         if not validation_paths:
+             raise FileNotFoundError(f"No validation datasets found under {validation_root}")
+ 
+-        return train_paths, validation_paths
+\ No newline at end of file
++        return train_paths, validation_paths
+diff --git a/src/evo_system/experimentation/single_run.py b/src/evo_system/experimentation/single_run.py
+index 81ad6d5..695f9b7 100644
+--- a/src/evo_system/experimentation/single_run.py
++++ b/src/evo_system/experimentation/single_run.py
+@@ -52,6 +52,7 @@ from evo_system.experimentation.presets import (
+ 
+ 
+ DEFAULT_DATASET_ROOT = Path("data/processed")
++DEFAULT_MANIFEST_DATASET_ROOT = Path("data/datasets")
+ DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
+ TRAIN_SAMPLE_SIZE = 4
+ RUN_LOG_DIR = Path("artifacts/runs")
+@@ -350,6 +351,19 @@ def resolve_external_validation_dataset_paths(
+     return sorted(external_validation_dir.rglob("*.csv"))
+ 
+ 
++def resolve_dataset_root(
++    requested_dataset_root: Path,
++    dataset_mode: str,
++) -> Path:
++    if (
++        dataset_mode == "manifest"
++        and requested_dataset_root == DEFAULT_DATASET_ROOT
++    ):
++        return DEFAULT_MANIFEST_DATASET_ROOT
++
++    return requested_dataset_root
++
++
+ def execute_historical_run(
+     config_path: Path,
+     output_dir: Path | None = None,
+@@ -367,14 +381,22 @@ def execute_historical_run(
+     if generations_override is not None:
+         config = replace(config, generations_planned=generations_override)
+     config_name = config_name_override or config_path.name
++    effective_dataset_root = resolve_dataset_root(
++        requested_dataset_root=dataset_root,
++        dataset_mode=config.dataset_mode,
++    )
+ 
+     evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
+     loader = DatasetPoolLoader()
+-    train_dataset_paths, validation_dataset_paths = loader.load_paths(dataset_root)
++    train_dataset_paths, validation_dataset_paths = loader.load_paths(
++        effective_dataset_root,
++        dataset_mode=config.dataset_mode,
++        dataset_catalog_id=config.dataset_catalog_id,
++    )
+     dataset_signature = build_dataset_signature(
+         all_train_dataset_paths=train_dataset_paths,
+         validation_dataset_paths=validation_dataset_paths,
+-        dataset_root=dataset_root,
++        dataset_root=effective_dataset_root,
+         train_sample_size=min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths)),
+     )
+ 
+@@ -416,7 +438,9 @@ def execute_historical_run(
+         f"Config name: {config_name}",
+         f"Context name: {context_name or 'none'}",
+         f"Run ID: {run_id}",
+-        f"Dataset root: {dataset_root}",
++        f"Dataset mode: {config.dataset_mode}",
++        f"Dataset catalog: {config.dataset_catalog_id or 'none'}",
++        f"Dataset root: {effective_dataset_root}",
+         f"Dataset signature: {dataset_signature}",
+         f"Mutation seed: {config.mutation_seed}",
+         f"Mutation profile: {config.mutation_profile}",
+@@ -428,8 +452,8 @@ def execute_historical_run(
+         f"Cost penalty weight: {config.cost_penalty_weight}",
+         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
+         f"Train sample size per generation: {min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths))}",
+-        f"Train datasets: {format_dataset_list(train_dataset_paths, dataset_root)}",
+-        f"Validation datasets: {format_dataset_list(validation_dataset_paths, dataset_root)}",
++        f"Train datasets: {format_dataset_list(train_dataset_paths, effective_dataset_root)}",
++        f"Validation datasets: {format_dataset_list(validation_dataset_paths, effective_dataset_root)}",
+         (
+             f"Evolution score weights -> train={TRAIN_WEIGHT:.2f} | "
+             f"validation={VALIDATION_WEIGHT:.2f} | "
+@@ -445,7 +469,10 @@ def execute_historical_run(
+     print(f"Config name: {config_name}")
+     if context_name:
+         print(f"Context name: {context_name}")
+-    print(f"Dataset root: {dataset_root}")
++    print(f"Dataset mode: {config.dataset_mode}")
++    if config.dataset_catalog_id:
++        print(f"Dataset catalog: {config.dataset_catalog_id}")
++    print(f"Dataset root: {effective_dataset_root}")
+     print(f"Dataset signature: {dataset_signature}")
+     print(f"Mutation profile: {config.mutation_profile}")
+     print(
+@@ -566,7 +593,7 @@ def execute_historical_run(
+         generation_lines = [
+             "",
+             f"Generation {generation_number}",
+-            f"Train sample -> {format_dataset_list(sampled_train_paths, dataset_root)}",
++            f"Train sample -> {format_dataset_list(sampled_train_paths, effective_dataset_root)}",
+             (
+                 f"Evolution scores -> best={evolution_best:.4f} | "
+                 f"average={evolution_average:.4f}"
+@@ -602,7 +629,7 @@ def execute_historical_run(
+                 sampled_train_paths,
+                 best_train_evaluation,
+                 "Train",
+-                dataset_root,
++                effective_dataset_root,
+             )
+         )
+         generation_lines.extend(
+@@ -610,7 +637,7 @@ def execute_historical_run(
+                 validation_dataset_paths,
+                 best_validation_evaluation,
+                 "Validation",
+-                dataset_root,
++                effective_dataset_root,
+             )
+         )
+ 
+@@ -643,7 +670,7 @@ def execute_historical_run(
+                 all_train_dataset_paths=list(train_dataset_paths),
+                 config_name=config_name,
+                 context_name=context_name,
+-                dataset_root=dataset_root,
++                dataset_root=effective_dataset_root,
+             )
+ 
+             if best_persistable_champion is None or is_better_persistable_champion(
+diff --git a/src/evo_system/orchestration/config_loader.py b/src/evo_system/orchestration/config_loader.py
+index 74ec6c6..52ed65b 100644
+--- a/src/evo_system/orchestration/config_loader.py
++++ b/src/evo_system/orchestration/config_loader.py
+@@ -23,4 +23,6 @@ def load_run_config(config_path: str) -> RunConfig:
+         trade_cost_rate=float(data.get("trade_cost_rate", 0.0)),
+         cost_penalty_weight=float(data.get("cost_penalty_weight", 0.25)),
+         mutation_profile=mutation_profile,
+-    )
+\ No newline at end of file
++        dataset_mode=str(data.get("dataset_mode", "legacy")),
++        dataset_catalog_id=data.get("dataset_catalog_id"),
++    )
+diff --git a/tests/domain/test_run_config.py b/tests/domain/test_run_config.py
+index 451e894..866188c 100644
+--- a/tests/domain/test_run_config.py
++++ b/tests/domain/test_run_config.py
+@@ -21,6 +21,23 @@ def test_run_config_builds_valid_instance() -> None:
+     assert config.generations_planned == 25
+     assert config.trade_cost_rate == 0.001
+     assert config.cost_penalty_weight == 0.25
++    assert config.dataset_mode == "legacy"
++    assert config.dataset_catalog_id is None
++
++
++def test_run_config_accepts_manifest_mode_with_catalog_id() -> None:
++    config = RunConfig(
++        mutation_seed=42,
++        population_size=12,
++        target_population_size=12,
++        survivors_count=4,
++        generations_planned=25,
++        dataset_mode="manifest",
++        dataset_catalog_id="core_1h_spot",
++    )
++
++    assert config.dataset_mode == "manifest"
++    assert config.dataset_catalog_id == "core_1h_spot"
+ 
+ 
+ def test_run_config_rejects_non_positive_population_size() -> None:
+@@ -77,4 +94,28 @@ def test_run_config_rejects_negative_cost_penalty_weight() -> None:
+             survivors_count=4,
+             generations_planned=25,
+             cost_penalty_weight=-0.1,
+-        )
+\ No newline at end of file
++        )
++
++
++def test_run_config_rejects_invalid_dataset_mode() -> None:
++    with pytest.raises(ValueError, match="dataset_mode must be either 'legacy' or 'manifest'"):
++        RunConfig(
++            mutation_seed=42,
++            population_size=12,
++            target_population_size=12,
++            survivors_count=4,
++            generations_planned=25,
++            dataset_mode="unknown",
++        )
++
++
++def test_run_config_requires_catalog_id_for_manifest_mode() -> None:
++    with pytest.raises(ValueError, match="dataset_catalog_id is required when dataset_mode is 'manifest'"):
++        RunConfig(
++            mutation_seed=42,
++            population_size=12,
++            target_population_size=12,
++            survivors_count=4,
++            generations_planned=25,
++            dataset_mode="manifest",
++        )
+
+diff --git "a/C:\\Users\\Pedro\\AppData\\Local\\Temp\\tmpE2D1.tmp" b/tests/environment/test_dataset_manifest_loader.py index 8b13789..17fd8b2 100644 --- "a/C:\\Users\\Pedro\\AppData\\Local\\Temp\\tmpE2D1.tmp" +++ b/tests/environment/test_dataset_manifest_loader.py @@ -1 +1,25 @@ +from pathlib import Path   +from evo_system.environment.dataset_pool_loader import DatasetPoolLoader + + +def test_dataset_pool_loader_supports_manifest_mode(tmp_path: Path) -> None: +    catalog_root = tmp_path / "core_1h_spot" +    train_dataset = catalog_root / "train" / "dataset_a" +    validation_dataset = catalog_root / "validation" / "dataset_b" + +    train_dataset.mkdir(parents=True) +    validation_dataset.mkdir(parents=True) + +    (train_dataset / "candles.csv").write_text("x", encoding="utf-8") +    (validation_dataset / "candles.csv").write_text("x", encoding="utf-8") + +    loader = DatasetPoolLoader(pool_config_path=tmp_path / "missing_dataset_pool.json") +    train_paths, validation_paths = loader.load_paths( +        dataset_root=tmp_path, +        dataset_mode="manifest", +        dataset_catalog_id="core_1h_spot", +    ) + +    assert train_paths == [train_dataset / "candles.csv"] +    assert validation_paths == [validation_dataset / "candles.csv"]

@@ -52,6 +52,7 @@ from evo_system.experimentation.presets import (
 
 
 DEFAULT_DATASET_ROOT = Path("data/processed")
+DEFAULT_MANIFEST_DATASET_ROOT = Path("data/datasets")
 DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
@@ -350,6 +351,19 @@ def resolve_external_validation_dataset_paths(
     return sorted(external_validation_dir.rglob("*.csv"))
 
 
+def resolve_dataset_root(
+    requested_dataset_root: Path,
+    dataset_mode: str,
+) -> Path:
+    if (
+        dataset_mode == "manifest"
+        and requested_dataset_root == DEFAULT_DATASET_ROOT
+    ):
+        return DEFAULT_MANIFEST_DATASET_ROOT
+
+    return requested_dataset_root
+
+
 def execute_historical_run(
     config_path: Path,
     output_dir: Path | None = None,
@@ -367,14 +381,22 @@ def execute_historical_run(
     if generations_override is not None:
         config = replace(config, generations_planned=generations_override)
     config_name = config_name_override or config_path.name
+    effective_dataset_root = resolve_dataset_root(
+        requested_dataset_root=dataset_root,
+        dataset_mode=config.dataset_mode,
+    )
 
     evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
     loader = DatasetPoolLoader()
-    train_dataset_paths, validation_dataset_paths = loader.load_paths(dataset_root)
+    train_dataset_paths, validation_dataset_paths = loader.load_paths(
+        effective_dataset_root,
+        dataset_mode=config.dataset_mode,
+        dataset_catalog_id=config.dataset_catalog_id,
+    )
     dataset_signature = build_dataset_signature(
         all_train_dataset_paths=train_dataset_paths,
         validation_dataset_paths=validation_dataset_paths,
-        dataset_root=dataset_root,
+        dataset_root=effective_dataset_root,
         train_sample_size=min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths)),
     )
 
@@ -416,7 +438,9 @@ def execute_historical_run(
         f"Config name: {config_name}",
         f"Context name: {context_name or 'none'}",
         f"Run ID: {run_id}",
-        f"Dataset root: {dataset_root}",
+        f"Dataset mode: {config.dataset_mode}",
+        f"Dataset catalog: {config.dataset_catalog_id or 'none'}",
+        f"Dataset root: {effective_dataset_root}",
         f"Dataset signature: {dataset_signature}",
         f"Mutation seed: {config.mutation_seed}",
         f"Mutation profile: {config.mutation_profile}",
@@ -428,8 +452,8 @@ def execute_historical_run(
         f"Cost penalty weight: {config.cost_penalty_weight}",
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
         f"Train sample size per generation: {min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths))}",
-        f"Train datasets: {format_dataset_list(train_dataset_paths, dataset_root)}",
-        f"Validation datasets: {format_dataset_list(validation_dataset_paths, dataset_root)}",
+        f"Train datasets: {format_dataset_list(train_dataset_paths, effective_dataset_root)}",
+        f"Validation datasets: {format_dataset_list(validation_dataset_paths, effective_dataset_root)}",
         (
             f"Evolution score weights -> train={TRAIN_WEIGHT:.2f} | "
             f"validation={VALIDATION_WEIGHT:.2f} | "
@@ -445,7 +469,10 @@ def execute_historical_run(
     print(f"Config name: {config_name}")
     if context_name:
         print(f"Context name: {context_name}")
-    print(f"Dataset root: {dataset_root}")
+    print(f"Dataset mode: {config.dataset_mode}")
+    if config.dataset_catalog_id:
+        print(f"Dataset catalog: {config.dataset_catalog_id}")
+    print(f"Dataset root: {effective_dataset_root}")
     print(f"Dataset signature: {dataset_signature}")
     print(f"Mutation profile: {config.mutation_profile}")
     print(
@@ -566,7 +593,7 @@ def execute_historical_run(
         generation_lines = [
             "",
             f"Generation {generation_number}",
-            f"Train sample -> {format_dataset_list(sampled_train_paths, dataset_root)}",
+            f"Train sample -> {format_dataset_list(sampled_train_paths, effective_dataset_root)}",
             (
                 f"Evolution scores -> best={evolution_best:.4f} | "
                 f"average={evolution_average:.4f}"
@@ -602,7 +629,7 @@ def execute_historical_run(
                 sampled_train_paths,
                 best_train_evaluation,
                 "Train",
-                dataset_root,
+                effective_dataset_root,
             )
         )
         generation_lines.extend(
@@ -610,7 +637,7 @@ def execute_historical_run(
                 validation_dataset_paths,
                 best_validation_evaluation,
                 "Validation",
-                dataset_root,
+                effective_dataset_root,
             )
         )
 
@@ -643,7 +670,7 @@ def execute_historical_run(
                 all_train_dataset_paths=list(train_dataset_paths),
                 config_name=config_name,
                 context_name=context_name,
-                dataset_root=dataset_root,
+                dataset_root=effective_dataset_root,
             )
 
             if best_persistable_champion is None or is_better_persistable_champion(

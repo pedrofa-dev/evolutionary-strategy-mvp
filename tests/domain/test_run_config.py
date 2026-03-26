@@ -21,6 +21,23 @@ def test_run_config_builds_valid_instance() -> None:
     assert config.generations_planned == 25
     assert config.trade_cost_rate == 0.001
     assert config.cost_penalty_weight == 0.25
+    assert config.dataset_mode == "legacy"
+    assert config.dataset_catalog_id is None
+
+
+def test_run_config_accepts_manifest_mode_with_catalog_id() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        dataset_mode="manifest",
+        dataset_catalog_id="core_1h_spot",
+    )
+
+    assert config.dataset_mode == "manifest"
+    assert config.dataset_catalog_id == "core_1h_spot"
 
 
 def test_run_config_rejects_non_positive_population_size() -> None:
@@ -77,4 +94,28 @@ def test_run_config_rejects_negative_cost_penalty_weight() -> None:
             survivors_count=4,
             generations_planned=25,
             cost_penalty_weight=-0.1,
+        )
+
+
+def test_run_config_rejects_invalid_dataset_mode() -> None:
+    with pytest.raises(ValueError, match="dataset_mode must be either 'legacy' or 'manifest'"):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            dataset_mode="unknown",
+        )
+
+
+def test_run_config_requires_catalog_id_for_manifest_mode() -> None:
+    with pytest.raises(ValueError, match="dataset_catalog_id is required when dataset_mode is 'manifest'"):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            dataset_mode="manifest",
         )

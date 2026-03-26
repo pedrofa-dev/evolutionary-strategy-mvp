@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def parse_iso8601_to_millis(value: str) -> int:
@@ -25,6 +26,16 @@ def add_common_download_arguments(parser: argparse.ArgumentParser) -> None:
         help="Example: 2025-04-01T00:00:00+00:00",
     )
     parser.add_argument("--limit", type=int, default=1000, help="Candles per request")
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path("data/market_data"),
+        help=(
+            "Root directory for downloaded market files. "
+            "Preferred default: data/market_data. "
+            "Use data/raw temporarily for backward compatibility during migration."
+        ),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,9 +95,17 @@ def run_download(args: argparse.Namespace) -> int:
         completion_label = "Spot"
 
     storage = CsvStorage()
-    downloader = OhlcvDownloader(provider=provider, storage=storage)
+    downloader = OhlcvDownloader(
+        provider=provider,
+        storage=storage,
+        raw_data_dir=args.output_root,
+        market_type=args.market,
+    )
     rows = downloader.download(request)
-    print(f"{completion_label} download completed. Rows processed: {rows}")
+    print(
+        f"{completion_label} download completed. "
+        f"Rows processed: {rows} | output_root={args.output_root}"
+    )
     return rows
 
 

@@ -1,0 +1,271 @@
+# Curated dataset catalog for layered validation experiments.
+# This catalog makes dataset intent explicit across train, validation,
+# external, and audit layers without changing the current runtime yet.
+# The current folder-based pipeline remains temporarily supported while
+# the repository migrates toward catalog-driven dataset selection.
+
+catalog_id: core_1h_spot
+description: Core curated 1h spot dataset windows for BTCUSDT and ETHUSDT.
+market_type: spot
+timeframe: 1h
+
+datasets:
+  - id: BTCUSDT_1h_2020-10-01_2021-01-31
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2020-10-01
+    end: 2021-01-31
+    layer: train
+    regime_primary: bullish_trend
+    regime_secondary: breakout_expansion
+    volatility: high
+    event_tag: post_halving_expansion
+    notes: Strong directional advance with repeated continuation moves and elevated momentum.
+
+  - id: ETHUSDT_1h_2020-10-01_2021-01-31
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2020-10-01
+    end: 2021-01-31
+    layer: train
+    regime_primary: bullish_trend
+    regime_secondary: breakout_expansion
+    volatility: high
+    event_tag: defi_expansion
+    notes: Persistent upside trend with acceleration phases suitable for momentum and trend behavior.
+
+  - id: BTCUSDT_1h_2021-05-19_2021-07-20
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-05-19
+    end: 2021-07-20
+    layer: train
+    regime_primary: bearish_shock
+    regime_secondary: deleveraging_range
+    volatility: extreme
+    event_tag: china_mining_crackdown
+    notes: Crash and unstable recovery window useful for testing downside handling and noisy rebounds.
+
+  - id: ETHUSDT_1h_2021-05-19_2021-07-20
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-05-19
+    end: 2021-07-20
+    layer: train
+    regime_primary: bearish_shock
+    regime_secondary: deleveraging_range
+    volatility: extreme
+    event_tag: broad_market_liquidation
+    notes: Violent selloff followed by choppy consolidation with unstable momentum signals.
+
+  - id: BTCUSDT_1h_2023-01-15_2023-04-30
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-01-15
+    end: 2023-04-30
+    layer: train
+    regime_primary: recovery_trend
+    regime_secondary: squeeze_breakout
+    volatility: medium
+    event_tag: post_bear_recovery
+    notes: Orderly recovery trend with cleaner continuation structure than 2021 impulse markets.
+
+  - id: ETHUSDT_1h_2023-01-15_2023-04-30
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-01-15
+    end: 2023-04-30
+    layer: train
+    regime_primary: recovery_trend
+    regime_secondary: squeeze_breakout
+    volatility: medium
+    event_tag: post_bear_recovery
+    notes: Steady rebound window with directional legs and intermittent consolidation breaks.
+
+  - id: BTCUSDT_1h_2023-06-01_2023-08-31
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-06-01
+    end: 2023-08-31
+    layer: train
+    regime_primary: mixed_range
+    regime_secondary: event_spike
+    volatility: medium
+    event_tag: etf_rumor_phase
+    notes: Mostly rotational market with event-driven bursts and quick reversals.
+
+  - id: ETHUSDT_1h_2023-06-01_2023-08-31
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-06-01
+    end: 2023-08-31
+    layer: train
+    regime_primary: mixed_range
+    regime_secondary: event_spike
+    volatility: medium
+    event_tag: regulatory_noise_phase
+    notes: Range-dominant behavior with intermittent spikes and weaker trend persistence.
+
+  - id: BTCUSDT_1h_2021-08-01_2021-11-15
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-08-01
+    end: 2021-11-15
+    layer: validation
+    regime_primary: bullish_trend
+    regime_secondary: trend_reacceleration
+    volatility: high
+    event_tag: late_cycle_runup
+    notes: Strong resumed uptrend used to validate whether training generalizes into renewed momentum phases.
+
+  - id: ETHUSDT_1h_2021-08-01_2021-11-15
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-08-01
+    end: 2021-11-15
+    layer: validation
+    regime_primary: bullish_trend
+    regime_secondary: trend_reacceleration
+    volatility: high
+    event_tag: late_cycle_runup
+    notes: Persistent upside regime with stronger altcoin beta and cleaner directional segments.
+
+  - id: BTCUSDT_1h_2022-09-01_2022-10-15
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-09-01
+    end: 2022-10-15
+    layer: validation
+    regime_primary: compressed_range
+    regime_secondary: low_conviction_bear
+    volatility: low
+    event_tag: pre_ftx_compression
+    notes: Quiet market with weak directional conviction, useful for checking overfit to trend-heavy windows.
+
+  - id: ETHUSDT_1h_2022-09-01_2022-10-15
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-09-01
+    end: 2022-10-15
+    layer: validation
+    regime_primary: compressed_range
+    regime_secondary: event_fade
+    volatility: medium
+    event_tag: merge_aftershock
+    notes: Post-event digestion window with fading moves and unstable continuation quality.
+
+  - id: BTCUSDT_1h_2022-11-01_2022-12-15
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-11-01
+    end: 2022-12-15
+    layer: external
+    regime_primary: crisis_breakdown
+    regime_secondary: panic_repricing
+    volatility: extreme
+    event_tag: ftx_collapse
+    notes: External stress window intended to observe performance under crisis-driven dislocation.
+
+  - id: ETHUSDT_1h_2022-11-01_2022-12-15
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-11-01
+    end: 2022-12-15
+    layer: external
+    regime_primary: crisis_breakdown
+    regime_secondary: panic_repricing
+    volatility: extreme
+    event_tag: ftx_collapse
+    notes: High-stress external window with deep liquidation behavior and poor trend stability.
+
+  - id: BTCUSDT_1h_2023-10-15_2023-12-31
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-10-15
+    end: 2023-12-31
+    layer: external
+    regime_primary: bullish_breakout
+    regime_secondary: regime_shift
+    volatility: high
+    event_tag: etf_expectation_rally
+    notes: Late-2023 breakout phase reserved for out-of-pipeline external validation.
+
+  - id: ETHUSDT_1h_2023-10-15_2023-12-31
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-10-15
+    end: 2023-12-31
+    layer: external
+    regime_primary: bullish_breakout
+    regime_secondary: regime_shift
+    volatility: high
+    event_tag: broad_crypto_rally
+    notes: Strong external rally window with faster swings and higher beta than BTC.
+
+  - id: BTCUSDT_1h_2024-02-01_2024-04-15
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-02-01
+    end: 2024-04-15
+    layer: audit
+    regime_primary: bullish_trend
+    regime_secondary: momentum_crowding
+    volatility: high
+    event_tag: pre_halving_2024
+    notes: Audit window for later review under crowded upside conditions and sustained directional pressure.
+
+  - id: ETHUSDT_1h_2024-02-01_2024-04-15
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-02-01
+    end: 2024-04-15
+    layer: audit
+    regime_primary: bullish_trend
+    regime_secondary: momentum_crowding
+    volatility: high
+    event_tag: pre_halving_rotation
+    notes: Audit window for later governance checks in a strong beta-led upside environment.
+
+  - id: BTCUSDT_1h_2024-06-15_2024-08-15
+    symbol: BTCUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-06-15
+    end: 2024-08-15
+    layer: audit
+    regime_primary: choppy_range
+    regime_secondary: post_trend_digest
+    volatility: medium
+    event_tag: post_halving_consolidation
+    notes: Audit window with uneven follow-through and rotational behavior after a major trend phase.
+
+  - id: ETHUSDT_1h_2024-06-15_2024-08-15
+    symbol: ETHUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-06-15
+    end: 2024-08-15
+    layer: audit
+    regime_primary: choppy_range
+    regime_secondary: post_trend_digest
+    volatility: medium
+    event_tag: summer_rotation
+    notes: Audit window with mixed directional quality and frequent reversals for later robustness review.

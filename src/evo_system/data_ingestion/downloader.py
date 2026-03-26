@@ -28,11 +28,13 @@ class OhlcvDownloader:
         self,
         provider: OhlcvProvider,
         storage: CsvStorage,
-        raw_data_dir: Path = Path("data/raw"),
+        raw_data_dir: Path = Path("data/market_data"),
+        market_type: str = "spot",
     ) -> None:
         self.provider = provider
         self.storage = storage
         self.raw_data_dir = raw_data_dir
+        self.market_type = market_type
 
     def download(self, request: DownloadRequest) -> int:
         total_rows = 0
@@ -89,6 +91,7 @@ class OhlcvDownloader:
         for month_key, month_df in working_df.groupby("month_key"):
             output_path = (
                 self.raw_data_dir
+                / self.market_type
                 / clean_symbol
                 / timeframe
                 / f"{clean_symbol}-{timeframe}-{month_key}.csv"

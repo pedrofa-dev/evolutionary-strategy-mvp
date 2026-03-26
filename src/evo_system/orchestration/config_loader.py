@@ -23,4 +23,6 @@ def load_run_config(config_path: str) -> RunConfig:
         trade_cost_rate=float(data.get("trade_cost_rate", 0.0)),
         cost_penalty_weight=float(data.get("cost_penalty_weight", 0.25)),
         mutation_profile=mutation_profile,
+        dataset_mode=str(data.get("dataset_mode", "legacy")),
+        dataset_catalog_id=data.get("dataset_catalog_id"),
     )
