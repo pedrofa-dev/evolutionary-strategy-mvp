@@ -15,19 +15,19 @@ class ExperimentPreset:
 PRESET_QUICK = ExperimentPreset(
     name="quick",
     generations=10,
-    max_seeds=1,
+    max_seeds=2,
 )
 
 PRESET_SCREENING = ExperimentPreset(
     name="screening",
     generations=15,
-    max_seeds=3,
+    max_seeds=4,
 )
 
 PRESET_FULL = ExperimentPreset(
     name="full",
     generations=25,
-    max_seeds=5,
+    max_seeds=6,
 )
 
 PRESETS_BY_NAME = {

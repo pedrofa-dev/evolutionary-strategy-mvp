@@ -1,9 +1,15 @@
 import argparse
 import json
+import os
 import statistics
 import tempfile
+import time
 from collections import defaultdict
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime
+from multiprocessing import get_context
 from pathlib import Path
 
 from evo_system.champions.rules import (
@@ -19,21 +25,98 @@ from evo_system.champions.rules import (
     SPECIALIST_MIN_VALIDATION_TRADES,
 )
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.experimentation.dataset_roots import (
+    DEFAULT_DATASET_ROOT,
+    format_effective_dataset_roots,
+    resolve_effective_dataset_roots,
+)
+from evo_system.experimentation.parallel_progress import (
+    PROGRESS_POLL_INTERVAL_SECONDS,
+    format_active_job_progress,
+    read_progress_snapshot,
+)
 from evo_system.experimentation.presets import (
     apply_preset_to_config_data,
     apply_preset_to_seeds,
     get_available_preset_names,
     get_preset_by_name,
 )
-from evo_system.experimentation.single_run import (
-    DEFAULT_DATASET_ROOT,
-    execute_historical_run,
-)
+from evo_system.experimentation.single_run import execute_historical_run
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
-DEFAULT_SEEDS = [101, 102, 103, 104, 105]
+DEFAULT_SEEDS = [101, 102, 103, 104, 105, 106]
 DEFAULT_CONTEXT_NAME: str | None = None
+
+
+@dataclass(frozen=True)
+class MultiseedJob:
+    config_path: Path
+    seed: int
+    output_dir: Path
+    dataset_root: Path
+    context_name: str | None
+    preset_name: str | None
+    progress_snapshot_path: Path
+
+
+def calculate_effective_parallel_workers(
+    job_count: int,
+    requested_parallel_workers: int,
+) -> int:
+    if requested_parallel_workers <= 1:
+        return 1
+    if job_count <= 1:
+        return 1
+    return min(requested_parallel_workers, job_count)
+
+
+def format_parallel_progress(
+    completed_jobs: int,
+    total_jobs: int,
+    success_count: int,
+    failure_count: int,
+    last_label: str,
+) -> str:
+    return (
+        f"[{completed_jobs}/{total_jobs}] completed | "
+        f"success={success_count} | "
+        f"failed={failure_count} | "
+        f"last={last_label}"
+    )
+
+
+def print_parallel_status(
+    *,
+    completed_jobs: int,
+    total_jobs: int,
+    success_count: int,
+    failure_count: int,
+    active_job_lines: list[str],
+) -> None:
+    print(
+        f"Completed: {completed_jobs}/{total_jobs} | "
+        f"success={success_count} | failed={failure_count}"
+    )
+    if active_job_lines:
+        print("Active jobs:")
+        for line in active_job_lines:
+            print(line)
+
+
+def collect_active_job_lines(
+    jobs: list[MultiseedJob],
+) -> list[str]:
+    lines: list[str] = []
+    for job in jobs:
+        snapshot = read_progress_snapshot(job.progress_snapshot_path)
+        lines.append(
+            format_active_job_progress(
+                snapshot,
+                fallback_label=job.config_path.name,
+            )
+        )
+    return lines
 
 
 def load_config(config_path: Path) -> dict:
@@ -58,11 +141,94 @@ def build_log_name(config_path: Path, seed: int) -> str:
     return f"run_{config_path.stem}_seed{seed}.txt"
 
 
+def build_progress_snapshot_path(
+    output_dir: Path,
+    config_path: Path,
+    seed: int,
+) -> Path:
+    return output_dir / f"progress_{config_path.stem}_seed{seed}.json"
+
+
 def create_multiseed_dir() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     multiseed_dir = BATCHES_ROOT_DIR / f"multiseed_{timestamp}"
     multiseed_dir.mkdir(parents=True, exist_ok=True)
     return multiseed_dir
+
+
+def build_multiseed_jobs(
+    config_paths: list[Path],
+    seeds: list[int],
+    output_dir: Path,
+    dataset_root: Path,
+    context_name: str | None,
+    preset_name: str | None,
+) -> list[MultiseedJob]:
+    jobs: list[MultiseedJob] = []
+    for config_path in config_paths:
+        for seed in seeds:
+            jobs.append(
+                MultiseedJob(
+                    config_path=config_path,
+                    seed=seed,
+                    output_dir=output_dir,
+                    dataset_root=dataset_root,
+                    context_name=context_name,
+                    preset_name=preset_name,
+                    progress_snapshot_path=build_progress_snapshot_path(
+                        output_dir,
+                        config_path,
+                        seed,
+                    ),
+                )
+            )
+    return jobs
+
+
+def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
+    preset = get_preset_by_name(job.preset_name)
+    base_config = load_config(job.config_path)
+    effective_config = apply_preset_to_config_data(base_config, preset)
+    config_copy = dict(effective_config)
+    config_copy["mutation_seed"] = job.seed
+    temp_config_path = write_temp_config(config_copy)
+
+    try:
+        with open(os.devnull, "w", encoding="utf-8") as devnull:
+            with redirect_stdout(devnull), redirect_stderr(devnull):
+                return execute_historical_run(
+                    config_path=temp_config_path,
+                    output_dir=job.output_dir,
+                    log_name=build_log_name(job.config_path, job.seed),
+                    config_name_override=job.config_path.name,
+                    dataset_root=job.dataset_root,
+                    context_name=job.context_name,
+                    progress_snapshot_path=job.progress_snapshot_path,
+                )
+    finally:
+        temp_config_path.unlink(missing_ok=True)
+
+
+def execute_multiseed_job_sequential(job: MultiseedJob) -> HistoricalRunSummary:
+    preset = get_preset_by_name(job.preset_name)
+    base_config = load_config(job.config_path)
+    effective_config = apply_preset_to_config_data(base_config, preset)
+    config_copy = dict(effective_config)
+    config_copy["mutation_seed"] = job.seed
+    temp_config_path = write_temp_config(config_copy)
+
+    try:
+        return execute_historical_run(
+            config_path=temp_config_path,
+            output_dir=job.output_dir,
+            log_name=build_log_name(job.config_path, job.seed),
+            config_name_override=job.config_path.name,
+            dataset_root=job.dataset_root,
+            context_name=job.context_name,
+            progress_snapshot_path=job.progress_snapshot_path,
+        )
+    finally:
+        temp_config_path.unlink(missing_ok=True)
 
 
 def safe_mean(values: list[float]) -> float:
@@ -111,42 +277,152 @@ def execute_multiseed_runs(
     dataset_root: Path,
     context_name: str | None,
     preset_name: str | None = None,
+    requested_parallel_workers: int = 1,
 ) -> list[HistoricalRunSummary]:
-    summaries: list[HistoricalRunSummary] = []
+    jobs = build_multiseed_jobs(
+        config_paths=config_paths,
+        seeds=seeds,
+        output_dir=output_dir,
+        dataset_root=dataset_root,
+        context_name=context_name,
+        preset_name=preset_name,
+    )
     preset = get_preset_by_name(preset_name)
+    total_jobs = len(jobs)
+    effective_parallel_workers = calculate_effective_parallel_workers(
+        job_count=total_jobs,
+        requested_parallel_workers=requested_parallel_workers,
+    )
 
-    for config_path in config_paths:
-        base_config = load_config(config_path)
-        effective_config = apply_preset_to_config_data(base_config, preset)
+    if requested_parallel_workers > 1 and effective_parallel_workers == 1:
+        print(
+            "Parallel execution requested with "
+            f"{requested_parallel_workers} workers, but only {total_jobs} job "
+            "is scheduled. Falling back to sequential execution."
+        )
 
-        for seed in seeds:
+    if effective_parallel_workers <= 1:
+        summaries: list[HistoricalRunSummary] = []
+        for index, job in enumerate(jobs, start=1):
             print()
-            print(f"=== Running {config_path.name} with seed {seed} ===")
+            print(
+                f"[{index}/{total_jobs}] starting | "
+                f"mode=sequential | job={job.config_path.name} seed={job.seed}"
+            )
+            print(f"=== Running {job.config_path.name} with seed {job.seed} ===")
             if context_name:
                 print(f"Context: {context_name}")
             if preset is not None:
+                effective_config = apply_preset_to_config_data(load_config(job.config_path), preset)
                 print(
                     f"Preset: {preset.name} | "
                     f"generations={effective_config['generations_planned']}"
                 )
+            summaries.append(execute_multiseed_job_sequential(job))
+        return summaries
 
-            config_copy = dict(effective_config)
-            config_copy["mutation_seed"] = seed
-            temp_config_path = write_temp_config(config_copy)
+    print(
+        f"Running multiseed jobs in parallel with {effective_parallel_workers} workers."
+    )
+    summaries: list[HistoricalRunSummary] = []
+    failures: list[str] = []
+    completed_jobs = 0
+    success_count = 0
+    failure_count = 0
 
-            try:
-                summary = execute_historical_run(
-                    config_path=temp_config_path,
-                    output_dir=output_dir,
-                    log_name=build_log_name(config_path, seed),
-                    config_name_override=config_path.name,
-                    dataset_root=dataset_root,
-                    context_name=context_name,
+    with ProcessPoolExecutor(
+        max_workers=effective_parallel_workers,
+        mp_context=get_context("spawn"),
+    ) as executor:
+        future_to_job = {
+            executor.submit(execute_multiseed_job, job): job
+            for job in jobs
+        }
+        pending_futures = set(future_to_job)
+        last_progress_report_time = 0.0
+
+        while pending_futures:
+            done_futures, pending_futures = wait(
+                pending_futures,
+                timeout=PROGRESS_POLL_INTERVAL_SECONDS,
+                return_when=FIRST_COMPLETED,
+            )
+            current_time = time.perf_counter()
+
+            if not done_futures:
+                active_jobs = [
+                    future_to_job[future]
+                    for future in pending_futures
+                ]
+                print_parallel_status(
+                    completed_jobs=completed_jobs,
+                    total_jobs=total_jobs,
+                    success_count=success_count,
+                    failure_count=failure_count,
+                    active_job_lines=collect_active_job_lines(active_jobs),
                 )
+                last_progress_report_time = current_time
+                continue
+
+            for future in done_futures:
+                job = future_to_job[future]
+                completed_jobs += 1
+                try:
+                    summary = future.result()
+                except Exception as exc:
+                    failures.append(f"{job.config_path.name} seed {job.seed}: {exc}")
+                    failure_count += 1
+                    print(
+                        format_parallel_progress(
+                            completed_jobs=completed_jobs,
+                            total_jobs=total_jobs,
+                            success_count=success_count,
+                            failure_count=failure_count,
+                            last_label=f"{job.config_path.name} seed={job.seed} failed",
+                        )
+                    )
+                    print(f"FAILED {job.config_path.name} seed {job.seed}: {exc}")
+                    job.progress_snapshot_path.unlink(missing_ok=True)
+                    continue
 
                 summaries.append(summary)
-            finally:
-                temp_config_path.unlink(missing_ok=True)
+                success_count += 1
+                print(
+                    format_parallel_progress(
+                        completed_jobs=completed_jobs,
+                        total_jobs=total_jobs,
+                        success_count=success_count,
+                        failure_count=failure_count,
+                        last_label=f"{job.config_path.name} seed={job.seed}",
+                    )
+                )
+                print(
+                    f"Completed {job.config_path.name} seed {job.seed} -> run_id={summary.run_id}"
+                )
+                job.progress_snapshot_path.unlink(missing_ok=True)
+
+            if pending_futures and (
+                last_progress_report_time == 0.0
+                or current_time - last_progress_report_time >= PROGRESS_POLL_INTERVAL_SECONDS
+            ):
+                active_jobs = [
+                    future_to_job[future]
+                    for future in pending_futures
+                ]
+                print_parallel_status(
+                    completed_jobs=completed_jobs,
+                    total_jobs=total_jobs,
+                    success_count=success_count,
+                    failure_count=failure_count,
+                    active_job_lines=collect_active_job_lines(active_jobs),
+                )
+                last_progress_report_time = current_time
+
+    if failures:
+        failure_summary = "\n".join(failures)
+        raise RuntimeError(
+            f"Multiseed execution completed with failures:\n{failure_summary}"
+        )
 
     return summaries
 
@@ -265,7 +541,7 @@ def write_multiseed_summary(
     summaries: list[HistoricalRunSummary],
     seeds: list[int],
     output_dir: Path,
-    dataset_root: Path,
+    dataset_root_label: str,
     context_name: str | None,
     preset_name: str | None,
     effective_generations: int | None,
@@ -277,7 +553,7 @@ def write_multiseed_summary(
         f"Preset: {preset_name or 'none'}",
         f"Effective generations: {effective_generations if effective_generations is not None else 'config-defined'}",
         f"Context name: {context_name or 'none'}",
-        f"Dataset root: {dataset_root}",
+        f"Dataset root: {dataset_root_label}",
         f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
         f"Seeds per config: {len(seeds)}",
         f"Seeds used: {', '.join(str(seed) for seed in seeds)}",
@@ -300,7 +576,11 @@ def run_multiseed_experiment(
     dataset_root: Path = DEFAULT_DATASET_ROOT,
     preset_name: str | None = None,
     context_name: str | None = DEFAULT_CONTEXT_NAME,
+    parallel_workers: int = 1,
 ) -> Path | None:
+    if parallel_workers <= 0:
+        raise ValueError("parallel_workers must be greater than 0")
+
     config_paths = sorted(configs_dir.glob("*.json"))
 
     if not config_paths:
@@ -310,16 +590,34 @@ def run_multiseed_experiment(
     preset = get_preset_by_name(preset_name)
     seeds = apply_preset_to_seeds(DEFAULT_SEEDS, preset)
     effective_generations = preset.generations if preset is not None else None
+    job_count = len(config_paths) * len(seeds)
+    effective_dataset_roots = resolve_effective_dataset_roots(
+        config_paths=config_paths,
+        requested_dataset_root=dataset_root,
+    )
+    dataset_root_label = format_effective_dataset_roots(effective_dataset_roots)
+    effective_parallel_workers = calculate_effective_parallel_workers(
+        job_count=job_count,
+        requested_parallel_workers=parallel_workers,
+    )
 
+    print("Execution mode: multiseed")
     print(f"Found {len(config_paths)} config files.")
     print(f"Using seeds: {seeds}")
+    print(f"Jobs scheduled: {job_count}")
     print(f"Preset: {preset_name or 'none'}")
     print(
         "Effective generations: "
         f"{effective_generations if effective_generations is not None else 'config-defined'}"
     )
     print(f"Context name: {context_name or 'none'}")
-    print(f"Dataset root: {dataset_root}")
+    print(f"Dataset root: {dataset_root_label}")
+    print(f"Requested parallel workers: {parallel_workers}")
+    print(f"Effective parallel workers: {effective_parallel_workers}")
+    print(
+        "Execution strategy: "
+        f"{'parallel' if effective_parallel_workers > 1 else 'sequential'}"
+    )
 
     output_dir = create_multiseed_dir()
     print(f"Writing multiseed artifacts to {output_dir}")
@@ -331,13 +629,14 @@ def run_multiseed_experiment(
         dataset_root=dataset_root,
         context_name=context_name,
         preset_name=preset_name,
+        requested_parallel_workers=parallel_workers,
     )
 
     summary_path = write_multiseed_summary(
         summaries=summaries,
         seeds=seeds,
         output_dir=output_dir,
-        dataset_root=dataset_root,
+        dataset_root_label=dataset_root_label,
         context_name=context_name,
         preset_name=preset_name,
         effective_generations=effective_generations,
@@ -369,12 +668,19 @@ def main(argv: list[str] | None = None) -> None:
         default=DEFAULT_DATASET_ROOT,
         help="Dataset root directory.",
     )
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=1,
+        help="Number of worker processes for independent runs. Default: 1.",
+    )
     args = parser.parse_args(argv)
 
     run_multiseed_experiment(
         configs_dir=args.configs_dir,
         dataset_root=args.dataset_root,
         preset_name=args.preset,
+        parallel_workers=args.parallel_workers,
     )
 
 

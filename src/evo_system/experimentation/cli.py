@@ -5,10 +5,10 @@ from evo_system.experimentation.batch_run import (
     CONFIGS_DIR,
     run_batch_experiment,
 )
+from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.multiseed_run import run_multiseed_experiment
 from evo_system.experimentation.presets import get_available_preset_names
 from evo_system.experimentation.single_run import (
-    DEFAULT_DATASET_ROOT,
     DEFAULT_EXTERNAL_VALIDATION_DIR,
     run_single_experiment,
 )
@@ -71,6 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_DATASET_ROOT,
         help="Dataset root directory.",
     )
+    batch_parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=1,
+        help="Number of worker processes for independent runs. Default: 1.",
+    )
 
     multiseed_parser = subparsers.add_parser(
         "multiseed",
@@ -95,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional execution preset overriding generations and seeds/max_seeds.",
     )
+    multiseed_parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=1,
+        help="Number of worker processes for independent runs. Default: 1.",
+    )
 
     return parser
 
@@ -117,6 +129,7 @@ def main(argv: list[str] | None = None) -> None:
         run_batch_experiment(
             configs_dir=args.configs_dir,
             dataset_root=args.dataset_root,
+            parallel_workers=args.parallel_workers,
         )
         return
 
@@ -125,6 +138,7 @@ def main(argv: list[str] | None = None) -> None:
             configs_dir=args.configs_dir,
             dataset_root=args.dataset_root,
             preset_name=args.preset,
+            parallel_workers=args.parallel_workers,
         )
         return
 

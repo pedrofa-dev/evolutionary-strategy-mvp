@@ -41,6 +41,12 @@ from evo_system.experimentation.external_validation import (
     build_external_validation_metrics,
     run_external_validation,
 )
+from evo_system.experimentation.dataset_roots import (
+    DEFAULT_DATASET_ROOT,
+    DEFAULT_MANIFEST_DATASET_ROOT,
+    resolve_dataset_root,
+)
+from evo_system.experimentation.parallel_progress import write_progress_snapshot
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
@@ -50,9 +56,6 @@ from evo_system.experimentation.presets import (
     get_preset_by_name,
 )
 
-
-DEFAULT_DATASET_ROOT = Path("data/processed")
-DEFAULT_MANIFEST_DATASET_ROOT = Path("data/datasets")
 DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
@@ -351,19 +354,6 @@ def resolve_external_validation_dataset_paths(
     return sorted(external_validation_dir.rglob("*.csv"))
 
 
-def resolve_dataset_root(
-    requested_dataset_root: Path,
-    dataset_mode: str,
-) -> Path:
-    if (
-        dataset_mode == "manifest"
-        and requested_dataset_root == DEFAULT_DATASET_ROOT
-    ):
-        return DEFAULT_MANIFEST_DATASET_ROOT
-
-    return requested_dataset_root
-
-
 def execute_historical_run(
     config_path: Path,
     output_dir: Path | None = None,
@@ -374,6 +364,7 @@ def execute_historical_run(
     generations_override: int | None = None,
     external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
     skip_external_validation: bool = False,
+    progress_snapshot_path: Path | None = None,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
@@ -482,6 +473,17 @@ def execute_historical_run(
     print(f"Trade cost rate: {config.trade_cost_rate}")
     print(f"Cost penalty weight: {config.cost_penalty_weight}")
     print(f"Writing log to {log_file_path}")
+
+    if progress_snapshot_path is not None:
+        write_progress_snapshot(
+            progress_snapshot_path,
+            config_name=config_name,
+            mutation_seed=config.mutation_seed,
+            current_generation=0,
+            total_generations=config.generations_planned,
+            validation_selection=None,
+            elapsed_seconds=time.perf_counter() - run_start_time,
+        )
 
     random_generator = random.Random(config.mutation_seed)
 
@@ -719,6 +721,17 @@ def execute_historical_run(
             f"log={log_file_path.name}"
         )
 
+        if progress_snapshot_path is not None:
+            write_progress_snapshot(
+                progress_snapshot_path,
+                config_name=config_name,
+                mutation_seed=config.mutation_seed,
+                current_generation=generation_number,
+                total_generations=config.generations_planned,
+                validation_selection=best_validation_evaluation.selection_score,
+                elapsed_seconds=time.perf_counter() - run_start_time,
+            )
+
         if best_evolution_score > float("-inf"):
             best_train_selection_score = best_train_evaluation.selection_score
             best_train_profit = best_train_evaluation.median_profit
@@ -926,6 +939,17 @@ def execute_historical_run(
     else:
         print("Persisted champion -> none")
     print(f"Detailed run log saved to {log_file_path}")
+
+    if progress_snapshot_path is not None:
+        write_progress_snapshot(
+            progress_snapshot_path,
+            config_name=config_name,
+            mutation_seed=config.mutation_seed,
+            current_generation=config.generations_planned,
+            total_generations=config.generations_planned,
+            validation_selection=final_validation_selection_score,
+            elapsed_seconds=total_run_duration,
+        )
 
     return HistoricalRunSummary(
         config_name=config_name,

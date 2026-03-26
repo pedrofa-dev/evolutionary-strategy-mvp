@@ -80,6 +80,12 @@ data/processed/*
 !data/processed/README.md
 
 # =========================
+# Legacy unprocessed data
+# =========================
+data/raw/*
+s
+
+# =========================
 # Jupyter (if you ever use it)
 # =========================
 .ipynb_checkpoints/
