@@ -7,6 +7,11 @@ from evo_system.experimentation.dataset_roots import (
     format_effective_dataset_roots,
     resolve_dataset_root,
 )
+from evo_system.experimentation.presets import (
+    apply_preset_to_seeds,
+    get_available_preset_names,
+    get_preset_by_name,
+)
 from evo_system.experimentation.batch_run import (
     BatchJob,
     calculate_effective_parallel_workers as calculate_batch_effective_parallel_workers,
@@ -17,9 +22,13 @@ from evo_system.experimentation.batch_run import (
 )
 from evo_system.experimentation.cli import build_parser
 from evo_system.experimentation.multiseed_run import (
+    build_default_multiseed_seeds,
     build_multiseed_jobs,
     calculate_effective_parallel_workers as calculate_multiseed_effective_parallel_workers,
     execute_multiseed_runs,
+    format_seed_plan,
+    resolve_config_seeds,
+    resolve_seed_map,
     run_multiseed_experiment,
 )
 from evo_system.experimentation.single_run import execute_historical_run
@@ -38,6 +47,36 @@ def test_cli_parses_parallel_workers_for_batch_and_multiseed() -> None:
 
     assert batch_args.parallel_workers == 3
     assert multiseed_args.parallel_workers == 4
+
+
+def test_experiment_presets_include_standard_extended_and_full() -> None:
+    assert get_available_preset_names() == [
+        "extended",
+        "full",
+        "quick",
+        "screening",
+        "standard",
+    ]
+
+    standard = get_preset_by_name("standard")
+    extended = get_preset_by_name("extended")
+    full = get_preset_by_name("full")
+
+    assert standard is not None
+    assert extended is not None
+    assert full is not None
+
+    assert standard.generations == 25
+    assert standard.max_seeds == 6
+    assert extended.generations == 25
+    assert extended.max_seeds == 10
+    assert full.generations == 25
+    assert full.max_seeds == 20
+
+    seeds = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111]
+    assert apply_preset_to_seeds(seeds, standard) == seeds[:6]
+    assert apply_preset_to_seeds(seeds, extended) == seeds[:10]
+    assert apply_preset_to_seeds(seeds, full) == seeds[:20]
 
 
 def test_manifest_dataset_root_resolution_uses_data_datasets_by_default() -> None:
@@ -89,11 +128,13 @@ def test_execute_historical_run_uses_manifest_dataset_root_by_default(
 
 def test_build_multiseed_jobs_expands_config_seed_pairs(tmp_path: Path) -> None:
     config_paths = [tmp_path / "a.json", tmp_path / "b.json"]
-    seeds = [101, 102]
+    seed_map = {
+        config_paths[0]: [101, 102],
+        config_paths[1]: [101, 102],
+    }
 
     jobs = build_multiseed_jobs(
-        config_paths=config_paths,
-        seeds=seeds,
+        seed_map=seed_map,
         output_dir=tmp_path / "out",
         dataset_root=tmp_path / "datasets",
         context_name=None,
@@ -372,11 +413,21 @@ def test_execute_multiseed_runs_keeps_sequential_run_output_path(
     )
 
     config_path = tmp_path / "a.json"
-    config_path.write_text("{}", encoding="utf-8")
+    config_path.write_text(
+        (
+            "{"
+            '"mutation_seed": 42,'
+            '"population_size": 12,'
+            '"target_population_size": 12,'
+            '"survivors_count": 4,'
+            '"generations_planned": 25'
+            "}"
+        ),
+        encoding="utf-8",
+    )
 
     summaries = execute_multiseed_runs(
         config_paths=[config_path],
-        seeds=[101],
         output_dir=tmp_path / "out",
         dataset_root=tmp_path / "datasets",
         context_name=None,
@@ -384,8 +435,100 @@ def test_execute_multiseed_runs_keeps_sequential_run_output_path(
         requested_parallel_workers=1,
     )
 
-    assert calls == ["a.json"]
-    assert len(summaries) == 1
+    assert calls == ["a.json"] * 6
+    assert len(summaries) == 6
+
+
+def test_resolve_config_seeds_uses_explicit_seeds_when_present(tmp_path: Path) -> None:
+    config_path = tmp_path / "a.json"
+    config_path.write_text(
+        (
+            "{"
+            '"mutation_seed": 42,'
+            '"population_size": 12,'
+            '"target_population_size": 12,'
+            '"survivors_count": 4,'
+            '"generations_planned": 25,'
+            '"seeds": [201, 202, 203]'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    assert resolve_config_seeds(config_path) == [201, 202, 203]
+
+
+def test_resolve_config_seeds_uses_seed_range_when_present(tmp_path: Path) -> None:
+    config_path = tmp_path / "a.json"
+    config_path.write_text(
+        (
+            "{"
+            '"mutation_seed": 42,'
+            '"population_size": 12,'
+            '"target_population_size": 12,'
+            '"survivors_count": 4,'
+            '"generations_planned": 25,'
+            '"seed_start": 100,'
+            '"seed_count": 4'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    assert resolve_config_seeds(config_path) == [100, 101, 102, 103]
+
+
+def test_resolve_config_seeds_falls_back_to_default_seed_plan(tmp_path: Path) -> None:
+    config_path = tmp_path / "a.json"
+    config_path.write_text(
+        (
+            "{"
+            '"mutation_seed": 42,'
+            '"population_size": 12,'
+            '"target_population_size": 12,'
+            '"survivors_count": 4,'
+            '"generations_planned": 25'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    assert resolve_config_seeds(config_path) == build_default_multiseed_seeds()
+
+
+def test_resolve_seed_map_applies_presets_to_config_defined_seeds(tmp_path: Path) -> None:
+    config_path = tmp_path / "a.json"
+    config_path.write_text(
+        (
+            "{"
+            '"mutation_seed": 42,'
+            '"population_size": 12,'
+            '"target_population_size": 12,'
+            '"survivors_count": 4,'
+            '"generations_planned": 25,'
+            '"seeds": [201, 202, 203, 204, 205, 206, 207]'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    seed_map = resolve_seed_map([config_path], "standard")
+
+    assert seed_map[config_path] == [201, 202, 203, 204, 205, 206]
+
+
+def test_format_seed_plan_supports_per_config_seed_lists(tmp_path: Path) -> None:
+    config_a = tmp_path / "a.json"
+    config_b = tmp_path / "b.json"
+
+    formatted = format_seed_plan(
+        {
+            config_a: [101, 102],
+            config_b: [201, 202],
+        }
+    )
+
+    assert formatted == "a.json: 101, 102 | b.json: 201, 202"
 
 
 def test_run_multiseed_experiment_reports_effective_manifest_dataset_root(

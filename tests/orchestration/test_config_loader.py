@@ -50,3 +50,50 @@ def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
 
     assert config.trade_cost_rate == 0.0
     assert config.cost_penalty_weight == 0.25
+
+
+def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "seeds": [101, 102, 103],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.seeds == [101, 102, 103]
+    assert config.seed_start is None
+    assert config.seed_count is None
+
+
+def test_load_run_config_reads_seed_range(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "seed_start": 100,
+                "seed_count": 6,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.seeds is None
+    assert config.seed_start == 100
+    assert config.seed_count == 6

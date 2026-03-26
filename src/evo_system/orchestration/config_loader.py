@@ -25,4 +25,19 @@ def load_run_config(config_path: str) -> RunConfig:
         mutation_profile=mutation_profile,
         dataset_mode=str(data.get("dataset_mode", "legacy")),
         dataset_catalog_id=data.get("dataset_catalog_id"),
+        seeds=(
+            [int(seed) for seed in data["seeds"]]
+            if "seeds" in data and data["seeds"] is not None
+            else None
+        ),
+        seed_start=(
+            int(data["seed_start"])
+            if "seed_start" in data and data["seed_start"] is not None
+            else None
+        ),
+        seed_count=(
+            int(data["seed_count"])
+            if "seed_count" in data and data["seed_count"] is not None
+            else None
+        ),
     )

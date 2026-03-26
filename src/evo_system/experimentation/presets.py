@@ -24,15 +24,29 @@ PRESET_SCREENING = ExperimentPreset(
     max_seeds=4,
 )
 
+PRESET_STANDARD = ExperimentPreset(
+    name="standard",
+    generations=25,
+    max_seeds=6,
+)
+
+PRESET_EXTENDED = ExperimentPreset(
+    name="extended",
+    generations=25,
+    max_seeds=10,
+)
+
 PRESET_FULL = ExperimentPreset(
     name="full",
     generations=25,
-    max_seeds=6,
+    max_seeds=20,
 )
 
 PRESETS_BY_NAME = {
     PRESET_QUICK.name: PRESET_QUICK,
     PRESET_SCREENING.name: PRESET_SCREENING,
+    PRESET_STANDARD.name: PRESET_STANDARD,
+    PRESET_EXTENDED.name: PRESET_EXTENDED,
     PRESET_FULL.name: PRESET_FULL,
 }
 

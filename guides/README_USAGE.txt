@@ -73,10 +73,16 @@ screening
 faster
 exploratory
 useful for comparing configs
+standard
+baseline multiseed validation
+same intensity as the old full preset
+extended
+broader validation
+more seeds than standard
 full
-slower
-more stable
-better for validation
+heaviest preset
+highest seed count
+best for deep validation
 🧠 Important Behavior
 Only one champion per run is persisted
 It is the best persistable champion across the run

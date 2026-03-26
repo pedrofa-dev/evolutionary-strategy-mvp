@@ -40,6 +40,37 @@ def test_run_config_accepts_manifest_mode_with_catalog_id() -> None:
     assert config.dataset_catalog_id == "core_1h_spot"
 
 
+def test_run_config_accepts_explicit_seeds() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        seeds=[101, 102, 103],
+    )
+
+    assert config.seeds == [101, 102, 103]
+    assert config.seed_start is None
+    assert config.seed_count is None
+
+
+def test_run_config_accepts_seed_start_and_seed_count() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        seed_start=100,
+        seed_count=6,
+    )
+
+    assert config.seeds is None
+    assert config.seed_start == 100
+    assert config.seed_count == 6
+
+
 def test_run_config_rejects_non_positive_population_size() -> None:
     with pytest.raises(ValueError, match="population_size must be greater than 0"):
         RunConfig(
@@ -118,4 +149,30 @@ def test_run_config_requires_catalog_id_for_manifest_mode() -> None:
             survivors_count=4,
             generations_planned=25,
             dataset_mode="manifest",
+        )
+
+
+def test_run_config_rejects_seed_start_without_seed_count() -> None:
+    with pytest.raises(ValueError, match="seed_start and seed_count must be provided together"):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            seed_start=100,
+        )
+
+
+def test_run_config_rejects_combining_seeds_with_seed_range() -> None:
+    with pytest.raises(ValueError, match="seed_start/seed_count cannot be combined with seeds"):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            seeds=[101, 102],
+            seed_start=100,
+            seed_count=6,
         )

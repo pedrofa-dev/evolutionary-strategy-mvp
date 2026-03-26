@@ -15,6 +15,9 @@ class RunConfig:
     cost_penalty_weight: float = 0.25
     dataset_mode: str = "legacy"
     dataset_catalog_id: str | None = None
+    seeds: list[int] | None = None
+    seed_start: int | None = None
+    seed_count: int | None = None
 
     def __post_init__(self) -> None:
         if self.population_size <= 0:
@@ -44,3 +47,17 @@ class RunConfig:
         if self.dataset_mode == "manifest":
             if not isinstance(self.dataset_catalog_id, str) or not self.dataset_catalog_id.strip():
                 raise ValueError("dataset_catalog_id is required when dataset_mode is 'manifest'")
+
+        if self.seeds is not None:
+            if not self.seeds:
+                raise ValueError("seeds cannot be empty when provided")
+            if any(not isinstance(seed, int) for seed in self.seeds):
+                raise ValueError("seeds must contain integers only")
+            if self.seed_start is not None or self.seed_count is not None:
+                raise ValueError("seed_start/seed_count cannot be combined with seeds")
+
+        if self.seed_start is not None or self.seed_count is not None:
+            if self.seed_start is None or self.seed_count is None:
+                raise ValueError("seed_start and seed_count must be provided together")
+            if self.seed_count <= 0:
+                raise ValueError("seed_count must be greater than 0")

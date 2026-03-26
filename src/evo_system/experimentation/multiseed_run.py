@@ -42,10 +42,12 @@ from evo_system.experimentation.presets import (
     get_preset_by_name,
 )
 from evo_system.experimentation.single_run import execute_historical_run
+from evo_system.orchestration.config_loader import load_run_config
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
-DEFAULT_SEEDS = [101, 102, 103, 104, 105, 106]
+DEFAULT_SEED_START = 101
+DEFAULT_SEED_COUNT = 6
 DEFAULT_CONTEXT_NAME: str | None = None
 
 
@@ -123,6 +125,56 @@ def load_config(config_path: Path) -> dict:
     return json.loads(config_path.read_text(encoding="utf-8"))
 
 
+def build_default_multiseed_seeds() -> list[int]:
+    return list(range(DEFAULT_SEED_START, DEFAULT_SEED_START + DEFAULT_SEED_COUNT))
+
+
+def resolve_config_seeds(config_path: Path) -> list[int]:
+    config = load_run_config(str(config_path))
+
+    if config.seeds is not None:
+        return list(config.seeds)
+
+    if config.seed_start is not None and config.seed_count is not None:
+        return list(range(config.seed_start, config.seed_start + config.seed_count))
+
+    return build_default_multiseed_seeds()
+
+
+def resolve_seed_map(
+    config_paths: list[Path],
+    preset_name: str | None,
+) -> dict[Path, list[int]]:
+    preset = get_preset_by_name(preset_name)
+    seed_map: dict[Path, list[int]] = {}
+
+    for config_path in config_paths:
+        seed_map[config_path] = apply_preset_to_seeds(
+            resolve_config_seeds(config_path),
+            preset,
+        )
+
+    return seed_map
+
+
+def format_seed_plan(seed_map: dict[Path, list[int]]) -> str:
+    unique_seed_lists = {
+        tuple(seeds)
+        for seeds in seed_map.values()
+    }
+
+    if len(unique_seed_lists) == 1:
+        seeds = list(next(iter(unique_seed_lists)))
+        return ", ".join(str(seed) for seed in seeds)
+
+    parts: list[str] = []
+    for config_path, seeds in sorted(seed_map.items()):
+        parts.append(
+            f"{config_path.name}: {', '.join(str(seed) for seed in seeds)}"
+        )
+    return " | ".join(parts)
+
+
 def write_temp_config(config_data: dict) -> Path:
     temp_file = tempfile.NamedTemporaryFile(
         mode="w",
@@ -157,16 +209,15 @@ def create_multiseed_dir() -> Path:
 
 
 def build_multiseed_jobs(
-    config_paths: list[Path],
-    seeds: list[int],
+    seed_map: dict[Path, list[int]],
     output_dir: Path,
     dataset_root: Path,
     context_name: str | None,
     preset_name: str | None,
 ) -> list[MultiseedJob]:
     jobs: list[MultiseedJob] = []
-    for config_path in config_paths:
-        for seed in seeds:
+    for config_path in sorted(seed_map):
+        for seed in seed_map[config_path]:
             jobs.append(
                 MultiseedJob(
                     config_path=config_path,
@@ -272,16 +323,15 @@ def is_champion(summary: HistoricalRunSummary) -> bool:
 
 def execute_multiseed_runs(
     config_paths: list[Path],
-    seeds: list[int],
     output_dir: Path,
     dataset_root: Path,
     context_name: str | None,
     preset_name: str | None = None,
     requested_parallel_workers: int = 1,
 ) -> list[HistoricalRunSummary]:
+    seed_map = resolve_seed_map(config_paths, preset_name)
     jobs = build_multiseed_jobs(
-        config_paths=config_paths,
-        seeds=seeds,
+        seed_map=seed_map,
         output_dir=output_dir,
         dataset_root=dataset_root,
         context_name=context_name,
@@ -539,7 +589,7 @@ def build_grouped_summary_lines(
 
 def write_multiseed_summary(
     summaries: list[HistoricalRunSummary],
-    seeds: list[int],
+    seed_map: dict[Path, list[int]],
     output_dir: Path,
     dataset_root_label: str,
     context_name: str | None,
@@ -547,6 +597,12 @@ def write_multiseed_summary(
     effective_generations: int | None,
 ) -> Path:
     summary_path = output_dir / "multiseed_summary.txt"
+    unique_seed_lists = {tuple(seeds) for seeds in seed_map.values()}
+    seed_count_label = (
+        str(len(next(iter(unique_seed_lists))))
+        if len(unique_seed_lists) == 1
+        else "variable"
+    )
 
     lines = [
         f"Multiseed batch executed at: {datetime.now().isoformat(timespec='seconds')}",
@@ -555,8 +611,8 @@ def write_multiseed_summary(
         f"Context name: {context_name or 'none'}",
         f"Dataset root: {dataset_root_label}",
         f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
-        f"Seeds per config: {len(seeds)}",
-        f"Seeds used: {', '.join(str(seed) for seed in seeds)}",
+        f"Seeds per config: {seed_count_label}",
+        f"Seeds used: {format_seed_plan(seed_map)}",
         f"Total runs: {len(summaries)}",
         "",
         "Champion criteria:",
@@ -588,9 +644,9 @@ def run_multiseed_experiment(
         return None
 
     preset = get_preset_by_name(preset_name)
-    seeds = apply_preset_to_seeds(DEFAULT_SEEDS, preset)
+    seed_map = resolve_seed_map(config_paths, preset_name)
     effective_generations = preset.generations if preset is not None else None
-    job_count = len(config_paths) * len(seeds)
+    job_count = sum(len(seeds) for seeds in seed_map.values())
     effective_dataset_roots = resolve_effective_dataset_roots(
         config_paths=config_paths,
         requested_dataset_root=dataset_root,
@@ -603,7 +659,7 @@ def run_multiseed_experiment(
 
     print("Execution mode: multiseed")
     print(f"Found {len(config_paths)} config files.")
-    print(f"Using seeds: {seeds}")
+    print(f"Using seeds: {format_seed_plan(seed_map)}")
     print(f"Jobs scheduled: {job_count}")
     print(f"Preset: {preset_name or 'none'}")
     print(
@@ -624,7 +680,6 @@ def run_multiseed_experiment(
 
     summaries = execute_multiseed_runs(
         config_paths=config_paths,
-        seeds=seeds,
         output_dir=output_dir,
         dataset_root=dataset_root,
         context_name=context_name,
@@ -634,7 +689,7 @@ def run_multiseed_experiment(
 
     summary_path = write_multiseed_summary(
         summaries=summaries,
-        seeds=seeds,
+        seed_map=seed_map,
         output_dir=output_dir,
         dataset_root_label=dataset_root_label,
         context_name=context_name,

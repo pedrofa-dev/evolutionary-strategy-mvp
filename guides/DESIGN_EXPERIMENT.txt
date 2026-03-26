@@ -58,7 +58,9 @@ Evolution is stochastic.
 Presets define how “serious” the experiment is.
 
 screening → fast, exploratory
-full → slower, more reliable
+standard → default multiseed baseline
+extended → broader validation
+full → longest and most demanding preset
 🧪 Types of Experiments
 🔹 1. Screening Experiments
 
@@ -84,7 +86,7 @@ confirm robustness
 
 Setup:
 
-preset=full
+preset=standard
 multiseed
 diverse datasets
 
