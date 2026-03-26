@@ -1,25 +1,85 @@
-# Virtual environment
+# =========================
+# Virtual environments
+# =========================
 .venv/
+env/
+venv/
 
+# =========================
 # Python cache
+# =========================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Test cache
+# =========================
+# Test / lint / type caches
+# =========================
 .pytest_cache/
-
-# Linter cache
 .ruff_cache/
+.mypy_cache/
+.pyre/
 
+# =========================
 # OS files
+# =========================
 .DS_Store
 Thumbs.db
 
-# SQLite database
-data/*.db
-
-# IDE (optional)
+# =========================
+# IDE
+# =========================
 .vscode/
+.idea/
 
-# Runs
-artifacts/runs
+# =========================
+# Databases
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Coverage
+# =========================
+.coverage
+htmlcov/
+
+# =========================
+# Artifacts (generated outputs)
+# =========================
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/README.md
+
+# =========================
+# Market data (downloaded)
+# =========================
+data/market_data/*
+!data/market_data/.gitkeep
+!data/market_data/README.md
+
+# =========================
+# Built datasets (generated)
+# =========================
+data/datasets/*
+!data/datasets/.gitkeep
+!data/datasets/README.md
+
+# =========================
+# Legacy processed data
+# =========================
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/README.md
+
+# =========================
+# Jupyter (if you ever use it)
+# =========================
+.ipynb_checkpoints/
