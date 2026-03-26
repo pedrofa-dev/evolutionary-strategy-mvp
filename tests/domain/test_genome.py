@@ -38,6 +38,8 @@ def test_genome_to_dict_returns_serializable_data() -> None:
         "weight_dist_ma": 0.0,
         "weight_range_pos": 0.0,
         "weight_vol_ratio": 0.0,
+        "weight_trend_strength": 0.0,
+        "weight_realized_volatility": 0.0,
     }
 
 
@@ -66,6 +68,8 @@ def test_genome_from_dict_builds_valid_genome() -> None:
         "weight_dist_ma": -0.4,
         "weight_range_pos": 0.5,
         "weight_vol_ratio": -0.3,
+        "weight_trend_strength": 0.6,
+        "weight_realized_volatility": -0.2,
     }
 
     genome = Genome.from_dict(data)
@@ -93,6 +97,8 @@ def test_genome_from_dict_builds_valid_genome() -> None:
     assert genome.weight_dist_ma == -0.4
     assert genome.weight_range_pos == 0.5
     assert genome.weight_vol_ratio == -0.3
+    assert genome.weight_trend_strength == 0.6
+    assert genome.weight_realized_volatility == -0.2
 
 
 def test_genome_from_dict_supports_legacy_data_without_feature_fields() -> None:
@@ -134,6 +140,8 @@ def test_genome_from_dict_supports_legacy_data_without_feature_fields() -> None:
     assert genome.weight_dist_ma == 0.0
     assert genome.weight_range_pos == 0.0
     assert genome.weight_vol_ratio == 0.0
+    assert genome.weight_trend_strength == 0.0
+    assert genome.weight_realized_volatility == 0.0
 
 
 def test_genome_validation_fails_when_close_threshold_is_greater_than_open() -> None:
@@ -250,6 +258,8 @@ def test_genome_copy_with_can_update_signal_and_feature_fields() -> None:
         weight_dist_ma=-0.2,
         weight_range_pos=0.4,
         weight_vol_ratio=-0.5,
+        weight_trend_strength=0.3,
+        weight_realized_volatility=-0.6,
     )
 
     assert updated.use_momentum is True
@@ -270,6 +280,8 @@ def test_genome_copy_with_can_update_signal_and_feature_fields() -> None:
     assert updated.weight_dist_ma == -0.2
     assert updated.weight_range_pos == 0.4
     assert updated.weight_vol_ratio == -0.5
+    assert updated.weight_trend_strength == 0.3
+    assert updated.weight_realized_volatility == -0.6
 
     assert genome.use_momentum is False
     assert genome.momentum_threshold == 0.0
@@ -278,6 +290,8 @@ def test_genome_copy_with_can_update_signal_and_feature_fields() -> None:
     assert genome.trend_window == 5
     assert genome.use_exit_momentum is False
     assert genome.exit_momentum_threshold == 0.0
+    assert genome.weight_trend_strength == 0.0
+    assert genome.weight_realized_volatility == 0.0
     assert genome.ret_short_window == 3
     assert genome.ret_mid_window == 12
     assert genome.ma_window == 20

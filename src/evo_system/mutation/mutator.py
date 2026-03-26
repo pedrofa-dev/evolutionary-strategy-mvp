@@ -113,6 +113,10 @@ class Mutator:
         weight_dist_ma = self._mutate_weight(genome.weight_dist_ma)
         weight_range_pos = self._mutate_weight(genome.weight_range_pos)
         weight_vol_ratio = self._mutate_weight(genome.weight_vol_ratio)
+        weight_trend_strength = self._mutate_weight(genome.weight_trend_strength)
+        weight_realized_volatility = self._mutate_weight(
+            genome.weight_realized_volatility
+        )
 
         return Genome(
             threshold_open=threshold_open,
@@ -138,6 +142,8 @@ class Mutator:
             weight_dist_ma=weight_dist_ma,
             weight_range_pos=weight_range_pos,
             weight_vol_ratio=weight_vol_ratio,
+            weight_trend_strength=weight_trend_strength,
+            weight_realized_volatility=weight_realized_volatility,
         )
 
     # =========================
@@ -169,6 +175,8 @@ class Mutator:
             weight_dist_ma=self.random.uniform(-2, 2),
             weight_range_pos=self.random.uniform(-2, 2),
             weight_vol_ratio=self.random.uniform(-2, 2),
+            weight_trend_strength=self.random.uniform(-2, 2),
+            weight_realized_volatility=self.random.uniform(-2, 2),
         )
 
     # =========================

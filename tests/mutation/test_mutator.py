@@ -108,3 +108,41 @@ def test_mutate_can_produce_valid_mutations_repeatedly() -> None:
     for _ in range(50):
         mutated = mutator.mutate(genome)
         mutated.validate()
+
+
+def test_mutate_updates_new_feature_weights_with_small_mutation() -> None:
+    genome = Genome(
+        threshold_open=0.8,
+        threshold_close=0.4,
+        position_size=0.2,
+        stop_loss=0.05,
+        take_profit=0.1,
+        weight_trend_strength=0.2,
+        weight_realized_volatility=-0.3,
+    )
+
+    profile = MutationProfile(strong_mutation_probability=0.0)
+    mutator = Mutator(seed=42, profile=profile)
+
+    mutated = mutator.mutate(genome)
+
+    assert mutated.weight_trend_strength != genome.weight_trend_strength
+    assert mutated.weight_realized_volatility != genome.weight_realized_volatility
+
+
+def test_strong_mutate_sets_new_feature_weights_in_valid_range() -> None:
+    genome = Genome(
+        threshold_open=0.8,
+        threshold_close=0.4,
+        position_size=0.2,
+        stop_loss=0.05,
+        take_profit=0.1,
+    )
+
+    profile = MutationProfile(strong_mutation_probability=1.0)
+    mutator = Mutator(seed=7, profile=profile)
+
+    mutated = mutator.mutate(genome)
+
+    assert -2.0 <= mutated.weight_trend_strength <= 2.0
+    assert -2.0 <= mutated.weight_realized_volatility <= 2.0

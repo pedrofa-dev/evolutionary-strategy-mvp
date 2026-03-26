@@ -1,0 +1,63 @@
+# Curated dataset catalog for layered validation experiments.
+# This catalog makes dataset intent explicit across train, validation,
+# external, and audit layers without changing the current runtime yet.
+# The current folder-based pipeline remains temporarily supported while
+# the repository migrates toward catalog-driven dataset selection.
+
+catalog_id: sol_1h_spot
+description: Curated 1h spot dataset windows for SOLUSDT only.
+market_type: spot
+timeframe: 1h
+
+datasets:
+  - id: SOLUSDT_1h_2023-01-15_2023-04-30
+    symbol: SOLUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-01-15
+    end: 2023-04-30
+    layer: train
+    regime_primary: recovery_trend
+    regime_secondary: squeeze_breakout
+    volatility: high
+    event_tag: post_bear_recovery
+    notes: High-beta recovery window with strong rebounds and repeated continuation bursts after 2022 stress.
+
+  - id: SOLUSDT_1h_2021-08-01_2021-11-15
+    symbol: SOLUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-08-01
+    end: 2021-11-15
+    layer: validation
+    regime_primary: bullish_trend
+    regime_secondary: trend_reacceleration
+    volatility: extreme
+    event_tag: altcoin_expansion
+    notes: Fast directional advance with strong beta, useful for validating generalization into aggressive momentum regimes.
+
+  - id: SOLUSDT_1h_2023-10-15_2023-12-31
+    symbol: SOLUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-10-15
+    end: 2023-12-31
+    layer: external
+    regime_primary: bullish_breakout
+    regime_secondary: regime_shift
+    volatility: extreme
+    event_tag: altcoin_repricing_rally
+    notes: Strong external rally window with very high beta and wide intraday swings during the late-2023 regime shift.
+
+  - id: SOLUSDT_1h_2024-02-01_2024-04-15
+    symbol: SOLUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-02-01
+    end: 2024-04-15
+    layer: audit
+    regime_primary: bullish_trend
+    regime_secondary: momentum_crowding
+    volatility: extreme
+    event_tag: high_beta_rotation
+    notes: Audit window for later review in a high-beta upside phase with strong expansions and sharp pullbacks.

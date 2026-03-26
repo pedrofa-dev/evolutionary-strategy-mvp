@@ -269,3 +269,35 @@ def test_historical_environment_applies_trade_cost_on_forced_final_close() -> No
     assert result.trades == 1
     assert result.profit == (10 / 110) - 0.01
     assert result.cost == 0.01
+
+
+def test_historical_environment_uses_new_feature_weights_without_breaking_execution() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 101, 99, 100),
+        HistoricalCandle("2", 100, 104, 99, 103),
+        HistoricalCandle("3", 103, 108, 102, 107),
+        HistoricalCandle("4", 107, 110, 105, 106),
+        HistoricalCandle("5", 106, 112, 105, 111),
+        HistoricalCandle("6", 111, 115, 109, 114),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.02,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+            ma_window=4,
+            vol_long_window=4,
+            weight_trend_strength=1.0,
+            weight_realized_volatility=1.0,
+        )
+    )
+
+    result = environment.run_episode(agent)
+
+    assert result.trades >= 0
+    assert isinstance(result.profit, float)

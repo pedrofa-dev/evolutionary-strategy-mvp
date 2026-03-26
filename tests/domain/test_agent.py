@@ -59,6 +59,8 @@ def test_agent_to_dict_returns_serializable_data() -> None:
             "weight_dist_ma": 0.0,
             "weight_range_pos": 0.0,
             "weight_vol_ratio": 0.0,
+            "weight_trend_strength": 0.0,
+            "weight_realized_volatility": 0.0,
         },
     }
 

@@ -36,6 +36,8 @@ class HistoricalEnvironment:
         self._range_position_cache: dict[int, list[float]] = {}
         self._returns_cache: dict[int, list[float]] = {}
         self._vol_ratio_cache: dict[tuple[int, int], list[float]] = {}
+        self._trend_strength_cache: dict[int, list[float]] = {}
+        self._realized_volatility_cache: dict[int, list[float]] = {}
 
     def run_episode(self, agent: Agent) -> EpisodeResult:
         metrics = self.get_episode_diagnostics(agent)
@@ -70,6 +72,10 @@ class HistoricalEnvironment:
             genome.vol_short_window,
             genome.vol_long_window,
         )
+        trend_strength_series = self._get_trend_strength_series(genome.ma_window)
+        realized_volatility_series = self._get_realized_volatility_series(
+            genome.vol_long_window
+        )
 
         has_feature_weights = self._has_feature_weights(agent)
 
@@ -85,6 +91,9 @@ class HistoricalEnvironment:
                     + genome.weight_dist_ma * ma_distance_series[index]
                     + genome.weight_range_pos * range_position_series[index]
                     + genome.weight_vol_ratio * vol_ratio_series[index]
+                    + genome.weight_trend_strength * trend_strength_series[index]
+                    + genome.weight_realized_volatility
+                    * realized_volatility_series[index]
                 )
             else:
                 entry_signal = normalized_price
@@ -175,6 +184,8 @@ class HistoricalEnvironment:
                 genome.weight_dist_ma,
                 genome.weight_range_pos,
                 genome.weight_vol_ratio,
+                genome.weight_trend_strength,
+                genome.weight_realized_volatility,
             )
         )
 
@@ -297,6 +308,62 @@ class HistoricalEnvironment:
             series[index] = self._safe_ratio(current_close - previous_close, previous_close)
 
         self._returns_cache[window] = series
+        return series
+
+    def _get_trend_strength_series(self, ma_window: int) -> list[float]:
+        cached = self._trend_strength_cache.get(ma_window)
+        if cached is not None:
+            return cached
+
+        ma_short_window = max(2, ma_window // 2)
+        series: list[float] = []
+
+        for index, current_close in enumerate(self._closes):
+            if current_close == 0.0:
+                series.append(0.0)
+                continue
+
+            short_start = max(0, index - ma_short_window + 1)
+            long_start = max(0, index - ma_window + 1)
+
+            short_closes = self._closes[short_start : index + 1]
+            long_closes = self._closes[long_start : index + 1]
+
+            if not short_closes or not long_closes:
+                series.append(0.0)
+                continue
+
+            ma_short = sum(short_closes) / len(short_closes)
+            ma_long = sum(long_closes) / len(long_closes)
+            raw_strength = self._safe_ratio(ma_short - ma_long, current_close)
+            series.append(self._clamp(raw_strength * 20.0, -1.0, 1.0))
+
+        self._trend_strength_cache[ma_window] = series
+        return series
+
+    def _get_realized_volatility_series(self, vol_window: int) -> list[float]:
+        cached = self._realized_volatility_cache.get(vol_window)
+        if cached is not None:
+            return cached
+
+        returns_series = self._get_returns_series(vol_window)
+        series: list[float] = []
+
+        for index in range(len(self._closes)):
+            recent_returns = self._get_recent_returns_from_series(
+                returns_series,
+                index=index,
+                window=vol_window,
+            )
+
+            if len(recent_returns) < 2:
+                series.append(0.0)
+                continue
+
+            realized_volatility = pstdev(recent_returns)
+            series.append(self._clamp(realized_volatility * 50.0, -1.0, 1.0))
+
+        self._realized_volatility_cache[vol_window] = series
         return series
 
     def _get_vol_ratio_series(self, short_window: int, long_window: int) -> list[float]:

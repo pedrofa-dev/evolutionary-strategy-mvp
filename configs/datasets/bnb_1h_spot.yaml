@@ -1,0 +1,63 @@
+# Curated dataset catalog for layered validation experiments.
+# This catalog makes dataset intent explicit across train, validation,
+# external, and audit layers without changing the current runtime yet.
+# The current folder-based pipeline remains temporarily supported while
+# the repository migrates toward catalog-driven dataset selection.
+
+catalog_id: bnb_1h_spot
+description: Curated 1h spot dataset windows for BNBUSDT only.
+market_type: spot
+timeframe: 1h
+
+datasets:
+  - id: BNBUSDT_1h_2021-05-19_2021-07-20
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-05-19
+    end: 2021-07-20
+    layer: train
+    regime_primary: bearish_shock
+    regime_secondary: deleveraging_range
+    volatility: extreme
+    event_tag: broad_market_liquidation
+    notes: Sharp bear-phase repricing window with unstable rebounds and heavy stress on trend persistence.
+
+  - id: BNBUSDT_1h_2022-09-01_2022-10-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-09-01
+    end: 2022-10-15
+    layer: validation
+    regime_primary: compressed_range
+    regime_secondary: low_conviction_bear
+    volatility: low
+    event_tag: pre_ftx_compression
+    notes: Lower-volatility consolidation window useful for checking whether directional bias is too dependent on impulse phases.
+
+  - id: BNBUSDT_1h_2022-11-01_2022-12-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-11-01
+    end: 2022-12-15
+    layer: external
+    regime_primary: crisis_breakdown
+    regime_secondary: panic_repricing
+    volatility: extreme
+    event_tag: ftx_collapse
+    notes: Crisis-driven external validation window with abrupt repricing, heavy downside pressure, and unstable rebounds.
+
+  - id: BNBUSDT_1h_2024-06-15_2024-08-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-06-15
+    end: 2024-08-15
+    layer: audit
+    regime_primary: choppy_range
+    regime_secondary: post_trend_digest
+    volatility: medium
+    event_tag: summer_rotation
+    notes: Audit window with rotational behavior and weaker directional persistence after the earlier trend phase.
