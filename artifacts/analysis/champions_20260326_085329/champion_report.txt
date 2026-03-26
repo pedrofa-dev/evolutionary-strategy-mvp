@@ -1,0 +1,97 @@
+Champion analysis report
+Generated at: 2026-03-26T08:53:29
+Champion count: 9
+Run filter: none
+Config filter: none
+
+Context consistency
+  Review context mixing before comparing champions.
+  WARNING: multiple dataset_signature values detected. This report mixes different dataset pools or sampling contexts.
+
+Experimental context summary
+  context=unknown | context_name=none | dataset_root=data\processed | train_dataset_count_available=2 | validation_dataset_count_available=2 | train_sample_size=2 | dataset_signature=5fbc0bb80ed14de24dddbf43c47313af181f31938788a7a14f15abdcca15f601 | champions=9 | mean_validation_selection=30.576989 | mean_validation_profit=0.047501
+
+Config summary by context
+  Context: unknown
+  run_balanced.json: champions=4 | mean_validation_selection=14.980514 | mean_validation_profit=0.022491 | mean_validation_drawdown=0.019140 | mean_validation_trades=20.50 | mean_abs_selection_gap=0.926631
+  run_exploratory.json: champions=3 | mean_validation_selection=30.848017 | mean_validation_profit=0.050978 | mean_validation_drawdown=0.044205 | mean_validation_trades=15.67 | mean_abs_selection_gap=1.581559
+  run_f.json: champions=1 | mean_validation_selection=14.662879 | mean_validation_profit=0.025401 | mean_validation_drawdown=0.021594 | mean_validation_trades=12.50 | mean_abs_selection_gap=1.188994
+  run_i.json: champions=1 | mean_validation_selection=108.063910 | mean_validation_profit=0.159211 | mean_validation_drawdown=0.105074 | mean_validation_trades=18.00 | mean_abs_selection_gap=14.652560
+
+Genome numeric summary
+  threshold_open: count=9 | mean=0.504533 | median=0.436850 | std=0.148237 | min=0.418958 | p25=0.431115 | p75=0.470412 | max=0.901590
+  threshold_close: count=9 | mean=0.058393 | median=0.071700 | std=0.032346 | min=0.000000 | p25=0.029196 | p75=0.074624 | max=0.101864
+  position_size: count=9 | mean=0.169541 | median=0.116094 | std=0.108521 | min=0.086067 | p25=0.088940 | p75=0.188149 | max=0.441214
+  stop_loss: count=9 | mean=0.182032 | median=0.040728 | std=0.297493 | min=0.032967 | p25=0.033886 | p75=0.040982 | max=0.947745
+  take_profit: count=9 | mean=0.204680 | median=0.192278 | std=0.108241 | min=0.087998 | p25=0.176636 | p75=0.209548 | max=0.486563
+  momentum_threshold: count=9 | mean=-0.001410 | median=-0.001155 | std=0.002540 | min=-0.006326 | p25=-0.002998 | p75=0.001006 | max=0.001490
+  trend_threshold: count=9 | mean=0.000536 | median=0.001142 | std=0.002720 | min=-0.006434 | p25=0.000555 | p75=0.001510 | max=0.003374
+  trend_window: count=9 | mean=10.000000 | median=5.000000 | std=12.337837 | min=2.000000 | p25=4.000000 | p75=8.000000 | max=44.000000
+  exit_momentum_threshold: count=9 | mean=0.000554 | median=0.001010 | std=0.002412 | min=-0.005747 | p25=0.000174 | p75=0.001545 | max=0.003182
+  ret_short_window: count=9 | mean=3.555556 | median=3.000000 | std=1.422916 | min=2.000000 | p25=3.000000 | p75=4.000000 | max=6.000000
+  ret_mid_window: count=9 | mean=15.000000 | median=10.000000 | std=13.308310 | min=5.000000 | p25=5.000000 | p75=11.000000 | max=40.000000
+  ma_window: count=9 | mean=18.555556 | median=7.000000 | std=24.079088 | min=5.000000 | p25=5.000000 | p75=14.000000 | max=82.000000
+  range_window: count=9 | mean=8.555556 | median=9.000000 | std=0.831479 | min=7.000000 | p25=8.000000 | p75=9.000000 | max=10.000000
+  vol_short_window: count=9 | mean=5.444444 | median=5.000000 | std=2.362255 | min=2.000000 | p25=3.000000 | p75=8.000000 | max=9.000000
+  vol_long_window: count=9 | mean=22.777778 | median=14.000000 | std=18.286472 | min=11.000000 | p25=14.000000 | p75=14.000000 | max=65.000000
+  weight_ret_short: count=9 | mean=1.226239 | median=1.140453 | std=0.421698 | min=0.423970 | p25=1.056548 | p75=1.326664 | max=2.112033
+  weight_ret_mid: count=9 | mean=0.832123 | median=1.256233 | std=0.721047 | min=-0.564120 | p25=0.539234 | p75=1.317393 | max=1.500378
+  weight_dist_ma: count=9 | mean=0.976712 | median=0.887855 | std=0.310696 | min=0.633670 | p25=0.763414 | p75=1.187548 | max=1.676883
+  weight_range_pos: count=9 | mean=-0.422246 | median=-0.832294 | std=0.809597 | min=-0.994531 | p25=-0.842741 | p75=-0.716401 | max=1.579045
+  weight_vol_ratio: count=9 | mean=-0.899485 | median=-1.040279 | std=0.719543 | min=-1.597230 | p25=-1.401944 | p75=-0.686698 | max=0.812870
+
+Signal usage summary
+  use_momentum: enabled=7 | disabled=2 | enabled_rate=77.78%
+  use_trend: enabled=5 | disabled=4 | enabled_rate=55.56%
+  use_exit_momentum: enabled=0 | disabled=9 | enabled_rate=0.00%
+
+Metric summary
+  train_selection: count=9 | mean=28.749684 | median=15.768435 | std=24.439150 | min=13.005445 | p25=13.720827 | p75=32.507978 | max=93.411351
+  train_profit: count=9 | mean=0.071314 | median=0.053514 | std=0.049594 | min=0.037406 | p25=0.037771 | p75=0.073840 | max=0.201954
+  train_drawdown: count=9 | mean=0.057593 | median=0.038758 | std=0.040652 | min=0.027166 | p25=0.029252 | p75=0.058502 | max=0.160654
+  train_trades: count=9 | mean=81.000000 | median=75.000000 | std=49.069112 | min=26.000000 | p25=55.000000 | p75=89.000000 | max=189.000000
+  validation_selection: count=9 | mean=30.576989 | median=16.349167 | std=28.415016 | min=14.006732 | p25=14.783079 | p75=30.833579 | max=108.063910
+  validation_profit: count=9 | mean=0.047501 | median=0.025660 | std=0.041869 | min=0.021353 | p25=0.021598 | p75=0.048619 | max=0.159211
+  validation_drawdown: count=9 | mean=0.037316 | median=0.021594 | std=0.027085 | min=0.018456 | p25=0.019702 | p75=0.044279 | max=0.105074
+  validation_trades: count=9 | mean=17.722222 | median=16.000000 | std=5.563328 | min=12.500000 | p25=14.000000 | p75=18.000000 | max=32.000000
+  selection_gap: count=9 | mean=-1.827304 | median=-1.001288 | std=4.692700 | min=-14.652560 | p25=-1.062251 | p75=-0.580732 | max=2.249109
+  validation_dispersion: count=9 | mean=9.819195 | median=9.609270 | std=6.236023 | min=0.437825 | p25=6.604325 | p75=11.770319 | max=23.964515
+
+Signal pair co-occurrence
+  use_momentum__use_trend: both=3 | left_only=4 | right_only=2 | neither=0 | both_rate=33.33%
+  use_momentum__use_exit_momentum: both=0 | left_only=7 | right_only=0 | neither=2 | both_rate=0.00%
+  use_trend__use_exit_momentum: both=0 | left_only=5 | right_only=0 | neither=4 | both_rate=0.00%
+
+Config summary
+  run_balanced.json: champions=4 | mean_validation_selection=14.980514 | mean_validation_profit=0.022491 | mean_validation_drawdown=0.019140 | mean_validation_trades=20.50 | mean_abs_selection_gap=0.926631
+  run_exploratory.json: champions=3 | mean_validation_selection=30.848017 | mean_validation_profit=0.050978 | mean_validation_drawdown=0.044205 | mean_validation_trades=15.67 | mean_abs_selection_gap=1.581559
+  run_f.json: champions=1 | mean_validation_selection=14.662879 | mean_validation_profit=0.025401 | mean_validation_drawdown=0.021594 | mean_validation_trades=12.50 | mean_abs_selection_gap=1.188994
+  run_i.json: champions=1 | mean_validation_selection=108.063910 | mean_validation_profit=0.159211 | mean_validation_drawdown=0.105074 | mean_validation_trades=18.00 | mean_abs_selection_gap=14.652560
+
+Recurrent patterns
+  Signal patterns:
+    use_momentum: type=recurrent_enabled | enabled_rate=77.78%
+    use_exit_momentum: type=recurrent_disabled | enabled_rate=0.00%
+  Concentrated numeric fields:
+    threshold_open: median=0.436850 | p25=0.431115 | p75=0.470412 | iqr_to_range_ratio=0.081422
+    stop_loss: median=0.040728 | p25=0.033886 | p75=0.040982 | iqr_to_range_ratio=0.007757
+    take_profit: median=0.192278 | p25=0.176636 | p75=0.209548 | iqr_to_range_ratio=0.082575
+    weight_ret_short: median=1.140453 | p25=1.056548 | p75=1.326664 | iqr_to_range_ratio=0.160015
+    weight_range_pos: median=-0.832294 | p25=-0.842741 | p75=-0.716401 | iqr_to_range_ratio=0.049091
+    weight_vol_ratio: median=-1.040279 | p25=-1.401944 | p75=-0.686698 | iqr_to_range_ratio=0.296770
+    validation_selection: median=16.349167 | p25=14.783079 | p75=30.833579 | iqr_to_range_ratio=0.170646
+    validation_profit: median=0.025660 | p25=0.021598 | p75=0.048619 | iqr_to_range_ratio=0.196006
+    validation_drawdown: median=0.021594 | p25=0.019702 | p75=0.044279 | iqr_to_range_ratio=0.283737
+    validation_trades: median=16.000000 | p25=14.000000 | p75=18.000000 | iqr_to_range_ratio=0.205128
+  Weight sign bias:
+    weight_ret_short: type=mostly_positive | rate=100.00%
+    weight_ret_mid: type=mostly_positive | rate=77.78%
+    weight_dist_ma: type=mostly_positive | rate=100.00%
+    weight_range_pos: type=mostly_negative | rate=77.78%
+    weight_vol_ratio: type=mostly_negative | rate=88.89%
+
+Top examples
+  best_validation_selection: id=2 | config=run_i.json | run_id=82a9d2a3-b676-433f-a0d8-e5b566c5ef2a | generation=25 | validation_selection=108.063910 | validation_profit=0.159211 | validation_drawdown=0.105074 | validation_trades=18.00 | selection_gap=-14.652560
+  best_validation_profit: id=2 | config=run_i.json | run_id=82a9d2a3-b676-433f-a0d8-e5b566c5ef2a | generation=25 | validation_selection=108.063910 | validation_profit=0.159211 | validation_drawdown=0.105074 | validation_trades=18.00 | selection_gap=-14.652560
+  lowest_validation_drawdown: id=6 | config=run_balanced.json | run_id=e99f0136-cd9d-428e-9489-a7947bfa4bbc | generation=15 | validation_selection=14.006732 | validation_profit=0.021598 | validation_drawdown=0.018456 | validation_trades=18.00 | selection_gap=-1.001288
+  lowest_abs_selection_gap: id=4 | config=run_balanced.json | run_id=43ef4ecb-dce4-4ec5-b27b-775f1f70773f | generation=34 | validation_selection=16.349167 | validation_profit=0.025660 | validation_drawdown=0.018701 | validation_trades=32.00 | selection_gap=-0.580732

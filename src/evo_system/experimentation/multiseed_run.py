@@ -32,7 +32,7 @@ from evo_system.experimentation.single_run import (
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
-DEFAULT_SEEDS = [101, 102, 103]
+DEFAULT_SEEDS = [101, 102, 103, 104, 105]
 DEFAULT_CONTEXT_NAME: str | None = None
 
 

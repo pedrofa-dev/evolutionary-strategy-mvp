@@ -1,8 +1,8 @@
 {
-  "population_size": 18,
-  "target_population_size": 18,
+  "population_size": 16,
+  "target_population_size": 16,
   "survivors_count": 5,
-  "generations_planned": 25,
+  "generations_planned": 35,
   "mutation_seed": 42,
   "trade_cost_rate": 0.0,
   "cost_penalty_weight": 0.0,

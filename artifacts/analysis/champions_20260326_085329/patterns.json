@@ -1,0 +1,982 @@
+{
+  "genome_numeric_summary": {
+    "threshold_open": {
+      "count": 9.0,
+      "mean": 0.5045333618889195,
+      "median": 0.4368503220907519,
+      "std": 0.14823718040729342,
+      "min": 0.41895809039380216,
+      "p25": 0.43111518821703537,
+      "p75": 0.4704118870633331,
+      "max": 0.9015896193870808
+    },
+    "threshold_close": {
+      "count": 9.0,
+      "mean": 0.05839267350829707,
+      "median": 0.07169969063960088,
+      "std": 0.03234584633334464,
+      "min": 0.0,
+      "p25": 0.029196455238520387,
+      "p75": 0.07462436003970022,
+      "max": 0.10186377728756614
+    },
+    "position_size": {
+      "count": 9.0,
+      "mean": 0.16954113570871376,
+      "median": 0.11609436114313998,
+      "std": 0.10852053262770968,
+      "min": 0.08606675236546277,
+      "p25": 0.0889401533527575,
+      "p75": 0.1881490417906696,
+      "max": 0.4412135693260739
+    },
+    "stop_loss": {
+      "count": 9.0,
+      "mean": 0.18203218281886097,
+      "median": 0.040727878777206836,
+      "std": 0.29749289837504944,
+      "min": 0.03296740587281896,
+      "p25": 0.03388596486436272,
+      "p75": 0.04098195457274604,
+      "max": 0.9477449958477699
+    },
+    "take_profit": {
+      "count": 9.0,
+      "mean": 0.2046795084558661,
+      "median": 0.19227756744154187,
+      "std": 0.10824140728264324,
+      "min": 0.08799762559010882,
+      "p25": 0.17663631157628387,
+      "p75": 0.2095477538550248,
+      "max": 0.48656270445429245
+    },
+    "momentum_threshold": {
+      "count": 9.0,
+      "mean": -0.0014103875484336524,
+      "median": -0.0011550147714978884,
+      "std": 0.0025395242152057426,
+      "min": -0.0063256395638549056,
+      "p25": -0.0029976688460151934,
+      "p75": 0.0010064879565587753,
+      "max": 0.0014898267914334104
+    },
+    "trend_threshold": {
+      "count": 9.0,
+      "mean": 0.0005363179925999709,
+      "median": 0.001142401740629758,
+      "std": 0.002720434002163528,
+      "min": -0.006433529225986506,
+      "p25": 0.0005554576844300509,
+      "p75": 0.001510315970102242,
+      "max": 0.003373840187893902
+    },
+    "trend_window": {
+      "count": 9.0,
+      "mean": 10.0,
+      "median": 5.0,
+      "std": 12.337837015547832,
+      "min": 2.0,
+      "p25": 4.0,
+      "p75": 8.0,
+      "max": 44.0
+    },
+    "exit_momentum_threshold": {
+      "count": 9.0,
+      "mean": 0.0005537152108478082,
+      "median": 0.001010150252068991,
+      "std": 0.0024119086591443406,
+      "min": -0.005746866718076407,
+      "p25": 0.00017388767684112423,
+      "p75": 0.0015448095924507784,
+      "max": 0.003182479300760482
+    },
+    "ret_short_window": {
+      "count": 9.0,
+      "mean": 3.5555555555555554,
+      "median": 3.0,
+      "std": 1.4229164972072996,
+      "min": 2.0,
+      "p25": 3.0,
+      "p75": 4.0,
+      "max": 6.0
+    },
+    "ret_mid_window": {
+      "count": 9.0,
+      "mean": 15.0,
+      "median": 10.0,
+      "std": 13.308309851784752,
+      "min": 5.0,
+      "p25": 5.0,
+      "p75": 11.0,
+      "max": 40.0
+    },
+    "ma_window": {
+      "count": 9.0,
+      "mean": 18.555555555555557,
+      "median": 7.0,
+      "std": 24.079087797003492,
+      "min": 5.0,
+      "p25": 5.0,
+      "p75": 14.0,
+      "max": 82.0
+    },
+    "range_window": {
+      "count": 9.0,
+      "mean": 8.555555555555555,
+      "median": 9.0,
+      "std": 0.8314794192830981,
+      "min": 7.0,
+      "p25": 8.0,
+      "p75": 9.0,
+      "max": 10.0
+    },
+    "vol_short_window": {
+      "count": 9.0,
+      "mean": 5.444444444444445,
+      "median": 5.0,
+      "std": 2.3622546250521443,
+      "min": 2.0,
+      "p25": 3.0,
+      "p75": 8.0,
+      "max": 9.0
+    },
+    "vol_long_window": {
+      "count": 9.0,
+      "mean": 22.77777777777778,
+      "median": 14.0,
+      "std": 18.286472096290062,
+      "min": 11.0,
+      "p25": 14.0,
+      "p75": 14.0,
+      "max": 65.0
+    },
+    "weight_ret_short": {
+      "count": 9.0,
+      "mean": 1.2262393990801843,
+      "median": 1.1404531959062578,
+      "std": 0.42169755430992,
+      "min": 0.4239698076046202,
+      "p25": 1.0565484906793112,
+      "p75": 1.3266642929350954,
+      "max": 2.112032511344489
+    },
+    "weight_ret_mid": {
+      "count": 9.0,
+      "mean": 0.8321225041342503,
+      "median": 1.256233086971111,
+      "std": 0.721047191391658,
+      "min": -0.5641195915228052,
+      "p25": 0.5392341327941358,
+      "p75": 1.3173930534578617,
+      "max": 1.50037822541463
+    },
+    "weight_dist_ma": {
+      "count": 9.0,
+      "mean": 0.9767118443912923,
+      "median": 0.8878550460647671,
+      "std": 0.31069638068775796,
+      "min": 0.6336700275707554,
+      "p25": 0.7634136940623162,
+      "p75": 1.1875477104029075,
+      "max": 1.6768827409825964
+    },
+    "weight_range_pos": {
+      "count": 9.0,
+      "mean": -0.4222459072671687,
+      "median": -0.8322938713817173,
+      "std": 0.8095966394529912,
+      "min": -0.994531113039401,
+      "p25": -0.8427406380037565,
+      "p75": -0.7164005510720819,
+      "max": 1.579044905444082
+    },
+    "weight_vol_ratio": {
+      "count": 9.0,
+      "mean": -0.8994846525097782,
+      "median": -1.0402787538378475,
+      "std": 0.7195434078870421,
+      "min": -1.5972297750086346,
+      "p25": -1.401944117728726,
+      "p75": -0.6866976806199019,
+      "max": 0.8128698170348853
+    }
+  },
+  "genome_bool_summary": {
+    "use_momentum": {
+      "enabled_count": 7.0,
+      "disabled_count": 2.0,
+      "enabled_rate": 0.7777777777777778
+    },
+    "use_trend": {
+      "enabled_count": 5.0,
+      "disabled_count": 4.0,
+      "enabled_rate": 0.5555555555555556
+    },
+    "use_exit_momentum": {
+      "enabled_count": 0.0,
+      "disabled_count": 9.0,
+      "enabled_rate": 0.0
+    }
+  },
+  "metric_summary": {
+    "train_selection": {
+      "count": 9.0,
+      "mean": 28.74968436411276,
+      "median": 15.768435284242884,
+      "std": 24.439150251473674,
+      "min": 13.005444646928797,
+      "p25": 13.720827110933147,
+      "p75": 32.507977720665686,
+      "max": 93.41135061487842
+    },
+    "train_profit": {
+      "count": 9.0,
+      "mean": 0.07131432840842943,
+      "median": 0.05351355442023576,
+      "std": 0.04959382048265134,
+      "min": 0.03740552069419363,
+      "p25": 0.037771308427578344,
+      "p75": 0.0738398892570973,
+      "max": 0.2019543006349319
+    },
+    "train_drawdown": {
+      "count": 9.0,
+      "mean": 0.05759251588575803,
+      "median": 0.03875751630490121,
+      "std": 0.04065197894325601,
+      "min": 0.02716562896151321,
+      "p25": 0.029251583537595244,
+      "p75": 0.05850177542778287,
+      "max": 0.16065366853689916
+    },
+    "train_trades": {
+      "count": 9.0,
+      "mean": 81.0,
+      "median": 75.0,
+      "std": 49.06911225789374,
+      "min": 26.0,
+      "p25": 55.0,
+      "p75": 89.0,
+      "max": 189.0
+    },
+    "validation_selection": {
+      "count": 9.0,
+      "mean": 30.57698853384696,
+      "median": 16.34916726525948,
+      "std": 28.415015948836025,
+      "min": 14.006732219869129,
+      "p25": 14.783078602848034,
+      "p75": 30.833578638013655,
+      "max": 108.06391045537228
+    },
+    "validation_profit": {
+      "count": 9.0,
+      "mean": 0.047501093259335464,
+      "median": 0.025659529333974997,
+      "std": 0.04186898356008605,
+      "min": 0.02135323655576959,
+      "p25": 0.021598104402796844,
+      "p75": 0.04861913648548917,
+      "max": 0.1592113912259221
+    },
+    "validation_drawdown": {
+      "count": 9.0,
+      "mean": 0.037316030805103394,
+      "median": 0.021594479912223498,
+      "std": 0.027084829860063896,
+      "min": 0.018456495431578998,
+      "p25": 0.01970239983181148,
+      "p75": 0.04427893940425194,
+      "max": 0.10507380993645873
+    },
+    "validation_trades": {
+      "count": 9.0,
+      "mean": 17.72222222222222,
+      "median": 16.0,
+      "std": 5.563327896497798,
+      "min": 12.5,
+      "p25": 14.0,
+      "p75": 18.0,
+      "max": 32.0
+    },
+    "selection_gap": {
+      "count": 9.0,
+      "mean": -1.8273041697342027,
+      "median": -1.0012875729403312,
+      "std": 4.692699508454203,
+      "min": -14.652559840493865,
+      "p25": -1.0622514919148873,
+      "p75": -0.5807319810165978,
+      "max": 2.249109123332083
+    },
+    "validation_dispersion": {
+      "count": 9.0,
+      "mean": 9.819195313645873,
+      "median": 9.609270186387842,
+      "std": 6.236022802442429,
+      "min": 0.4378252793104984,
+      "p25": 6.604325209665278,
+      "p75": 11.77031921591465,
+      "max": 23.964514617634805
+    }
+  },
+  "signal_pair_summary": {
+    "use_momentum__use_trend": {
+      "both_count": 3.0,
+      "left_only_count": 4.0,
+      "right_only_count": 2.0,
+      "neither_count": 0.0,
+      "both_rate": 0.3333333333333333
+    },
+    "use_momentum__use_exit_momentum": {
+      "both_count": 0.0,
+      "left_only_count": 7.0,
+      "right_only_count": 0.0,
+      "neither_count": 2.0,
+      "both_rate": 0.0
+    },
+    "use_trend__use_exit_momentum": {
+      "both_count": 0.0,
+      "left_only_count": 5.0,
+      "right_only_count": 0.0,
+      "neither_count": 4.0,
+      "both_rate": 0.0
+    }
+  },
+  "context_summary": {
+    "unknown": {
+      "champion_count": 9.0,
+      "context_label": null,
+      "context_name": null,
+      "config_name": "run_f.json",
+      "dataset_root": "data\\processed",
+      "train_dataset_count_available": 2,
+      "validation_dataset_count_available": 2,
+      "train_sample_size": 2,
+      "dataset_signature": "5fbc0bb80ed14de24dddbf43c47313af181f31938788a7a14f15abdcca15f601",
+      "mean_validation_selection": 30.57698853384696,
+      "mean_validation_profit": 0.047501093259335464
+    }
+  },
+  "context_config_summary": {
+    "unknown": {
+      "run_balanced.json": {
+        "champion_count": 4.0,
+        "mean_validation_selection": 14.980514172706169,
+        "mean_validation_profit": 0.022491026712077755,
+        "mean_validation_drawdown": 0.019140482068386755,
+        "mean_validation_trades": 20.5,
+        "mean_abs_selection_gap": 0.9266306344466759
+      },
+      "run_exploratory.json": {
+        "champion_count": 3.0,
+        "mean_validation_selection": 30.848016927839573,
+        "mean_validation_profit": 0.0509778495456236,
+        "mean_validation_drawdown": 0.044204686374567086,
+        "mean_validation_trades": 15.666666666666666,
+        "mean_abs_selection_gap": 1.5815591469143786
+      },
+      "run_f.json": {
+        "champion_count": 1.0,
+        "mean_validation_selection": 14.66287887490697,
+        "mean_validation_profit": 0.025400792622915294,
+        "mean_validation_drawdown": 0.021594479912223498,
+        "mean_validation_trades": 12.5,
+        "mean_abs_selection_gap": 1.1889941205523478
+      },
+      "run_i.json": {
+        "champion_count": 1.0,
+        "mean_validation_selection": 108.06391045537228,
+        "mean_validation_profit": 0.1592113912259221,
+        "mean_validation_drawdown": 0.10507380993645873,
+        "mean_validation_trades": 18.0,
+        "mean_abs_selection_gap": 14.652559840493865
+      }
+    }
+  },
+  "context_warnings": [
+    "WARNING: multiple dataset_signature values detected. This report mixes different dataset pools or sampling contexts."
+  ],
+  "config_summary": {
+    "run_balanced.json": {
+      "champion_count": 4.0,
+      "mean_validation_selection": 14.980514172706169,
+      "mean_validation_profit": 0.022491026712077755,
+      "mean_validation_drawdown": 0.019140482068386755,
+      "mean_validation_trades": 20.5,
+      "mean_abs_selection_gap": 0.9266306344466759
+    },
+    "run_exploratory.json": {
+      "champion_count": 3.0,
+      "mean_validation_selection": 30.848016927839573,
+      "mean_validation_profit": 0.0509778495456236,
+      "mean_validation_drawdown": 0.044204686374567086,
+      "mean_validation_trades": 15.666666666666666,
+      "mean_abs_selection_gap": 1.5815591469143786
+    },
+    "run_f.json": {
+      "champion_count": 1.0,
+      "mean_validation_selection": 14.66287887490697,
+      "mean_validation_profit": 0.025400792622915294,
+      "mean_validation_drawdown": 0.021594479912223498,
+      "mean_validation_trades": 12.5,
+      "mean_abs_selection_gap": 1.1889941205523478
+    },
+    "run_i.json": {
+      "champion_count": 1.0,
+      "mean_validation_selection": 108.06391045537228,
+      "mean_validation_profit": 0.1592113912259221,
+      "mean_validation_drawdown": 0.10507380993645873,
+      "mean_validation_trades": 18.0,
+      "mean_abs_selection_gap": 14.652559840493865
+    }
+  },
+  "patterns": {
+    "signal_patterns": {
+      "use_momentum": {
+        "type": "recurrent_enabled",
+        "enabled_rate": 0.7777777777777778
+      },
+      "use_exit_momentum": {
+        "type": "recurrent_disabled",
+        "enabled_rate": 0.0
+      }
+    },
+    "concentrated_numeric_fields": {
+      "threshold_open": {
+        "median": 0.4368503220907519,
+        "p25": 0.43111518821703537,
+        "p75": 0.4704118870633331,
+        "iqr_to_range_ratio": 0.08142173995193958
+      },
+      "stop_loss": {
+        "median": 0.040727878777206836,
+        "p25": 0.03388596486436272,
+        "p75": 0.04098195457274604,
+        "iqr_to_range_ratio": 0.007757065527345973
+      },
+      "take_profit": {
+        "median": 0.19227756744154187,
+        "p25": 0.17663631157628387,
+        "p75": 0.2095477538550248,
+        "iqr_to_range_ratio": 0.08257482660681355
+      },
+      "weight_ret_short": {
+        "median": 1.1404531959062578,
+        "p25": 1.0565484906793112,
+        "p75": 1.3266642929350954,
+        "iqr_to_range_ratio": 0.16001526581764292
+      },
+      "weight_range_pos": {
+        "median": -0.8322938713817173,
+        "p25": -0.8427406380037565,
+        "p75": -0.7164005510720819,
+        "iqr_to_range_ratio": 0.04909125902024933
+      },
+      "weight_vol_ratio": {
+        "median": -1.0402787538378475,
+        "p25": -1.401944117728726,
+        "p75": -0.6866976806199019,
+        "iqr_to_range_ratio": 0.2967704900951283
+      },
+      "validation_selection": {
+        "median": 16.34916726525948,
+        "p25": 14.783078602848034,
+        "p75": 30.833578638013655,
+        "iqr_to_range_ratio": 0.1706461998570476
+      },
+      "validation_profit": {
+        "median": 0.025659529333974997,
+        "p25": 0.021598104402796844,
+        "p75": 0.04861913648548917,
+        "iqr_to_range_ratio": 0.19600604800887136
+      },
+      "validation_drawdown": {
+        "median": 0.021594479912223498,
+        "p25": 0.01970239983181148,
+        "p75": 0.04427893940425194,
+        "iqr_to_range_ratio": 0.28373703009524615
+      },
+      "validation_trades": {
+        "median": 16.0,
+        "p25": 14.0,
+        "p75": 18.0,
+        "iqr_to_range_ratio": 0.20512820512820512
+      }
+    },
+    "weight_sign_bias": {
+      "weight_ret_short": {
+        "type": "mostly_positive",
+        "positive_rate": 1.0
+      },
+      "weight_ret_mid": {
+        "type": "mostly_positive",
+        "positive_rate": 0.7777777777777778
+      },
+      "weight_dist_ma": {
+        "type": "mostly_positive",
+        "positive_rate": 1.0
+      },
+      "weight_range_pos": {
+        "type": "mostly_negative",
+        "negative_rate": 0.7777777777777778
+      },
+      "weight_vol_ratio": {
+        "type": "mostly_negative",
+        "negative_rate": 0.8888888888888888
+      }
+    },
+    "signal_pair_patterns": {},
+    "meta": {
+      "champion_count": 9
+    }
+  },
+  "top_examples": {
+    "best_validation_selection": {
+      "id": 2,
+      "run_id": "82a9d2a3-b676-433f-a0d8-e5b566c5ef2a",
+      "generation_number": 25,
+      "mutation_seed": 42,
+      "config_name": "run_i.json",
+      "champion_type": "specialist",
+      "stored_config_name": "run_i.json",
+      "created_at": "2026-03-25 15:30:45",
+      "context_name": null,
+      "dataset_root": "data\\processed",
+      "dataset_signature": "a7ab0a1682d4435286998f5f2d9ecb0f6f1765bb38edb1b428e5a1098eda3e1d",
+      "train_sample_size": 3,
+      "train_dataset_count_available": 3,
+      "validation_dataset_count_available": 3,
+      "all_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "all_validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "sampled_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "train_selection": 93.41135061487842,
+      "train_profit": 0.2019543006349319,
+      "train_drawdown": 0.16065366853689916,
+      "train_trades": 131,
+      "validation_selection": 108.06391045537228,
+      "validation_profit": 0.1592113912259221,
+      "validation_drawdown": 0.10507380993645873,
+      "validation_trades": 18,
+      "selection_gap": -14.652559840493865,
+      "validation_dispersion": 23.964514617634805,
+      "positive_validation_datasets": 3,
+      "negative_validation_datasets": 0,
+      "train_dataset_scores": [
+        128.68312048885016,
+        -86.52839408549426,
+        129.2178279547637
+      ],
+      "train_dataset_profits": [
+        0.20769995475729974,
+        0.04918075675831073,
+        0.2019543006349319
+      ],
+      "train_dataset_drawdowns": [
+        0.16065366853689916,
+        0.27447830168761,
+        0.14613294536033647
+      ],
+      "validation_dataset_scores": [
+        128.27135312768155,
+        109.67408414622608,
+        104.30683851004675
+      ],
+      "validation_dataset_profits": [
+        0.1592113912259221,
+        0.16206098911445543,
+        0.1574900174229487
+      ],
+      "validation_dataset_drawdowns": [
+        0.06224007619648106,
+        0.10507380993645873,
+        0.10788635782580394
+      ],
+      "train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "train_violations": [
+        "dispersion_too_high"
+      ],
+      "validation_violations": [],
+      "train_is_valid": true,
+      "validation_is_valid": true,
+      "threshold_open": 0.5826838242931865,
+      "threshold_close": 0.024633406318492417,
+      "position_size": 0.4412135693260739,
+      "stop_loss": 0.43232778236499275,
+      "take_profit": 0.48656270445429245,
+      "use_momentum": false,
+      "momentum_threshold": 0.0010462536021696675,
+      "use_trend": true,
+      "trend_threshold": -0.006433529225986506,
+      "trend_window": 12,
+      "use_exit_momentum": false,
+      "exit_momentum_threshold": 0.0015448095924507784,
+      "ret_short_window": 6,
+      "ret_mid_window": 40,
+      "ma_window": 82,
+      "range_window": 9,
+      "vol_short_window": 6,
+      "vol_long_window": 65,
+      "weight_ret_short": 0.4239698076046202,
+      "weight_ret_mid": -0.5641195915228052,
+      "weight_dist_ma": 0.8878550460647671,
+      "weight_range_pos": 1.579044905444082,
+      "weight_vol_ratio": -0.31448818029158276
+    },
+    "best_validation_profit": {
+      "id": 2,
+      "run_id": "82a9d2a3-b676-433f-a0d8-e5b566c5ef2a",
+      "generation_number": 25,
+      "mutation_seed": 42,
+      "config_name": "run_i.json",
+      "champion_type": "specialist",
+      "stored_config_name": "run_i.json",
+      "created_at": "2026-03-25 15:30:45",
+      "context_name": null,
+      "dataset_root": "data\\processed",
+      "dataset_signature": "a7ab0a1682d4435286998f5f2d9ecb0f6f1765bb38edb1b428e5a1098eda3e1d",
+      "train_sample_size": 3,
+      "train_dataset_count_available": 3,
+      "validation_dataset_count_available": 3,
+      "all_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "all_validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "sampled_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "train_selection": 93.41135061487842,
+      "train_profit": 0.2019543006349319,
+      "train_drawdown": 0.16065366853689916,
+      "train_trades": 131,
+      "validation_selection": 108.06391045537228,
+      "validation_profit": 0.1592113912259221,
+      "validation_drawdown": 0.10507380993645873,
+      "validation_trades": 18,
+      "selection_gap": -14.652559840493865,
+      "validation_dispersion": 23.964514617634805,
+      "positive_validation_datasets": 3,
+      "negative_validation_datasets": 0,
+      "train_dataset_scores": [
+        128.68312048885016,
+        -86.52839408549426,
+        129.2178279547637
+      ],
+      "train_dataset_profits": [
+        0.20769995475729974,
+        0.04918075675831073,
+        0.2019543006349319
+      ],
+      "train_dataset_drawdowns": [
+        0.16065366853689916,
+        0.27447830168761,
+        0.14613294536033647
+      ],
+      "validation_dataset_scores": [
+        128.27135312768155,
+        109.67408414622608,
+        104.30683851004675
+      ],
+      "validation_dataset_profits": [
+        0.1592113912259221,
+        0.16206098911445543,
+        0.1574900174229487
+      ],
+      "validation_dataset_drawdowns": [
+        0.06224007619648106,
+        0.10507380993645873,
+        0.10788635782580394
+      ],
+      "train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "train_violations": [
+        "dispersion_too_high"
+      ],
+      "validation_violations": [],
+      "train_is_valid": true,
+      "validation_is_valid": true,
+      "threshold_open": 0.5826838242931865,
+      "threshold_close": 0.024633406318492417,
+      "position_size": 0.4412135693260739,
+      "stop_loss": 0.43232778236499275,
+      "take_profit": 0.48656270445429245,
+      "use_momentum": false,
+      "momentum_threshold": 0.0010462536021696675,
+      "use_trend": true,
+      "trend_threshold": -0.006433529225986506,
+      "trend_window": 12,
+      "use_exit_momentum": false,
+      "exit_momentum_threshold": 0.0015448095924507784,
+      "ret_short_window": 6,
+      "ret_mid_window": 40,
+      "ma_window": 82,
+      "range_window": 9,
+      "vol_short_window": 6,
+      "vol_long_window": 65,
+      "weight_ret_short": 0.4239698076046202,
+      "weight_ret_mid": -0.5641195915228052,
+      "weight_dist_ma": 0.8878550460647671,
+      "weight_range_pos": 1.579044905444082,
+      "weight_vol_ratio": -0.31448818029158276
+    },
+    "lowest_validation_drawdown": {
+      "id": 6,
+      "run_id": "e99f0136-cd9d-428e-9489-a7947bfa4bbc",
+      "generation_number": 15,
+      "mutation_seed": 104,
+      "config_name": "run_balanced.json",
+      "champion_type": "robust",
+      "stored_config_name": "run_balanced.json",
+      "created_at": "2026-03-26 00:53:08",
+      "context_name": null,
+      "dataset_root": "data\\processed",
+      "dataset_signature": "a7ab0a1682d4435286998f5f2d9ecb0f6f1765bb38edb1b428e5a1098eda3e1d",
+      "train_sample_size": 3,
+      "train_dataset_count_available": 3,
+      "validation_dataset_count_available": 3,
+      "all_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "all_validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "sampled_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv"
+      ],
+      "validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "train_selection": 13.005444646928797,
+      "train_profit": 0.03740552069419363,
+      "train_drawdown": 0.029251583537595244,
+      "train_trades": 89,
+      "validation_selection": 14.006732219869129,
+      "validation_profit": 0.021598104402796844,
+      "validation_drawdown": 0.018456495431578998,
+      "validation_trades": 18,
+      "selection_gap": -1.0012875729403312,
+      "validation_dispersion": 9.609270186387842,
+      "positive_validation_datasets": 3,
+      "negative_validation_datasets": 0,
+      "train_dataset_scores": [
+        23.669728925396008,
+        31.098522633363963,
+        -21.08911541519206
+      ],
+      "train_dataset_profits": [
+        0.03740552069419363,
+        0.043594236072970464,
+        -0.0015833046186864365
+      ],
+      "train_dataset_drawdowns": [
+        0.029251583537595244,
+        0.025931426879212998,
+        0.04235162159301126
+      ],
+      "validation_dataset_scores": [
+        14.761699942196998,
+        14.180955540406329,
+        5.152429755809155
+      ],
+      "validation_dataset_profits": [
+        0.021598104402796844,
+        0.024122375552570446,
+        0.013860677471598654
+      ],
+      "validation_dataset_drawdowns": [
+        0.013972808921199693,
+        0.020242840024328235,
+        0.018456495431578998
+      ],
+      "train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv"
+      ],
+      "train_violations": [],
+      "validation_violations": [],
+      "train_is_valid": true,
+      "validation_is_valid": true,
+      "threshold_open": 0.4210870526932001,
+      "threshold_close": 0.09572163220931211,
+      "position_size": 0.08606675236546277,
+      "stop_loss": 0.040727878777206836,
+      "take_profit": 0.1932071553955546,
+      "use_momentum": true,
+      "momentum_threshold": 0.0010064879565587753,
+      "use_trend": true,
+      "trend_threshold": 0.0011983454883336998,
+      "trend_window": 5,
+      "use_exit_momentum": false,
+      "exit_momentum_threshold": 0.0013460143099713311,
+      "ret_short_window": 3,
+      "ret_mid_window": 11,
+      "ma_window": 5,
+      "range_window": 8,
+      "vol_short_window": 3,
+      "vol_long_window": 14,
+      "weight_ret_short": 1.0565484906793112,
+      "weight_ret_mid": 1.4984243777060413,
+      "weight_dist_ma": 0.9741792642601758,
+      "weight_range_pos": -0.72872568746735,
+      "weight_vol_ratio": -1.5972297750086346
+    },
+    "lowest_abs_selection_gap": {
+      "id": 4,
+      "run_id": "43ef4ecb-dce4-4ec5-b27b-775f1f70773f",
+      "generation_number": 34,
+      "mutation_seed": 102,
+      "config_name": "run_balanced.json",
+      "champion_type": "robust",
+      "stored_config_name": "run_balanced.json",
+      "created_at": "2026-03-26 00:02:33",
+      "context_name": null,
+      "dataset_root": "data\\processed",
+      "dataset_signature": "a7ab0a1682d4435286998f5f2d9ecb0f6f1765bb38edb1b428e5a1098eda3e1d",
+      "train_sample_size": 3,
+      "train_dataset_count_available": 3,
+      "validation_dataset_count_available": 3,
+      "all_train_dataset_names": [
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv",
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv"
+      ],
+      "all_validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "sampled_train_dataset_names": [
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv",
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv"
+      ],
+      "validation_dataset_names": [
+        "validation\\BTCUSDT\\4h\\BTCUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\4h\\ETHUSDT-4h-validation.csv",
+        "validation\\ETHUSDT\\1h\\ETHUSDT-1h-validation.csv"
+      ],
+      "train_selection": 15.768435284242884,
+      "train_profit": 0.05351355442023576,
+      "train_drawdown": 0.0358868460921216,
+      "train_trades": 189,
+      "validation_selection": 16.34916726525948,
+      "validation_profit": 0.025659529333974997,
+      "validation_drawdown": 0.01870063317834507,
+      "validation_trades": 32,
+      "selection_gap": -0.5807319810165978,
+      "validation_dispersion": 11.77031921591465,
+      "positive_validation_datasets": 3,
+      "negative_validation_datasets": 0,
+      "train_dataset_scores": [
+        -39.25933843317513,
+        55.75333376304839,
+        37.46013137417496
+      ],
+      "train_dataset_profits": [
+        -0.008466447798347572,
+        0.06752460559307287,
+        0.05351355442023576
+      ],
+      "train_dataset_drawdowns": [
+        0.06810578126965512,
+        0.025262543660048955,
+        0.0358868460921216
+      ],
+      "validation_dataset_scores": [
+        17.562697676612398,
+        16.629212744802462,
+        5.792378460697747
+      ],
+      "validation_dataset_profits": [
+        0.02587280376880599,
+        0.025659529333974997,
+        0.01722180910547325
+      ],
+      "validation_dataset_drawdowns": [
+        0.017260212184387187,
+        0.01870063317834507,
+        0.024658861289551005
+      ],
+      "train_dataset_names": [
+        "train\\ETHUSDT\\1h\\ETHUSDT-1h-train.csv",
+        "train\\BTCUSDT\\4h\\BTCUSDT-4h-train.csv",
+        "train\\BTCUSDT\\1h\\BTCUSDT-1h-train.csv"
+      ],
+      "train_violations": [
+        "dispersion_too_high"
+      ],
+      "validation_violations": [],
+      "train_is_valid": true,
+      "validation_is_valid": true,
+      "threshold_open": 0.43111518821703537,
+      "threshold_close": 0.07169969063960088,
+      "position_size": 0.10805519952955875,
+      "stop_loss": 0.03388596486436272,
+      "take_profit": 0.08799762559010882,
+      "use_momentum": true,
+      "momentum_threshold": -0.0001382852730398361,
+      "use_trend": false,
+      "trend_threshold": 0.001510315970102242,
+      "trend_window": 8,
+      "use_exit_momentum": false,
+      "exit_momentum_threshold": 0.0008623056116226233,
+      "ret_short_window": 4,
+      "ret_mid_window": 5,
+      "ma_window": 14,
+      "range_window": 9,
+      "vol_short_window": 3,
+      "vol_long_window": 14,
+      "weight_ret_short": 1.3266642929350954,
+      "weight_ret_mid": 1.50037822541463,
+      "weight_dist_ma": 1.1928428487557274,
+      "weight_range_pos": -0.8333250437011197,
+      "weight_vol_ratio": -1.4632526458478747
+    }
+  }
+}

@@ -1,0 +1,20 @@
+Config path: C:\Users\Pedro\AppData\Local\Temp\tmpqn3s9km0.json
+Config name: run_balanced.json
+Context name: none
+Run ID: 10af5347-f4ec-4213-8278-816e15bd7153
+Dataset root: data\processed
+Dataset signature: a7ab0a1682d4435286998f5f2d9ecb0f6f1765bb38edb1b428e5a1098eda3e1d
+Mutation seed: 101
+Mutation profile: MutationProfile(strong_mutation_probability=0.055, numeric_delta_scale=0.75, flag_flip_probability=0.025, weight_delta=0.145, window_step_mode='default')
+Population size: 18
+Target population size: 18
+Survivors count: 4
+Generations planned: 25
+Trade cost rate: 0.0
+Cost penalty weight: 0.0
+Datasets -> train=3 | validation=3
+Train sample size per generation: 3
+Train datasets: train\BTCUSDT\1h\BTCUSDT-1h-train.csv, train\ETHUSDT\1h\ETHUSDT-1h-train.csv, train\BTCUSDT\4h\BTCUSDT-4h-train.csv
+Validation datasets: validation\BTCUSDT\4h\BTCUSDT-4h-validation.csv, validation\ETHUSDT\4h\ETHUSDT-4h-validation.csv, validation\ETHUSDT\1h\ETHUSDT-1h-validation.csv
+Evolution score weights -> train=0.30 | validation=0.70 | overfit_gap_penalty=0.75 | underfit_gap_penalty=0.50 | validation_dispersion_penalty=0.50
+
