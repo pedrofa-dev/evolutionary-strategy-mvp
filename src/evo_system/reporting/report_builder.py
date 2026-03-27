@@ -49,6 +49,8 @@ GENOME_NUMERIC_FIELDS = [
     "weight_dist_ma",
     "weight_range_pos",
     "weight_vol_ratio",
+    "weight_trend_strength",
+    "weight_realized_volatility",
 ]
 
 GENOME_BOOL_FIELDS = [
@@ -93,7 +95,13 @@ def export_flat_csv(rows: list[dict[str, Any]], csv_path: Path) -> None:
         csv_path.write_text("", encoding="utf-8")
         return
 
-    fieldnames = sorted(rows[0].keys())
+    fieldnames = sorted(
+        {
+            key
+            for row in rows
+            for key in row.keys()
+        }
+    )
     with csv_path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()

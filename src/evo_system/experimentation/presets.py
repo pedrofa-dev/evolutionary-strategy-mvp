@@ -32,14 +32,14 @@ PRESET_STANDARD = ExperimentPreset(
 
 PRESET_EXTENDED = ExperimentPreset(
     name="extended",
-    generations=25,
+    generations=35,
     max_seeds=10,
 )
 
 PRESET_FULL = ExperimentPreset(
     name="full",
-    generations=25,
-    max_seeds=20,
+    generations=50,
+    max_seeds=100,
 )
 
 PRESETS_BY_NAME = {

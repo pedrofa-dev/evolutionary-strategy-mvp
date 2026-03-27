@@ -6,7 +6,7 @@
   "survivors_count": 4,
   "generations_planned": 50,
   "mutation_seed": 42,
-  "trade_cost_rate": 0.0,
+  "trade_cost_rate": 0.0020,
   "cost_penalty_weight": 0.0,
   "dataset_mode": "manifest",
   "dataset_catalog_id": "bnb_1h_spot_extended",

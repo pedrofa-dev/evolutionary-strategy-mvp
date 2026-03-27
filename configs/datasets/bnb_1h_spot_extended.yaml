@@ -1,0 +1,122 @@
+catalog_id: bnb_1h_spot_extended
+description: Extended BNB 1h dataset catalog with multiple regimes for robustness validation
+market_type: spot
+timeframe: 1h
+
+datasets:
+  - id: BNBUSDT_1h_2020-11-01_2021-01-31
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2020-11-01
+    end: 2021-01-31
+    layer: train
+    regime_primary: early_bull
+    regime_secondary: trend_acceleration
+    volatility: medium
+    event_tag: post_breakout
+    notes: Early bull expansion phase for BNB.
+
+  - id: BNBUSDT_1h_2021-05-19_2021-07-20
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-05-19
+    end: 2021-07-20
+    layer: train
+    regime_primary: crash_rebound
+    regime_secondary: high_vol_recovery
+    volatility: high
+    event_tag: may_2021_crash
+    notes: Existing strong training window with sharp drawdowns and rebound behavior.
+
+  - id: BNBUSDT_1h_2023-01-15_2023-04-30
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-01-15
+    end: 2023-04-30
+    layer: train
+    regime_primary: recovery
+    regime_secondary: trend_rebuild
+    volatility: medium
+    event_tag: post_bear_recovery
+    notes: Recovery regime after prolonged bearish period.
+
+  - id: BNBUSDT_1h_2023-10-15_2023-12-31
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2023-10-15
+    end: 2023-12-31
+    layer: validation
+    regime_primary: late_recovery
+    regime_secondary: breakout
+    volatility: medium
+    event_tag: q4_2023_repricing
+    notes: Validation window with renewed upside pressure.
+
+  - id: BNBUSDT_1h_2022-09-01_2022-10-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-09-01
+    end: 2022-10-15
+    layer: validation
+    regime_primary: bear
+    regime_secondary: compression
+    volatility: medium
+    event_tag: pre_ftx
+    notes: Existing validation window in bearish market structure.
+
+  - id: BNBUSDT_1h_2022-11-01_2022-12-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2022-11-01
+    end: 2022-12-15
+    layer: external
+    regime_primary: crisis
+    regime_secondary: breakdown
+    volatility: high
+    event_tag: ftx_collapse
+    notes: External stress window during major market disruption.
+
+  - id: BNBUSDT_1h_2024-02-01_2024-04-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-02-01
+    end: 2024-04-15
+    layer: external
+    regime_primary: bull
+    regime_secondary: sustained_trend
+    volatility: medium
+    event_tag: early_2024_bull
+    notes: External bull-market continuation window.
+
+  - id: BNBUSDT_1h_2024-06-15_2024-08-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2024-06-15
+    end: 2024-08-15
+    layer: audit
+    regime_primary: late_bull
+    regime_secondary: distribution_risk
+    volatility: medium
+    event_tag: mid_2024_rotation
+    notes: Audit window to test whether the edge survives later market conditions.
+
+  - id: BNBUSDT_1h_2021-02-15_2021-04-15
+    symbol: BNBUSDT
+    market_type: spot
+    timeframe: 1h
+    start: 2021-02-15
+    end: 2021-04-15
+    layer: audit
+    regime_primary: explosive_bull
+    regime_secondary: momentum_expansion
+    volatility: high
+    event_tag: bnb_parabolic_phase
+    notes: Audit window with strong upside acceleration and elevated trend persistence.
