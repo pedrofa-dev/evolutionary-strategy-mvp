@@ -51,12 +51,15 @@ def calculate_selection_score(
     aggregated_score: float,
     score_mad: float,
     bottom_quartile_score: float,
+    median_trades: float,
+    trade_count_penalty_weight: float,
 ) -> float:
     downside_penalty = max(0.0, -bottom_quartile_score)
     return (
         aggregated_score
         - DISPERSION_WEIGHT * score_mad
         - DOWNSIDE_WEIGHT * downside_penalty
+        - trade_count_penalty_weight * median_trades
     )
 
 

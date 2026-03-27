@@ -13,6 +13,7 @@ class RunConfig:
     mutation_profile: MutationProfile = field(default_factory=MutationProfile)
     trade_cost_rate: float = 0.0
     cost_penalty_weight: float = 0.25
+    trade_count_penalty_weight: float = 0.0
     dataset_mode: str = "legacy"
     dataset_catalog_id: str | None = None
     seeds: list[int] | None = None
@@ -40,6 +41,11 @@ class RunConfig:
 
         if self.cost_penalty_weight < 0.0:
             raise ValueError("cost_penalty_weight must be greater than or equal to 0.0")
+
+        if self.trade_count_penalty_weight < 0.0:
+            raise ValueError(
+                "trade_count_penalty_weight must be greater than or equal to 0.0"
+            )
 
         if self.dataset_mode not in {"legacy", "manifest"}:
             raise ValueError("dataset_mode must be either 'legacy' or 'manifest'")

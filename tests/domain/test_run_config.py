@@ -21,6 +21,7 @@ def test_run_config_builds_valid_instance() -> None:
     assert config.generations_planned == 25
     assert config.trade_cost_rate == 0.001
     assert config.cost_penalty_weight == 0.25
+    assert config.trade_count_penalty_weight == 0.0
     assert config.dataset_mode == "legacy"
     assert config.dataset_catalog_id is None
 
@@ -125,6 +126,21 @@ def test_run_config_rejects_negative_cost_penalty_weight() -> None:
             survivors_count=4,
             generations_planned=25,
             cost_penalty_weight=-0.1,
+        )
+
+
+def test_run_config_rejects_negative_trade_count_penalty_weight() -> None:
+    with pytest.raises(
+        ValueError,
+        match="trade_count_penalty_weight must be greater than or equal to 0.0",
+    ):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            trade_count_penalty_weight=-0.001,
         )
 
 

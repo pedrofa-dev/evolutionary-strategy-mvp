@@ -22,11 +22,20 @@ from evo_system.evaluation.vetoes import (
 
 
 class AgentEvaluator:
-    def __init__(self, cost_penalty_weight: float = DEFAULT_COST_PENALTY_WEIGHT) -> None:
+    def __init__(
+        self,
+        cost_penalty_weight: float = DEFAULT_COST_PENALTY_WEIGHT,
+        trade_count_penalty_weight: float = 0.0,
+    ) -> None:
         if cost_penalty_weight < 0.0:
             raise ValueError("cost_penalty_weight must be greater than or equal to 0.0")
+        if trade_count_penalty_weight < 0.0:
+            raise ValueError(
+                "trade_count_penalty_weight must be greater than or equal to 0.0"
+            )
 
         self.cost_penalty_weight = cost_penalty_weight
+        self.trade_count_penalty_weight = trade_count_penalty_weight
 
     def evaluate(
         self,
@@ -81,6 +90,8 @@ class AgentEvaluator:
             aggregated_score=aggregated_score,
             score_mad=score_mad,
             bottom_quartile_score=bottom_quartile_score,
+            median_trades=median_trades,
+            trade_count_penalty_weight=self.trade_count_penalty_weight,
         )
         is_valid = is_valid_evaluation(violations)
 

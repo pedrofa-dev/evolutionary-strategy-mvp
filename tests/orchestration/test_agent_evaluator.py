@@ -1,3 +1,5 @@
+import pytest
+
 from evo_system.domain.agent import Agent
 from evo_system.domain.genome import Genome
 from evo_system.domain.historical_candle import HistoricalCandle
@@ -229,6 +231,79 @@ def test_agent_evaluator_penalty_weight_can_be_disabled() -> None:
 
     assert evaluation_with_cost_penalty.aggregated_score < evaluation_without_cost_penalty.aggregated_score
     assert evaluation_with_cost_penalty.selection_score < evaluation_without_cost_penalty.selection_score
+
+
+def test_agent_evaluator_trade_count_penalty_weight_can_be_disabled() -> None:
+    environments = [build_environment(), build_environment()]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.6,
+            threshold_close=0.2,
+            position_size=0.1,
+            stop_loss=0.03,
+            take_profit=0.05,
+        )
+    )
+
+    evaluation_without_trade_penalty = AgentEvaluator(
+        trade_count_penalty_weight=0.0
+    ).evaluate(agent, environments)
+    evaluation_with_zero_trade_penalty = AgentEvaluator(
+        trade_count_penalty_weight=0.0
+    ).evaluate(agent, environments)
+
+    assert (
+        evaluation_without_trade_penalty.selection_score
+        == evaluation_with_zero_trade_penalty.selection_score
+    )
+
+
+def test_agent_evaluator_applies_trade_count_penalty_to_selection_score() -> None:
+    environments = [
+        HistoricalEnvironment(
+            [
+                HistoricalCandle("1", 100, 100, 100, 100),
+                HistoricalCandle("2", 100, 100, 100, 120),
+                HistoricalCandle("3", 120, 140, 120, 140),
+                HistoricalCandle("4", 140, 140, 140, 140),
+                HistoricalCandle("5", 140, 140, 140, 140),
+                HistoricalCandle("6", 140, 140, 140, 140),
+            ],
+            trade_cost_rate=0.0,
+        )
+    ]
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=0.0,
+            position_size=1.0,
+            stop_loss=0.5,
+            take_profit=0.1,
+        )
+    )
+
+    evaluation_without_trade_penalty = AgentEvaluator(
+        trade_count_penalty_weight=0.0
+    ).evaluate(agent, environments)
+    evaluation_with_trade_penalty = AgentEvaluator(
+        trade_count_penalty_weight=0.001
+    ).evaluate(agent, environments)
+
+    assert (
+        evaluation_with_trade_penalty.aggregated_score
+        == evaluation_without_trade_penalty.aggregated_score
+    )
+    assert (
+        evaluation_with_trade_penalty.selection_score
+        < evaluation_without_trade_penalty.selection_score
+    )
+    assert (
+        evaluation_without_trade_penalty.selection_score
+        - evaluation_with_trade_penalty.selection_score
+        == pytest.approx(0.001 * evaluation_without_trade_penalty.median_trades)
+    )
 
 
 def test_agent_evaluator_reports_zero_mad_for_identical_dataset_scores() -> None:

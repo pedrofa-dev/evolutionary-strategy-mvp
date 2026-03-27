@@ -24,11 +24,15 @@ def run_external_validation(
     external_dataset_paths: list[Path],
     cost_penalty_weight: float,
     trade_cost_rate: float,
+    trade_count_penalty_weight: float = 0.0,
 ) -> AgentEvaluation:
     if not external_dataset_paths:
         raise ValueError("external_dataset_paths cannot be empty")
 
-    evaluator = AgentEvaluator(cost_penalty_weight=cost_penalty_weight)
+    evaluator = AgentEvaluator(
+        cost_penalty_weight=cost_penalty_weight,
+        trade_count_penalty_weight=trade_count_penalty_weight,
+    )
     environments = [
         build_environment(path, trade_cost_rate=trade_cost_rate)
         for path in external_dataset_paths

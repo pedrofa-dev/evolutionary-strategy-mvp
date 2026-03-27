@@ -377,7 +377,10 @@ def execute_historical_run(
         dataset_mode=config.dataset_mode,
     )
 
-    evaluator = AgentEvaluator(cost_penalty_weight=config.cost_penalty_weight)
+    evaluator = AgentEvaluator(
+        cost_penalty_weight=config.cost_penalty_weight,
+        trade_count_penalty_weight=config.trade_count_penalty_weight,
+    )
     loader = DatasetPoolLoader()
     train_dataset_paths, validation_dataset_paths = loader.load_paths(
         effective_dataset_root,
@@ -441,6 +444,7 @@ def execute_historical_run(
         f"Generations planned: {config.generations_planned}",
         f"Trade cost rate: {config.trade_cost_rate}",
         f"Cost penalty weight: {config.cost_penalty_weight}",
+        f"Trade count penalty weight: {config.trade_count_penalty_weight}",
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
         f"Train sample size per generation: {min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths))}",
         f"Train datasets: {format_dataset_list(train_dataset_paths, effective_dataset_root)}",
@@ -472,6 +476,7 @@ def execute_historical_run(
     )
     print(f"Trade cost rate: {config.trade_cost_rate}")
     print(f"Cost penalty weight: {config.cost_penalty_weight}")
+    print(f"Trade count penalty weight: {config.trade_count_penalty_weight}")
     print(f"Writing log to {log_file_path}")
 
     if progress_snapshot_path is not None:
@@ -847,6 +852,7 @@ def execute_historical_run(
                     agent=Agent.create(best_persistable_champion.genome),
                     external_dataset_paths=external_dataset_paths,
                     cost_penalty_weight=config.cost_penalty_weight,
+                    trade_count_penalty_weight=config.trade_count_penalty_weight,
                     trade_cost_rate=config.trade_cost_rate,
                 )
                 external_validation_metrics = build_external_validation_metrics(

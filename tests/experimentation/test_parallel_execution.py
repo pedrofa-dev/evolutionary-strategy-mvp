@@ -68,15 +68,15 @@ def test_experiment_presets_include_standard_extended_and_full() -> None:
 
     assert standard.generations == 25
     assert standard.max_seeds == 6
-    assert extended.generations == 25
+    assert extended.generations == 35
     assert extended.max_seeds == 10
-    assert full.generations == 25
-    assert full.max_seeds == 20
+    assert full.generations == 50
+    assert full.max_seeds == 100
 
     seeds = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111]
     assert apply_preset_to_seeds(seeds, standard) == seeds[:6]
     assert apply_preset_to_seeds(seeds, extended) == seeds[:10]
-    assert apply_preset_to_seeds(seeds, full) == seeds[:20]
+    assert apply_preset_to_seeds(seeds, full) == seeds
 
 
 def test_manifest_dataset_root_resolution_uses_data_datasets_by_default() -> None:
