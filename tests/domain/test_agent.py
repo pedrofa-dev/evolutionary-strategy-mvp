@@ -61,6 +61,8 @@ def test_agent_to_dict_returns_serializable_data() -> None:
             "weight_vol_ratio": 0.0,
             "weight_trend_strength": 0.0,
             "weight_realized_volatility": 0.0,
+            "weight_trend_long": 0.0,
+            "weight_breakout": 0.0,
         },
     }
 

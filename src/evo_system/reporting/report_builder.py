@@ -51,6 +51,8 @@ GENOME_NUMERIC_FIELDS = [
     "weight_vol_ratio",
     "weight_trend_strength",
     "weight_realized_volatility",
+    "weight_trend_long",
+    "weight_breakout",
 ]
 
 GENOME_BOOL_FIELDS = [

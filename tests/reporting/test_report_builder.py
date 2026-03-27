@@ -17,6 +17,8 @@ def test_export_flat_csv_supports_rows_with_new_genome_weights(tmp_path) -> None
             "weight_ret_short": 0.7,
             "weight_trend_strength": 0.2,
             "weight_realized_volatility": -0.1,
+            "weight_trend_long": 0.3,
+            "weight_breakout": -0.4,
         },
     ]
 
@@ -28,7 +30,13 @@ def test_export_flat_csv_supports_rows_with_new_genome_weights(tmp_path) -> None
 
     assert "weight_trend_strength" in reader.fieldnames
     assert "weight_realized_volatility" in reader.fieldnames
+    assert "weight_trend_long" in reader.fieldnames
+    assert "weight_breakout" in reader.fieldnames
     assert exported_rows[0]["weight_trend_strength"] == ""
     assert exported_rows[0]["weight_realized_volatility"] == ""
+    assert exported_rows[0]["weight_trend_long"] == ""
+    assert exported_rows[0]["weight_breakout"] == ""
     assert exported_rows[1]["weight_trend_strength"] == "0.2"
     assert exported_rows[1]["weight_realized_volatility"] == "-0.1"
+    assert exported_rows[1]["weight_trend_long"] == "0.3"
+    assert exported_rows[1]["weight_breakout"] == "-0.4"

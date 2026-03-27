@@ -38,6 +38,8 @@ class HistoricalEnvironment:
         self._vol_ratio_cache: dict[tuple[int, int], list[float]] = {}
         self._trend_strength_cache: dict[int, list[float]] = {}
         self._realized_volatility_cache: dict[int, list[float]] = {}
+        self._trend_long_cache: dict[int, list[float]] = {}
+        self._breakout_cache: dict[int, list[float]] = {}
 
     def run_episode(self, agent: Agent) -> EpisodeResult:
         metrics = self.get_episode_diagnostics(agent)
@@ -76,6 +78,8 @@ class HistoricalEnvironment:
         realized_volatility_series = self._get_realized_volatility_series(
             genome.vol_long_window
         )
+        trend_long_series = self._get_trend_long_series(genome.ma_window)
+        breakout_series = self._get_breakout_series(genome.range_window)
 
         has_feature_weights = self._has_feature_weights(agent)
 
@@ -94,6 +98,8 @@ class HistoricalEnvironment:
                     + genome.weight_trend_strength * trend_strength_series[index]
                     + genome.weight_realized_volatility
                     * realized_volatility_series[index]
+                    + genome.weight_trend_long * trend_long_series[index]
+                    + genome.weight_breakout * breakout_series[index]
                 )
             else:
                 entry_signal = normalized_price
@@ -186,6 +192,8 @@ class HistoricalEnvironment:
                 genome.weight_vol_ratio,
                 genome.weight_trend_strength,
                 genome.weight_realized_volatility,
+                genome.weight_trend_long,
+                genome.weight_breakout,
             )
         )
 
@@ -364,6 +372,70 @@ class HistoricalEnvironment:
             series.append(self._clamp(realized_volatility * 50.0, -1.0, 1.0))
 
         self._realized_volatility_cache[vol_window] = series
+        return series
+
+    def _get_trend_long_series(self, ma_window: int) -> list[float]:
+        cached = self._trend_long_cache.get(ma_window)
+        if cached is not None:
+            return cached
+
+        short_window = max(5, ma_window)
+        long_window = max(short_window + 1, ma_window * 4)
+        series: list[float] = []
+
+        for index, current_close in enumerate(self._closes):
+            if current_close == 0.0:
+                series.append(0.0)
+                continue
+
+            short_start = max(0, index - short_window + 1)
+            long_start = max(0, index - long_window + 1)
+
+            short_closes = self._closes[short_start : index + 1]
+            long_closes = self._closes[long_start : index + 1]
+
+            if not short_closes or not long_closes:
+                series.append(0.0)
+                continue
+
+            ma_short = sum(short_closes) / len(short_closes)
+            ma_long = sum(long_closes) / len(long_closes)
+            raw_trend = self._safe_ratio(ma_short - ma_long, current_close)
+            series.append(self._clamp(raw_trend * 25.0, -1.0, 1.0))
+
+        self._trend_long_cache[ma_window] = series
+        return series
+
+    def _get_breakout_series(self, range_window: int) -> list[float]:
+        cached = self._breakout_cache.get(range_window)
+        if cached is not None:
+            return cached
+
+        breakout_window = max(20, range_window * 3)
+        series: list[float] = []
+
+        for index, current_close in enumerate(self._closes):
+            if index == 0 or current_close == 0.0:
+                series.append(0.0)
+                continue
+
+            start = max(0, index - breakout_window)
+            prior_highs = self._highs[start:index]
+            prior_lows = self._lows[start:index]
+
+            if not prior_highs or not prior_lows:
+                series.append(0.0)
+                continue
+
+            prior_high = max(prior_highs)
+            prior_low = min(prior_lows)
+
+            upside_breakout = self._safe_ratio(current_close - prior_high, prior_high)
+            downside_breakout = self._safe_ratio(prior_low - current_close, prior_low)
+            raw_breakout = upside_breakout - downside_breakout
+            series.append(self._clamp(raw_breakout * 30.0, -1.0, 1.0))
+
+        self._breakout_cache[range_window] = series
         return series
 
     def _get_vol_ratio_series(self, short_window: int, long_window: int) -> list[float]:

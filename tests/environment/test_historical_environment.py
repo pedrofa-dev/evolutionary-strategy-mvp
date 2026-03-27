@@ -292,8 +292,11 @@ def test_historical_environment_uses_new_feature_weights_without_breaking_execut
             take_profit=1.0,
             ma_window=4,
             vol_long_window=4,
+            range_window=3,
             weight_trend_strength=1.0,
             weight_realized_volatility=1.0,
+            weight_trend_long=1.0,
+            weight_breakout=1.0,
         )
     )
 

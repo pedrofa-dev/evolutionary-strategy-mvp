@@ -37,6 +37,8 @@ class Genome:
     weight_vol_ratio: float = 0.0
     weight_trend_strength: float = 0.0
     weight_realized_volatility: float = 0.0
+    weight_trend_long: float = 0.0
+    weight_breakout: float = 0.0
 
     def validate(self) -> None:
         if not 0.0 <= self.threshold_open <= 1.0:
@@ -94,6 +96,8 @@ class Genome:
             self.weight_realized_volatility,
             "weight_realized_volatility",
         )
+        self._validate_weight(self.weight_trend_long, "weight_trend_long")
+        self._validate_weight(self.weight_breakout, "weight_breakout")
 
     @staticmethod
     def _validate_weight(value: float, field_name: str) -> None:
@@ -133,6 +137,8 @@ class Genome:
             weight_realized_volatility=float(
                 data.get("weight_realized_volatility", 0.0)
             ),
+            weight_trend_long=float(data.get("weight_trend_long", 0.0)),
+            weight_breakout=float(data.get("weight_breakout", 0.0)),
         )
         genome.validate()
         return genome

@@ -119,6 +119,8 @@ def test_mutate_updates_new_feature_weights_with_small_mutation() -> None:
         take_profit=0.1,
         weight_trend_strength=0.2,
         weight_realized_volatility=-0.3,
+        weight_trend_long=0.4,
+        weight_breakout=-0.2,
     )
 
     profile = MutationProfile(strong_mutation_probability=0.0)
@@ -128,6 +130,8 @@ def test_mutate_updates_new_feature_weights_with_small_mutation() -> None:
 
     assert mutated.weight_trend_strength != genome.weight_trend_strength
     assert mutated.weight_realized_volatility != genome.weight_realized_volatility
+    assert mutated.weight_trend_long != genome.weight_trend_long
+    assert mutated.weight_breakout != genome.weight_breakout
 
 
 def test_strong_mutate_sets_new_feature_weights_in_valid_range() -> None:
@@ -146,3 +150,5 @@ def test_strong_mutate_sets_new_feature_weights_in_valid_range() -> None:
 
     assert -2.0 <= mutated.weight_trend_strength <= 2.0
     assert -2.0 <= mutated.weight_realized_volatility <= 2.0
+    assert -2.0 <= mutated.weight_trend_long <= 2.0
+    assert -2.0 <= mutated.weight_breakout <= 2.0

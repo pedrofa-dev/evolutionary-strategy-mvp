@@ -117,6 +117,8 @@ class Mutator:
         weight_realized_volatility = self._mutate_weight(
             genome.weight_realized_volatility
         )
+        weight_trend_long = self._mutate_weight(genome.weight_trend_long)
+        weight_breakout = self._mutate_weight(genome.weight_breakout)
 
         return Genome(
             threshold_open=threshold_open,
@@ -144,6 +146,8 @@ class Mutator:
             weight_vol_ratio=weight_vol_ratio,
             weight_trend_strength=weight_trend_strength,
             weight_realized_volatility=weight_realized_volatility,
+            weight_trend_long=weight_trend_long,
+            weight_breakout=weight_breakout,
         )
 
     # =========================
@@ -151,6 +155,11 @@ class Mutator:
     # =========================
 
     def _strong_mutate(self, genome: Genome) -> Genome:
+        ret_short_window = self.random.randint(2, 10)
+        ret_mid_window = self.random.randint(max(10, ret_short_window + 1), 50)
+        vol_short_window = self.random.randint(2, 20)
+        vol_long_window = self.random.randint(max(10, vol_short_window + 1), 100)
+
         return Genome(
             threshold_open=self.random.uniform(0.4, 1.0),
             threshold_close=self.random.uniform(0.0, 0.5),
@@ -164,12 +173,12 @@ class Mutator:
             trend_window=self.random.randint(2, 50),
             use_exit_momentum=self.random.choice([True, False]),
             exit_momentum_threshold=self.random.uniform(-0.01, 0.01),
-            ret_short_window=self.random.randint(2, 10),
-            ret_mid_window=self.random.randint(10, 50),
+            ret_short_window=ret_short_window,
+            ret_mid_window=ret_mid_window,
             ma_window=self.random.randint(5, 100),
             range_window=self.random.randint(5, 50),
-            vol_short_window=self.random.randint(2, 20),
-            vol_long_window=self.random.randint(10, 100),
+            vol_short_window=vol_short_window,
+            vol_long_window=vol_long_window,
             weight_ret_short=self.random.uniform(-2, 2),
             weight_ret_mid=self.random.uniform(-2, 2),
             weight_dist_ma=self.random.uniform(-2, 2),
@@ -177,6 +186,8 @@ class Mutator:
             weight_vol_ratio=self.random.uniform(-2, 2),
             weight_trend_strength=self.random.uniform(-2, 2),
             weight_realized_volatility=self.random.uniform(-2, 2),
+            weight_trend_long=self.random.uniform(-2, 2),
+            weight_breakout=self.random.uniform(-2, 2),
         )
 
     # =========================
