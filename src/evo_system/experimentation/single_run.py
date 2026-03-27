@@ -287,9 +287,20 @@ def build_initial_population(population_size: int) -> list[Agent]:
 def build_environment(
     dataset_path: Path,
     trade_cost_rate: float,
+    regime_filter_enabled: bool = False,
+    min_trend_long_for_entry: float = 0.0,
+    min_breakout_for_entry: float = 0.0,
+    max_realized_volatility_for_entry: float | None = None,
 ) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
-    return HistoricalEnvironment(candles, trade_cost_rate=trade_cost_rate)
+    return HistoricalEnvironment(
+        candles,
+        trade_cost_rate=trade_cost_rate,
+        regime_filter_enabled=regime_filter_enabled,
+        min_trend_long_for_entry=min_trend_long_for_entry,
+        min_breakout_for_entry=min_breakout_for_entry,
+        max_realized_volatility_for_entry=max_realized_volatility_for_entry,
+    )
 
 
 def summarize_generation_scores(
@@ -445,6 +456,13 @@ def execute_historical_run(
         f"Trade cost rate: {config.trade_cost_rate}",
         f"Cost penalty weight: {config.cost_penalty_weight}",
         f"Trade count penalty weight: {config.trade_count_penalty_weight}",
+        f"Regime filter enabled: {config.regime_filter_enabled}",
+        f"Min trend long for entry: {config.min_trend_long_for_entry:.4f}",
+        f"Min breakout for entry: {config.min_breakout_for_entry:.4f}",
+        (
+            "Max realized volatility for entry: "
+            f"{config.max_realized_volatility_for_entry if config.max_realized_volatility_for_entry is not None else 'none'}"
+        ),
         f"Datasets -> train={len(train_dataset_paths)} | validation={len(validation_dataset_paths)}",
         f"Train sample size per generation: {min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths))}",
         f"Train datasets: {format_dataset_list(train_dataset_paths, effective_dataset_root)}",
@@ -477,6 +495,13 @@ def execute_historical_run(
     print(f"Trade cost rate: {config.trade_cost_rate}")
     print(f"Cost penalty weight: {config.cost_penalty_weight}")
     print(f"Trade count penalty weight: {config.trade_count_penalty_weight}")
+    print(f"Regime filter enabled: {config.regime_filter_enabled}")
+    print(f"Min trend long for entry: {config.min_trend_long_for_entry:.4f}")
+    print(f"Min breakout for entry: {config.min_breakout_for_entry:.4f}")
+    print(
+        "Max realized volatility for entry: "
+        f"{config.max_realized_volatility_for_entry if config.max_realized_volatility_for_entry is not None else 'none'}"
+    )
     print(f"Writing log to {log_file_path}")
 
     if progress_snapshot_path is not None:
@@ -513,11 +538,25 @@ def execute_historical_run(
         )
 
         train_environments = [
-            build_environment(path, trade_cost_rate=config.trade_cost_rate)
+            build_environment(
+                path,
+                trade_cost_rate=config.trade_cost_rate,
+                regime_filter_enabled=config.regime_filter_enabled,
+                min_trend_long_for_entry=config.min_trend_long_for_entry,
+                min_breakout_for_entry=config.min_breakout_for_entry,
+                max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+            )
             for path in sampled_train_paths
         ]
         validation_environments = [
-            build_environment(path, trade_cost_rate=config.trade_cost_rate)
+            build_environment(
+                path,
+                trade_cost_rate=config.trade_cost_rate,
+                regime_filter_enabled=config.regime_filter_enabled,
+                min_trend_long_for_entry=config.min_trend_long_for_entry,
+                min_breakout_for_entry=config.min_breakout_for_entry,
+                max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+            )
             for path in validation_dataset_paths
         ]
 
@@ -854,6 +893,10 @@ def execute_historical_run(
                     cost_penalty_weight=config.cost_penalty_weight,
                     trade_count_penalty_weight=config.trade_count_penalty_weight,
                     trade_cost_rate=config.trade_cost_rate,
+                    regime_filter_enabled=config.regime_filter_enabled,
+                    min_trend_long_for_entry=config.min_trend_long_for_entry,
+                    min_breakout_for_entry=config.min_breakout_for_entry,
+                    max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
                 )
                 external_validation_metrics = build_external_validation_metrics(
                     evaluation=external_validation_evaluation,

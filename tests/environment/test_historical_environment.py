@@ -304,3 +304,72 @@ def test_historical_environment_uses_new_feature_weights_without_breaking_execut
 
     assert result.trades >= 0
     assert isinstance(result.profit, float)
+
+
+def test_historical_environment_keeps_behavior_when_regime_filter_is_disabled() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 100, 100, 104),
+        HistoricalCandle("3", 104, 105, 103, 105),
+        HistoricalCandle("4", 105, 106, 104, 106),
+    ]
+
+    environment_without_filter = HistoricalEnvironment(candles)
+    environment_with_disabled_filter = HistoricalEnvironment(
+        candles,
+        regime_filter_enabled=False,
+        min_trend_long_for_entry=0.8,
+        min_breakout_for_entry=0.8,
+        max_realized_volatility_for_entry=0.1,
+    )
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.03,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+        )
+    )
+
+    result_without_filter = environment_without_filter.run_episode(agent)
+    result_with_disabled_filter = environment_with_disabled_filter.run_episode(agent)
+
+    assert result_without_filter.trades == result_with_disabled_filter.trades
+    assert result_without_filter.profit == result_with_disabled_filter.profit
+    assert result_without_filter.drawdown == result_with_disabled_filter.drawdown
+
+
+def test_historical_environment_blocks_entries_when_regime_filter_is_enabled() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 102, 99, 101),
+        HistoricalCandle("3", 101, 103, 100, 102),
+        HistoricalCandle("4", 102, 104, 101, 103),
+        HistoricalCandle("5", 103, 104, 102, 103),
+    ]
+
+    environment_without_filter = HistoricalEnvironment(candles)
+    environment_with_filter = HistoricalEnvironment(
+        candles,
+        regime_filter_enabled=True,
+        min_trend_long_for_entry=0.9,
+        min_breakout_for_entry=0.9,
+    )
+
+    agent = Agent.create(
+        Genome(
+            threshold_open=0.01,
+            threshold_close=0.0,
+            position_size=0.1,
+            stop_loss=0.5,
+            take_profit=1.0,
+        )
+    )
+
+    result_without_filter = environment_without_filter.run_episode(agent)
+    result_with_filter = environment_with_filter.run_episode(agent)
+
+    assert result_without_filter.trades >= 1
+    assert result_with_filter.trades == 0

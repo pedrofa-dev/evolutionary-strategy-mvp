@@ -23,6 +23,15 @@ def load_run_config(config_path: str) -> RunConfig:
         trade_cost_rate=float(data.get("trade_cost_rate", 0.0)),
         cost_penalty_weight=float(data.get("cost_penalty_weight", 0.25)),
         trade_count_penalty_weight=float(data.get("trade_count_penalty_weight", 0.0)),
+        regime_filter_enabled=bool(data.get("regime_filter_enabled", False)),
+        min_trend_long_for_entry=float(data.get("min_trend_long_for_entry", 0.0)),
+        min_breakout_for_entry=float(data.get("min_breakout_for_entry", 0.0)),
+        max_realized_volatility_for_entry=(
+            float(data["max_realized_volatility_for_entry"])
+            if "max_realized_volatility_for_entry" in data
+            and data["max_realized_volatility_for_entry"] is not None
+            else None
+        ),
         mutation_profile=mutation_profile,
         dataset_mode=str(data.get("dataset_mode", "legacy")),
         dataset_catalog_id=data.get("dataset_catalog_id"),

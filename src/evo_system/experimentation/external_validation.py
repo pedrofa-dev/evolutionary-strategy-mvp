@@ -14,9 +14,20 @@ from evo_system.evaluation import AgentEvaluator
 def build_environment(
     dataset_path: Path,
     trade_cost_rate: float,
+    regime_filter_enabled: bool = False,
+    min_trend_long_for_entry: float = 0.0,
+    min_breakout_for_entry: float = 0.0,
+    max_realized_volatility_for_entry: float | None = None,
 ) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
-    return HistoricalEnvironment(candles, trade_cost_rate=trade_cost_rate)
+    return HistoricalEnvironment(
+        candles,
+        trade_cost_rate=trade_cost_rate,
+        regime_filter_enabled=regime_filter_enabled,
+        min_trend_long_for_entry=min_trend_long_for_entry,
+        min_breakout_for_entry=min_breakout_for_entry,
+        max_realized_volatility_for_entry=max_realized_volatility_for_entry,
+    )
 
 
 def run_external_validation(
@@ -25,6 +36,10 @@ def run_external_validation(
     cost_penalty_weight: float,
     trade_cost_rate: float,
     trade_count_penalty_weight: float = 0.0,
+    regime_filter_enabled: bool = False,
+    min_trend_long_for_entry: float = 0.0,
+    min_breakout_for_entry: float = 0.0,
+    max_realized_volatility_for_entry: float | None = None,
 ) -> AgentEvaluation:
     if not external_dataset_paths:
         raise ValueError("external_dataset_paths cannot be empty")
@@ -34,7 +49,14 @@ def run_external_validation(
         trade_count_penalty_weight=trade_count_penalty_weight,
     )
     environments = [
-        build_environment(path, trade_cost_rate=trade_cost_rate)
+        build_environment(
+            path,
+            trade_cost_rate=trade_cost_rate,
+            regime_filter_enabled=regime_filter_enabled,
+            min_trend_long_for_entry=min_trend_long_for_entry,
+            min_breakout_for_entry=min_breakout_for_entry,
+            max_realized_volatility_for_entry=max_realized_volatility_for_entry,
+        )
         for path in external_dataset_paths
     ]
     return evaluator.evaluate(agent=agent, environments=environments)

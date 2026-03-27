@@ -12,6 +12,10 @@ class HistoricalEnvironment:
         self,
         candles: list[HistoricalCandle],
         trade_cost_rate: float = 0.0,
+        regime_filter_enabled: bool = False,
+        min_trend_long_for_entry: float = 0.0,
+        min_breakout_for_entry: float = 0.0,
+        max_realized_volatility_for_entry: float | None = None,
     ) -> None:
         if not candles:
             raise ValueError("candles cannot be empty")
@@ -21,6 +25,10 @@ class HistoricalEnvironment:
 
         self.candles = candles
         self.trade_cost_rate = trade_cost_rate
+        self.regime_filter_enabled = regime_filter_enabled
+        self.min_trend_long_for_entry = min_trend_long_for_entry
+        self.min_breakout_for_entry = min_breakout_for_entry
+        self.max_realized_volatility_for_entry = max_realized_volatility_for_entry
         self._base_price = candles[0].close
 
         self._closes = [candle.close for candle in candles]
@@ -117,6 +125,13 @@ class HistoricalEnvironment:
                         normalized_trend >= genome.trend_threshold
                     )
 
+                if self.regime_filter_enabled:
+                    should_open = should_open and self._passes_regime_filter(
+                        trend_long=trend_long_series[index],
+                        breakout=breakout_series[index],
+                        realized_volatility=realized_volatility_series[index],
+                    )
+
                 if should_open:
                     in_position = True
                     entry_price = candle.close
@@ -178,6 +193,24 @@ class HistoricalEnvironment:
         trade_cost = self.trade_cost_rate * position_size
         net_profit = gross_profit - trade_cost
         return net_profit, trade_cost
+
+    def _passes_regime_filter(
+        self,
+        trend_long: float,
+        breakout: float,
+        realized_volatility: float,
+    ) -> bool:
+        if trend_long < self.min_trend_long_for_entry:
+            return False
+
+        if breakout < self.min_breakout_for_entry:
+            return False
+
+        if self.max_realized_volatility_for_entry is not None:
+            if realized_volatility > self.max_realized_volatility_for_entry:
+                return False
+
+        return True
 
     def _has_feature_weights(self, agent: Agent) -> bool:
         genome = agent.genome

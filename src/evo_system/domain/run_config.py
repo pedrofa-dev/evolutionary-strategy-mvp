@@ -14,6 +14,10 @@ class RunConfig:
     trade_cost_rate: float = 0.0
     cost_penalty_weight: float = 0.25
     trade_count_penalty_weight: float = 0.0
+    regime_filter_enabled: bool = False
+    min_trend_long_for_entry: float = 0.0
+    min_breakout_for_entry: float = 0.0
+    max_realized_volatility_for_entry: float | None = None
     dataset_mode: str = "legacy"
     dataset_catalog_id: str | None = None
     seeds: list[int] | None = None
@@ -46,6 +50,18 @@ class RunConfig:
             raise ValueError(
                 "trade_count_penalty_weight must be greater than or equal to 0.0"
             )
+
+        if not -1.0 <= self.min_trend_long_for_entry <= 1.0:
+            raise ValueError("min_trend_long_for_entry must be between -1.0 and 1.0")
+
+        if not -1.0 <= self.min_breakout_for_entry <= 1.0:
+            raise ValueError("min_breakout_for_entry must be between -1.0 and 1.0")
+
+        if self.max_realized_volatility_for_entry is not None:
+            if not 0.0 <= self.max_realized_volatility_for_entry <= 1.0:
+                raise ValueError(
+                    "max_realized_volatility_for_entry must be between 0.0 and 1.0"
+                )
 
         if self.dataset_mode not in {"legacy", "manifest"}:
             raise ValueError("dataset_mode must be either 'legacy' or 'manifest'")

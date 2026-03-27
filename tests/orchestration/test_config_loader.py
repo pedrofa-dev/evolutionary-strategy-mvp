@@ -30,6 +30,10 @@ def test_load_run_config_reads_required_and_optional_fields(tmp_path) -> None:
     assert config.trade_cost_rate == 0.001
     assert config.cost_penalty_weight == 0.25
     assert config.trade_count_penalty_weight == 0.0
+    assert config.regime_filter_enabled is False
+    assert config.min_trend_long_for_entry == 0.0
+    assert config.min_breakout_for_entry == 0.0
+    assert config.max_realized_volatility_for_entry is None
 
 
 def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
@@ -52,6 +56,8 @@ def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
     assert config.trade_cost_rate == 0.0
     assert config.cost_penalty_weight == 0.25
     assert config.trade_count_penalty_weight == 0.0
+    assert config.regime_filter_enabled is False
+    assert config.max_realized_volatility_for_entry is None
 
 
 def test_load_run_config_reads_trade_count_penalty_weight(tmp_path) -> None:
@@ -73,6 +79,33 @@ def test_load_run_config_reads_trade_count_penalty_weight(tmp_path) -> None:
     config = load_run_config(str(config_path))
 
     assert config.trade_count_penalty_weight == 0.001
+
+
+def test_load_run_config_reads_regime_filter_fields(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "regime_filter_enabled": True,
+                "min_trend_long_for_entry": 0.2,
+                "min_breakout_for_entry": 0.1,
+                "max_realized_volatility_for_entry": 0.4,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.regime_filter_enabled is True
+    assert config.min_trend_long_for_entry == 0.2
+    assert config.min_breakout_for_entry == 0.1
+    assert config.max_realized_volatility_for_entry == 0.4
 
 
 def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:

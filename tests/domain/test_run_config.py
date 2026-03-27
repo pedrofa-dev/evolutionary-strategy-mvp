@@ -22,6 +22,10 @@ def test_run_config_builds_valid_instance() -> None:
     assert config.trade_cost_rate == 0.001
     assert config.cost_penalty_weight == 0.25
     assert config.trade_count_penalty_weight == 0.0
+    assert config.regime_filter_enabled is False
+    assert config.min_trend_long_for_entry == 0.0
+    assert config.min_breakout_for_entry == 0.0
+    assert config.max_realized_volatility_for_entry is None
     assert config.dataset_mode == "legacy"
     assert config.dataset_catalog_id is None
 
@@ -154,6 +158,25 @@ def test_run_config_rejects_invalid_dataset_mode() -> None:
             generations_planned=25,
             dataset_mode="unknown",
         )
+
+
+def test_run_config_accepts_regime_filter_fields() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        regime_filter_enabled=True,
+        min_trend_long_for_entry=0.2,
+        min_breakout_for_entry=0.1,
+        max_realized_volatility_for_entry=0.4,
+    )
+
+    assert config.regime_filter_enabled is True
+    assert config.min_trend_long_for_entry == 0.2
+    assert config.min_breakout_for_entry == 0.1
+    assert config.max_realized_volatility_for_entry == 0.4
 
 
 def test_run_config_requires_catalog_id_for_manifest_mode() -> None:
