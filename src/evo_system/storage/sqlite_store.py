@@ -57,6 +57,18 @@ class SQLiteStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_champions_config_name
+                ON champions(config_name)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_champions_run_id
+                ON champions(run_id)
+                """
+            )
             connection.commit()
 
     def save_generation_result(self, run_id: str, result: GenerationResult) -> None:

@@ -29,13 +29,11 @@ class HistoricalEnvironment:
         self.min_trend_long_for_entry = min_trend_long_for_entry
         self.min_breakout_for_entry = min_breakout_for_entry
         self.max_realized_volatility_for_entry = max_realized_volatility_for_entry
-        self._base_price = candles[0].close
 
         self._closes = [candle.close for candle in candles]
         self._highs = [candle.high for candle in candles]
         self._lows = [candle.low for candle in candles]
 
-        self._normalized_price_series = self._build_normalized_price_series()
         self._normalized_momentum_series = self._build_normalized_momentum_series()
 
         self._trend_cache: dict[int, list[float]] = {}
@@ -89,48 +87,34 @@ class HistoricalEnvironment:
         trend_long_series = self._get_trend_long_series(genome.ma_window)
         breakout_series = self._get_breakout_series(genome.range_window)
 
-        has_feature_weights = self._has_feature_weights(agent)
-
         for index, candle in enumerate(self.candles):
-            normalized_price = self._normalized_price_series[index]
             normalized_momentum = self._normalized_momentum_series[index]
             normalized_trend = trend_series[index]
-
-            if has_feature_weights:
-                entry_signal = normalized_price + (
-                    genome.weight_ret_short * ret_short_series[index]
-                    + genome.weight_ret_mid * ret_mid_series[index]
-                    + genome.weight_dist_ma * ma_distance_series[index]
-                    + genome.weight_range_pos * range_position_series[index]
-                    + genome.weight_vol_ratio * vol_ratio_series[index]
-                    + genome.weight_trend_strength * trend_strength_series[index]
-                    + genome.weight_realized_volatility
-                    * realized_volatility_series[index]
-                    + genome.weight_trend_long * trend_long_series[index]
-                    + genome.weight_breakout * breakout_series[index]
-                )
-            else:
-                entry_signal = normalized_price
+            trigger_score = self._get_trigger_score(
+                agent=agent,
+                index=index,
+                ret_short_series=ret_short_series,
+                ret_mid_series=ret_mid_series,
+                ma_distance_series=ma_distance_series,
+                range_position_series=range_position_series,
+                vol_ratio_series=vol_ratio_series,
+                trend_strength_series=trend_strength_series,
+                realized_volatility_series=realized_volatility_series,
+                trend_long_series=trend_long_series,
+                breakout_series=breakout_series,
+            )
+            setup_ok = self._is_setup_ok(
+                agent=agent,
+                index=index,
+                normalized_momentum=normalized_momentum,
+                normalized_trend=normalized_trend,
+                trend_long_series=trend_long_series,
+                breakout_series=breakout_series,
+                realized_volatility_series=realized_volatility_series,
+            )
 
             if not in_position:
-                should_open = entry_signal >= genome.threshold_open
-
-                if genome.use_momentum:
-                    should_open = should_open and (
-                        normalized_momentum >= genome.momentum_threshold
-                    )
-
-                if genome.use_trend:
-                    should_open = should_open and (
-                        normalized_trend >= genome.trend_threshold
-                    )
-
-                if self.regime_filter_enabled:
-                    should_open = should_open and self._passes_regime_filter(
-                        trend_long=trend_long_series[index],
-                        breakout=breakout_series[index],
-                        realized_volatility=realized_volatility_series[index],
-                    )
+                should_open = setup_ok and trigger_score >= genome.threshold_open
 
                 if should_open:
                     in_position = True
@@ -143,7 +127,8 @@ class HistoricalEnvironment:
                 hit_stop_loss = trade_return <= -genome.stop_loss
                 hit_take_profit = trade_return >= genome.take_profit
 
-                should_close = normalized_price <= genome.threshold_close
+                should_close_by_score = trigger_score <= genome.threshold_close
+                should_close = should_close_by_score
 
                 if genome.use_exit_momentum:
                     should_close = should_close or (
@@ -212,6 +197,70 @@ class HistoricalEnvironment:
 
         return True
 
+    def _is_setup_ok(
+        self,
+        agent: Agent,
+        index: int,
+        normalized_momentum: float,
+        normalized_trend: float,
+        trend_long_series: list[float],
+        breakout_series: list[float],
+        realized_volatility_series: list[float],
+    ) -> bool:
+        genome = agent.genome
+        setup_ok = True
+
+        if genome.use_momentum:
+            setup_ok = setup_ok and (
+                normalized_momentum >= genome.momentum_threshold
+            )
+
+        if genome.use_trend:
+            setup_ok = setup_ok and (normalized_trend >= genome.trend_threshold)
+
+        if self.regime_filter_enabled:
+            setup_ok = setup_ok and self._passes_regime_filter(
+                trend_long=trend_long_series[index],
+                breakout=breakout_series[index],
+                realized_volatility=realized_volatility_series[index],
+            )
+
+        return setup_ok
+
+    def _get_trigger_score(
+        self,
+        agent: Agent,
+        index: int,
+        ret_short_series: list[float],
+        ret_mid_series: list[float],
+        ma_distance_series: list[float],
+        range_position_series: list[float],
+        vol_ratio_series: list[float],
+        trend_strength_series: list[float],
+        realized_volatility_series: list[float],
+        trend_long_series: list[float],
+        breakout_series: list[float],
+    ) -> float:
+        genome = agent.genome
+
+        # Explicit compatibility fallback: a genome with no feature weights
+        # produces a neutral trigger score and therefore does not open trades
+        # unless threshold_open is also neutral and setup gates pass.
+        if not self._has_feature_weights(agent):
+            return 0.0
+
+        return (
+            genome.weight_ret_short * ret_short_series[index]
+            + genome.weight_ret_mid * ret_mid_series[index]
+            + genome.weight_dist_ma * ma_distance_series[index]
+            + genome.weight_range_pos * range_position_series[index]
+            + genome.weight_vol_ratio * vol_ratio_series[index]
+            + genome.weight_trend_strength * trend_strength_series[index]
+            + genome.weight_realized_volatility * realized_volatility_series[index]
+            + genome.weight_trend_long * trend_long_series[index]
+            + genome.weight_breakout * breakout_series[index]
+        )
+
     def _has_feature_weights(self, agent: Agent) -> bool:
         genome = agent.genome
 
@@ -229,12 +278,6 @@ class HistoricalEnvironment:
                 genome.weight_breakout,
             )
         )
-
-    def _build_normalized_price_series(self) -> list[float]:
-        return [
-            self._safe_ratio(close - self._base_price, self._base_price)
-            for close in self._closes
-        ]
 
     def _build_normalized_momentum_series(self) -> list[float]:
         series = [0.0]

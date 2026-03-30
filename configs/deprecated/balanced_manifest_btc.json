@@ -1,13 +1,15 @@
 {
+  "seed_start": 107,
+  "seed_count": 10,
   "population_size": 18,
   "target_population_size": 18,
   "survivors_count": 4,
   "generations_planned": 40,
   "mutation_seed": 42,
-  "trade_cost_rate": 0.0,
+  "trade_cost_rate": 0.0005,
   "cost_penalty_weight": 0.0,
   "dataset_mode": "manifest",
-  "dataset_catalog_id": "eth_1h_spot",
+  "dataset_catalog_id": "btc_1h_spot",
   "mutation_profile": {
     "strong_mutation_probability": 0.055,
     "numeric_delta_scale": 0.75,

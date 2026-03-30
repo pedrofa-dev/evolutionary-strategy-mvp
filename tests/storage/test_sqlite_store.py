@@ -17,6 +17,27 @@ def test_initialize_creates_database_file(tmp_path: Path) -> None:
     assert database_path.exists()
 
 
+def test_initialize_creates_indexes_for_champion_queries(tmp_path: Path) -> None:
+    database_path = tmp_path / "test_evolution.db"
+
+    store = SQLiteStore(str(database_path))
+    store.initialize()
+
+    with sqlite3.connect(database_path) as connection:
+        cursor = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index'
+            ORDER BY name
+            """
+        )
+        index_names = [row[0] for row in cursor.fetchall()]
+
+    assert "idx_champions_config_name" in index_names
+    assert "idx_champions_run_id" in index_names
+
+
 def test_save_and_load_generation_result(tmp_path: Path) -> None:
     database_path = tmp_path / "test_evolution.db"
 
@@ -214,4 +235,3 @@ def test_load_champions_can_filter_by_run_id(tmp_path: Path) -> None:
     assert len(loaded) == 1
     assert loaded[0]["run_id"] == "run-001"
     assert loaded[0]["config_name"] == "config_a"
-

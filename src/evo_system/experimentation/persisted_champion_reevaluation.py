@@ -1,0 +1,533 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from statistics import mean, median
+from typing import Any
+
+from evo_system.champions.classifier import count_positive_and_negative_datasets
+from evo_system.champions.metrics import format_dataset_path
+from evo_system.domain.agent import Agent
+from evo_system.domain.genome import Genome
+from evo_system.experimentation.external_validation import run_external_validation
+from evo_system.experimentation.dataset_roots import (
+    DEFAULT_DATASET_ROOT,
+    resolve_dataset_root,
+)
+from evo_system.orchestration.config_loader import load_run_config
+from evo_system.reporting.report_builder import export_flat_csv
+from evo_system.storage.sqlite_store import SQLiteStore
+
+
+DEFAULT_DB_PATH = Path("data/evolution.db")
+DEFAULT_OUTPUT_ROOT = Path("artifacts/analysis")
+
+
+def resolve_dataset_mode(
+    dataset_mode: str | None,
+    dataset_catalog_id: str | None,
+) -> str | None:
+    if dataset_mode is not None:
+        return dataset_mode
+
+    if dataset_catalog_id is not None:
+        return "manifest"
+
+    return None
+
+
+def ensure_output_dir(output_dir: Path | None) -> Path:
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    auto_dir = DEFAULT_OUTPUT_ROOT / f"reevaluated_champions_{timestamp}"
+    auto_dir.mkdir(parents=True, exist_ok=True)
+    return auto_dir
+
+
+def resolve_dataset_paths(
+    dataset_dir: Path | None,
+    fail_on_missing_datasets: bool,
+) -> list[Path]:
+    if dataset_dir is None:
+        return []
+
+    if not dataset_dir.exists():
+        if fail_on_missing_datasets:
+            raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
+        print(f"WARNING: dataset directory not found, skipping -> {dataset_dir}")
+        return []
+
+    dataset_paths = sorted(dataset_dir.rglob("*.csv"))
+    if dataset_paths:
+        return dataset_paths
+
+    if fail_on_missing_datasets:
+        raise ValueError(f"No CSV datasets found under: {dataset_dir}")
+
+    print(f"WARNING: no CSV datasets found, skipping -> {dataset_dir}")
+    return []
+
+
+def resolve_catalog_dataset_paths(
+    dataset_root: Path,
+    dataset_mode: str,
+    dataset_catalog_id: str,
+    dataset_layer: str,
+    fail_on_missing_datasets: bool,
+) -> list[Path]:
+    effective_dataset_root = resolve_dataset_root(
+        requested_dataset_root=dataset_root,
+        dataset_mode=dataset_mode,
+    )
+
+    if dataset_mode != "manifest":
+        raise ValueError(
+            f"Catalog-based reevaluation currently requires manifest mode, got: {dataset_mode}"
+        )
+
+    catalog_root = effective_dataset_root / dataset_catalog_id / dataset_layer
+    dataset_paths = sorted(catalog_root.rglob("candles.csv"))
+    if dataset_paths:
+        return dataset_paths
+
+    if fail_on_missing_datasets:
+        raise FileNotFoundError(f"No {dataset_layer} datasets found under {catalog_root}")
+
+    print(f"WARNING: no {dataset_layer} datasets found, skipping -> {catalog_root}")
+    return []
+
+
+def resolve_evaluation_dataset_source(
+    dataset_dir: Path | None,
+    dataset_root: Path | None,
+    dataset_mode: str | None,
+    dataset_catalog_id: str | None,
+    dataset_layer: str,
+    fail_on_missing_datasets: bool,
+) -> dict[str, Any]:
+    if dataset_dir is not None:
+        return {
+            "source_type": "directory",
+            "dataset_mode": None,
+            "dataset_catalog_id": None,
+            "dataset_root": dataset_dir,
+            "dataset_paths": resolve_dataset_paths(
+                dataset_dir,
+                fail_on_missing_datasets=fail_on_missing_datasets,
+            ),
+        }
+
+    resolved_mode = resolve_dataset_mode(dataset_mode, dataset_catalog_id)
+    if dataset_catalog_id is None or resolved_mode is None:
+        return {
+            "source_type": None,
+            "dataset_mode": None,
+            "dataset_catalog_id": None,
+            "dataset_root": None,
+            "dataset_paths": [],
+        }
+
+    requested_dataset_root = dataset_root or DEFAULT_DATASET_ROOT
+    effective_dataset_root = resolve_dataset_root(
+        requested_dataset_root=requested_dataset_root,
+        dataset_mode=resolved_mode,
+    )
+
+    return {
+        "source_type": "catalog",
+        "dataset_mode": resolved_mode,
+        "dataset_catalog_id": dataset_catalog_id,
+        "dataset_root": effective_dataset_root,
+        "dataset_paths": resolve_catalog_dataset_paths(
+            dataset_root=requested_dataset_root,
+            dataset_mode=resolved_mode,
+            dataset_catalog_id=dataset_catalog_id,
+            dataset_layer=dataset_layer,
+            fail_on_missing_datasets=fail_on_missing_datasets,
+        ),
+    }
+
+
+def filter_champions(
+    champions: list[dict[str, Any]],
+    config_name: str | None = None,
+    run_id: str | None = None,
+    champion_type: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    filtered = champions
+
+    if config_name is not None:
+        filtered = [
+            champion
+            for champion in filtered
+            if champion.get("config_name") == config_name
+        ]
+
+    if run_id is not None:
+        filtered = [
+            champion
+            for champion in filtered
+            if champion.get("run_id") == run_id
+        ]
+
+    if champion_type is not None:
+        filtered = [
+            champion
+            for champion in filtered
+            if champion.get("metrics", {}).get("champion_type") == champion_type
+        ]
+
+    filtered = sorted(filtered, key=lambda champion: int(champion["id"]))
+
+    if limit is not None:
+        filtered = filtered[:limit]
+
+    return filtered
+
+
+def build_evaluation_metrics(
+    prefix: str,
+    evaluation,
+    dataset_paths: list[Path],
+    dataset_root: Path,
+) -> dict[str, Any]:
+    positive_datasets, negative_datasets = count_positive_and_negative_datasets(
+        evaluation.dataset_profits
+    )
+
+    return {
+        f"{prefix}_dataset_names": [
+            format_dataset_path(path, dataset_root) for path in dataset_paths
+        ],
+        f"{prefix}_dataset_count": len(dataset_paths),
+        f"{prefix}_selection": evaluation.selection_score,
+        f"{prefix}_profit": evaluation.median_profit,
+        f"{prefix}_drawdown": evaluation.median_drawdown,
+        f"{prefix}_trades": evaluation.median_trades,
+        f"{prefix}_dispersion": evaluation.dispersion,
+        f"{prefix}_positive_datasets": positive_datasets,
+        f"{prefix}_negative_datasets": negative_datasets,
+        f"{prefix}_scores": evaluation.dataset_scores,
+        f"{prefix}_profits": evaluation.dataset_profits,
+        f"{prefix}_drawdowns": evaluation.dataset_drawdowns,
+        f"{prefix}_violations": evaluation.violations,
+        f"{prefix}_is_valid": evaluation.is_valid,
+    }
+
+
+def summarize_metric(
+    rows: list[dict[str, Any]],
+    field_name: str,
+) -> tuple[float | None, float | None]:
+    values = [
+        float(row[field_name])
+        for row in rows
+        if row.get(field_name) is not None
+    ]
+    if not values:
+        return None, None
+    return mean(values), median(values)
+
+
+def count_truthy(rows: list[dict[str, Any]], field_name: str) -> int:
+    return sum(1 for row in rows if bool(row.get(field_name)))
+
+
+def count_positive(rows: list[dict[str, Any]], field_name: str) -> int:
+    return sum(1 for row in rows if row.get(field_name) is not None and float(row[field_name]) > 0.0)
+
+
+def format_top_rows(
+    rows: list[dict[str, Any]],
+    field_name: str,
+    title: str,
+) -> list[str]:
+    top_rows = sorted(
+        [row for row in rows if row.get(field_name) is not None],
+        key=lambda row: float(row[field_name]),
+        reverse=True,
+    )[:10]
+
+    lines = [title]
+    if not top_rows:
+        lines.append("  No data.")
+        lines.append("")
+        return lines
+
+    for row in top_rows:
+        lines.append(
+            f"  champion_id={row['champion_id']} | "
+            f"run_id={row['run_id']} | "
+            f"config_name={row['config_name']} | "
+            f"champion_type={row['champion_type'] or 'unknown'} | "
+            f"{field_name}={float(row[field_name]):.6f} | "
+            f"validation_selection={float(row.get('validation_selection', 0.0)):.6f}"
+        )
+
+    lines.append("")
+    return lines
+
+
+def build_report_lines(
+    rows: list[dict[str, Any]],
+    filters: dict[str, Any],
+    external_evaluations_run: int,
+    audit_evaluations_run: int,
+) -> list[str]:
+    external_profit_mean, external_profit_median = summarize_metric(
+        rows,
+        "external_validation_profit",
+    )
+    external_selection_mean, external_selection_median = summarize_metric(
+        rows,
+        "external_validation_selection",
+    )
+    audit_profit_mean, audit_profit_median = summarize_metric(rows, "audit_profit")
+    audit_selection_mean, audit_selection_median = summarize_metric(
+        rows,
+        "audit_selection",
+    )
+
+    lines = [
+        "Persisted champion reevaluation report",
+        f"Generated at: {datetime.now().isoformat(timespec='seconds')}",
+        "",
+        "Filters used",
+        f"  db_path={filters['db_path']}",
+        f"  config_path={filters['config_path']}",
+        f"  dataset_root={filters['dataset_root'] or 'none'}",
+        f"  config_name={filters['config_name'] or 'none'}",
+        f"  run_id={filters['run_id'] or 'none'}",
+        f"  champion_type={filters['champion_type'] or 'none'}",
+        f"  limit={filters['limit'] if filters['limit'] is not None else 'none'}",
+        f"  external_validation_dir={filters['external_validation_dir'] or 'none'}",
+        f"  external_dataset_mode={filters['external_dataset_mode'] or 'none'}",
+        f"  external_dataset_catalog_id={filters['external_dataset_catalog_id'] or 'none'}",
+        f"  audit_dir={filters['audit_dir'] or 'none'}",
+        f"  audit_dataset_mode={filters['audit_dataset_mode'] or 'none'}",
+        f"  audit_dataset_catalog_id={filters['audit_dataset_catalog_id'] or 'none'}",
+        "",
+        f"Matched champions: {len(rows)}",
+        f"External evaluations run: {external_evaluations_run}",
+        f"Audit evaluations run: {audit_evaluations_run}",
+        "",
+        "External summary",
+        f"  mean_external_profit={external_profit_mean if external_profit_mean is not None else 'n/a'}",
+        f"  median_external_profit={external_profit_median if external_profit_median is not None else 'n/a'}",
+        f"  mean_external_selection={external_selection_mean if external_selection_mean is not None else 'n/a'}",
+        f"  median_external_selection={external_selection_median if external_selection_median is not None else 'n/a'}",
+        f"  champions_with_external_profit_gt_zero={count_positive(rows, 'external_validation_profit')}",
+        f"  champions_with_external_valid_true={count_truthy(rows, 'external_validation_is_valid')}",
+        "",
+    ]
+
+    if audit_evaluations_run > 0:
+        lines.extend(
+            [
+                "Audit summary",
+                f"  mean_audit_profit={audit_profit_mean if audit_profit_mean is not None else 'n/a'}",
+                f"  median_audit_profit={audit_profit_median if audit_profit_median is not None else 'n/a'}",
+                f"  mean_audit_selection={audit_selection_mean if audit_selection_mean is not None else 'n/a'}",
+                f"  median_audit_selection={audit_selection_median if audit_selection_median is not None else 'n/a'}",
+                f"  champions_with_audit_profit_gt_zero={count_positive(rows, 'audit_profit')}",
+                f"  champions_with_audit_valid_true={count_truthy(rows, 'audit_is_valid')}",
+                "",
+            ]
+        )
+
+    lines.extend(
+        format_top_rows(
+            rows,
+            "external_validation_selection",
+            "Top 10 champions by external_validation_selection",
+        )
+    )
+
+    if audit_evaluations_run > 0:
+        lines.extend(
+            format_top_rows(
+                rows,
+                "audit_selection",
+                "Top 10 champions by audit_selection",
+            )
+        )
+
+    return lines
+
+
+def reevaluate_persisted_champions(
+    db_path: Path,
+    config_path: Path,
+    dataset_root: Path | None = None,
+    config_name: str | None = None,
+    run_id: str | None = None,
+    champion_type: str | None = None,
+    external_validation_dir: Path | None = None,
+    external_dataset_mode: str | None = None,
+    external_dataset_catalog_id: str | None = None,
+    audit_dir: Path | None = None,
+    audit_dataset_mode: str | None = None,
+    audit_dataset_catalog_id: str | None = None,
+    output_dir: Path | None = None,
+    limit: int | None = None,
+    fail_on_missing_datasets: bool = False,
+) -> dict[str, Any]:
+    config = load_run_config(str(config_path))
+    store = SQLiteStore(str(db_path))
+    store.initialize()
+
+    external_source = resolve_evaluation_dataset_source(
+        dataset_dir=external_validation_dir,
+        dataset_root=dataset_root,
+        dataset_mode=external_dataset_mode,
+        dataset_catalog_id=external_dataset_catalog_id,
+        dataset_layer="external",
+        fail_on_missing_datasets=fail_on_missing_datasets,
+    )
+    audit_source = resolve_evaluation_dataset_source(
+        dataset_dir=audit_dir,
+        dataset_root=dataset_root,
+        dataset_mode=audit_dataset_mode,
+        dataset_catalog_id=audit_dataset_catalog_id,
+        dataset_layer="audit",
+        fail_on_missing_datasets=fail_on_missing_datasets,
+    )
+
+    external_dataset_paths = external_source["dataset_paths"]
+    audit_dataset_paths = audit_source["dataset_paths"]
+
+    if not external_dataset_paths and not audit_dataset_paths:
+        raise ValueError(
+            "No datasets available for reevaluation. Provide direct dataset directories and/or external/audit dataset catalog ids."
+        )
+
+    champions = store.load_champions(run_id=run_id)
+    matched_champions = filter_champions(
+        champions,
+        config_name=config_name,
+        run_id=run_id,
+        champion_type=champion_type,
+        limit=limit,
+    )
+
+    output_path = ensure_output_dir(output_dir)
+    rows: list[dict[str, Any]] = []
+
+    for champion in matched_champions:
+        metrics = champion.get("metrics", {})
+        genome = Genome.from_dict(champion["genome"])
+        agent = Agent.create(genome)
+
+        row: dict[str, Any] = {
+            "champion_id": champion["id"],
+            "run_id": champion["run_id"],
+            "generation_number": champion["generation_number"],
+            "mutation_seed": champion["mutation_seed"],
+            "config_name": champion["config_name"],
+            "champion_type": metrics.get("champion_type"),
+            "validation_selection": metrics.get("validation_selection"),
+            "validation_profit": metrics.get("validation_profit"),
+            "validation_drawdown": metrics.get("validation_drawdown"),
+            "validation_trades": metrics.get("validation_trades"),
+            "selection_gap": metrics.get("selection_gap"),
+            "external_source_type": external_source["source_type"],
+            "external_dataset_mode": external_source["dataset_mode"],
+            "external_dataset_catalog_id": external_source["dataset_catalog_id"],
+            "external_dataset_count": len(external_dataset_paths),
+            "audit_source_type": audit_source["source_type"],
+            "audit_dataset_mode": audit_source["dataset_mode"],
+            "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
+            "audit_dataset_count": len(audit_dataset_paths),
+        }
+
+        if external_dataset_paths:
+            external_evaluation = run_external_validation(
+                agent=agent,
+                external_dataset_paths=external_dataset_paths,
+                cost_penalty_weight=config.cost_penalty_weight,
+                trade_cost_rate=config.trade_cost_rate,
+                trade_count_penalty_weight=config.trade_count_penalty_weight,
+                regime_filter_enabled=config.regime_filter_enabled,
+                min_trend_long_for_entry=config.min_trend_long_for_entry,
+                min_breakout_for_entry=config.min_breakout_for_entry,
+                max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+            )
+            row.update(
+                build_evaluation_metrics(
+                    "external_validation",
+                    external_evaluation,
+                    external_dataset_paths,
+                    external_source["dataset_root"] or Path("."),
+                )
+            )
+
+        if audit_dataset_paths:
+            audit_evaluation = run_external_validation(
+                agent=agent,
+                external_dataset_paths=audit_dataset_paths,
+                cost_penalty_weight=config.cost_penalty_weight,
+                trade_cost_rate=config.trade_cost_rate,
+                trade_count_penalty_weight=config.trade_count_penalty_weight,
+                regime_filter_enabled=config.regime_filter_enabled,
+                min_trend_long_for_entry=config.min_trend_long_for_entry,
+                min_breakout_for_entry=config.min_breakout_for_entry,
+                max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+            )
+            row.update(
+                build_evaluation_metrics(
+                    "audit",
+                    audit_evaluation,
+                    audit_dataset_paths,
+                    audit_source["dataset_root"] or Path("."),
+                )
+            )
+
+        rows.append(row)
+
+    csv_path = output_path / "reevaluated_champions.csv"
+    json_path = output_path / "reevaluated_champions.json"
+    report_path = output_path / "reevaluation_report.txt"
+
+    export_flat_csv(rows, csv_path)
+    json_path.write_text(
+        json.dumps(rows, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report_lines = build_report_lines(
+        rows,
+        filters={
+            "db_path": db_path,
+            "config_path": config_path,
+            "dataset_root": dataset_root,
+            "config_name": config_name,
+            "run_id": run_id,
+            "champion_type": champion_type,
+            "limit": limit,
+            "external_validation_dir": external_validation_dir,
+            "external_dataset_mode": external_source["dataset_mode"],
+            "external_dataset_catalog_id": external_source["dataset_catalog_id"],
+            "audit_dir": audit_dir,
+            "audit_dataset_mode": audit_source["dataset_mode"],
+            "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
+        },
+        external_evaluations_run=len(rows) if external_dataset_paths else 0,
+        audit_evaluations_run=len(rows) if audit_dataset_paths else 0,
+    )
+    report_path.write_text("\n".join(report_lines), encoding="utf-8")
+
+    return {
+        "matched_count": len(rows),
+        "rows": rows,
+        "output_dir": output_path,
+        "csv_path": csv_path,
+        "json_path": json_path,
+        "report_path": report_path,
+        "external_evaluations_run": len(rows) if external_dataset_paths else 0,
+        "audit_evaluations_run": len(rows) if audit_dataset_paths else 0,
+    }

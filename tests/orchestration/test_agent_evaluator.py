@@ -19,6 +19,25 @@ def build_environment(trade_cost_rate: float = 0.0) -> HistoricalEnvironment:
     return HistoricalEnvironment(candles, trade_cost_rate=trade_cost_rate)
 
 
+def build_feature_trading_agent() -> Agent:
+    return Agent.create(
+        Genome(
+            threshold_open=0.1,
+            threshold_close=-1.0,
+            position_size=1.0,
+            stop_loss=0.5,
+            take_profit=0.1,
+            ret_short_window=1,
+            ret_mid_window=2,
+            ma_window=3,
+            range_window=3,
+            vol_short_window=2,
+            vol_long_window=4,
+            weight_ret_short=1.0,
+        )
+    )
+
+
 def test_agent_evaluator_penalizes_small_position_size() -> None:
     evaluator = AgentEvaluator()
     environments = [build_environment()]
@@ -181,15 +200,7 @@ def test_agent_evaluator_penalizes_costly_environments() -> None:
         )
     ]
 
-    agent = Agent.create(
-        Genome(
-            threshold_open=0.1,
-            threshold_close=0.0,
-            position_size=1.0,
-            stop_loss=0.5,
-            take_profit=0.1,
-        )
-    )
+    agent = build_feature_trading_agent()
 
     evaluation_without_cost = evaluator.evaluate(agent, environments_without_cost)
     evaluation_with_cost = evaluator.evaluate(agent, environments_with_cost)
@@ -213,15 +224,7 @@ def test_agent_evaluator_penalty_weight_can_be_disabled() -> None:
         )
     ]
 
-    agent = Agent.create(
-        Genome(
-            threshold_open=0.1,
-            threshold_close=0.0,
-            position_size=1.0,
-            stop_loss=0.5,
-            take_profit=0.1,
-        )
-    )
+    agent = build_feature_trading_agent()
 
     evaluator_without_cost_penalty = AgentEvaluator(cost_penalty_weight=0.0)
     evaluator_with_cost_penalty = AgentEvaluator(cost_penalty_weight=0.25)
@@ -274,15 +277,7 @@ def test_agent_evaluator_applies_trade_count_penalty_to_selection_score() -> Non
         )
     ]
 
-    agent = Agent.create(
-        Genome(
-            threshold_open=0.1,
-            threshold_close=0.0,
-            position_size=1.0,
-            stop_loss=0.5,
-            take_profit=0.1,
-        )
-    )
+    agent = build_feature_trading_agent()
 
     evaluation_without_trade_penalty = AgentEvaluator(
         trade_count_penalty_weight=0.0
