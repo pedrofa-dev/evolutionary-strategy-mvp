@@ -432,11 +432,13 @@ def analyze_champions(
     output_dir: Path | None = None,
     run_id: str | None = None,
     config_name: str | None = None,
+    run_ids: list[str] | None = None,
 ) -> dict[str, Any] | None:
     final_output_dir = ensure_output_dir(output_dir)
     champions = filter_champions(
         load_champions(db_path=db_path, run_id=run_id),
         config_name,
+        set(run_ids) if run_ids is not None else None,
     )
 
     if not champions:

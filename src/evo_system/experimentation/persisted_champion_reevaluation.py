@@ -152,14 +152,53 @@ def resolve_evaluation_dataset_source(
     }
 
 
+def resolve_reevaluation_sources(
+    *,
+    dataset_root: Path | None,
+    external_validation_dir: Path | None,
+    external_dataset_mode: str | None,
+    external_dataset_catalog_id: str | None,
+    audit_dir: Path | None,
+    audit_dataset_mode: str | None,
+    audit_dataset_catalog_id: str | None,
+    fail_on_missing_datasets: bool,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    external_source = resolve_evaluation_dataset_source(
+        dataset_dir=external_validation_dir,
+        dataset_root=dataset_root,
+        dataset_mode=external_dataset_mode,
+        dataset_catalog_id=external_dataset_catalog_id,
+        dataset_layer="external",
+        fail_on_missing_datasets=fail_on_missing_datasets,
+    )
+    audit_source = resolve_evaluation_dataset_source(
+        dataset_dir=audit_dir,
+        dataset_root=dataset_root,
+        dataset_mode=audit_dataset_mode,
+        dataset_catalog_id=audit_dataset_catalog_id,
+        dataset_layer="audit",
+        fail_on_missing_datasets=fail_on_missing_datasets,
+    )
+    return external_source, audit_source
+
+
 def filter_champions(
     champions: list[dict[str, Any]],
     config_name: str | None = None,
     run_id: str | None = None,
+    run_ids: list[str] | None = None,
     champion_type: str | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     filtered = champions
+
+    if run_ids is not None:
+        allowed_run_ids = set(run_ids)
+        filtered = [
+            champion
+            for champion in filtered
+            if champion.get("run_id") in allowed_run_ids
+        ]
 
     if config_name is not None:
         filtered = [
@@ -303,16 +342,22 @@ def build_report_lines(
         f"  dataset_root={filters['dataset_root'] or 'none'}",
         f"  config_name={filters['config_name'] or 'none'}",
         f"  run_id={filters['run_id'] or 'none'}",
+        f"  run_ids={filters.get('run_ids') or 'none'}",
+        f"  reevaluation_run_ids={filters.get('reevaluation_run_ids') or 'none'}",
         f"  champion_type={filters['champion_type'] or 'none'}",
         f"  limit={filters['limit'] if filters['limit'] is not None else 'none'}",
         f"  external_validation_dir={filters['external_validation_dir'] or 'none'}",
         f"  external_dataset_mode={filters['external_dataset_mode'] or 'none'}",
         f"  external_dataset_catalog_id={filters['external_dataset_catalog_id'] or 'none'}",
+        f"  external_dataset_root={filters.get('external_dataset_root') or 'none'}",
         f"  audit_dir={filters['audit_dir'] or 'none'}",
         f"  audit_dataset_mode={filters['audit_dataset_mode'] or 'none'}",
         f"  audit_dataset_catalog_id={filters['audit_dataset_catalog_id'] or 'none'}",
+        f"  audit_dataset_root={filters.get('audit_dataset_root') or 'none'}",
         "",
         f"Matched champions: {len(rows)}",
+        f"Champions matched for reevaluation: {filters.get('matched_champion_count', len(rows))}",
+        f"Rows generated: {filters.get('rows_generated', len(rows))}",
         f"External evaluations run: {external_evaluations_run}",
         f"Audit evaluations run: {audit_evaluations_run}",
         "",
@@ -325,6 +370,18 @@ def build_report_lines(
         f"  champions_with_external_valid_true={count_truthy(rows, 'external_validation_is_valid')}",
         "",
     ]
+
+    skipped_champions = filters.get("skipped_champions", [])
+    if skipped_champions:
+        lines.extend(["Skipped champions"])
+        for skipped in skipped_champions:
+            lines.append(
+                f"  champion_id={skipped.get('champion_id')} | "
+                f"run_id={skipped.get('run_id')} | "
+                f"config_name={skipped.get('config_name')} | "
+                f"reason={skipped.get('reason')}"
+            )
+        lines.append("")
 
     if audit_evaluations_run > 0:
         lines.extend(
@@ -360,41 +417,27 @@ def build_report_lines(
     return lines
 
 
-def reevaluate_persisted_champions(
-    db_path: Path,
-    config_path: Path,
+def build_reevaluation_rows(
+    champions: list[dict[str, Any]],
+    config_paths_by_name: dict[str, Path] | None = None,
+    config_paths_by_run_id: dict[str, Path] | None = None,
     dataset_root: Path | None = None,
-    config_name: str | None = None,
-    run_id: str | None = None,
-    champion_type: str | None = None,
     external_validation_dir: Path | None = None,
     external_dataset_mode: str | None = None,
     external_dataset_catalog_id: str | None = None,
     audit_dir: Path | None = None,
     audit_dataset_mode: str | None = None,
     audit_dataset_catalog_id: str | None = None,
-    output_dir: Path | None = None,
-    limit: int | None = None,
     fail_on_missing_datasets: bool = False,
-) -> dict[str, Any]:
-    config = load_run_config(str(config_path))
-    store = SQLiteStore(str(db_path))
-    store.initialize()
-
-    external_source = resolve_evaluation_dataset_source(
-        dataset_dir=external_validation_dir,
+) -> tuple[list[dict[str, Any]], int, int, list[dict[str, Any]]]:
+    external_source, audit_source = resolve_reevaluation_sources(
         dataset_root=dataset_root,
-        dataset_mode=external_dataset_mode,
-        dataset_catalog_id=external_dataset_catalog_id,
-        dataset_layer="external",
-        fail_on_missing_datasets=fail_on_missing_datasets,
-    )
-    audit_source = resolve_evaluation_dataset_source(
-        dataset_dir=audit_dir,
-        dataset_root=dataset_root,
-        dataset_mode=audit_dataset_mode,
-        dataset_catalog_id=audit_dataset_catalog_id,
-        dataset_layer="audit",
+        external_validation_dir=external_validation_dir,
+        external_dataset_mode=external_dataset_mode,
+        external_dataset_catalog_id=external_dataset_catalog_id,
+        audit_dir=audit_dir,
+        audit_dataset_mode=audit_dataset_mode,
+        audit_dataset_catalog_id=audit_dataset_catalog_id,
         fail_on_missing_datasets=fail_on_missing_datasets,
     )
 
@@ -406,92 +449,153 @@ def reevaluate_persisted_champions(
             "No datasets available for reevaluation. Provide direct dataset directories and/or external/audit dataset catalog ids."
         )
 
-    champions = store.load_champions(run_id=run_id)
-    matched_champions = filter_champions(
-        champions,
-        config_name=config_name,
-        run_id=run_id,
-        champion_type=champion_type,
-        limit=limit,
+    config_cache: dict[Path, Any] = {}
+    rows: list[dict[str, Any]] = []
+    skipped_champions: list[dict[str, Any]] = []
+
+    for champion in champions:
+        try:
+            config_path = None
+            if config_paths_by_run_id is not None:
+                config_path = config_paths_by_run_id.get(champion["run_id"])
+            if config_path is None and config_paths_by_name is not None:
+                config_path = config_paths_by_name.get(champion["config_name"])
+            if config_path is None:
+                raise ValueError(
+                    "Config path not available for persisted champion."
+                )
+
+            if config_path not in config_cache:
+                config_cache[config_path] = load_run_config(str(config_path))
+            config = config_cache[config_path]
+
+            metrics = champion.get("metrics", {})
+            genome = Genome.from_dict(champion["genome"])
+            agent = Agent.create(genome)
+
+            row: dict[str, Any] = {
+                "champion_id": champion["id"],
+                "run_id": champion["run_id"],
+                "generation_number": champion["generation_number"],
+                "mutation_seed": champion["mutation_seed"],
+                "config_name": champion["config_name"],
+                "champion_type": metrics.get("champion_type"),
+                "validation_selection": metrics.get("validation_selection"),
+                "validation_profit": metrics.get("validation_profit"),
+                "validation_drawdown": metrics.get("validation_drawdown"),
+                "validation_trades": metrics.get("validation_trades"),
+                "selection_gap": metrics.get("selection_gap"),
+                "external_source_type": external_source["source_type"],
+                "external_dataset_mode": external_source["dataset_mode"],
+                "external_dataset_catalog_id": external_source["dataset_catalog_id"],
+                "external_dataset_count": len(external_dataset_paths),
+                "external_dataset_root": (
+                    str(external_source["dataset_root"])
+                    if external_source["dataset_root"] is not None
+                    else None
+                ),
+                "external_dataset_set_name": (
+                    external_source["dataset_catalog_id"]
+                    or (
+                        external_source["dataset_root"].name
+                        if external_source["dataset_root"] is not None
+                        else None
+                    )
+                ),
+                "external_evaluation_type": "external",
+                "audit_source_type": audit_source["source_type"],
+                "audit_dataset_mode": audit_source["dataset_mode"],
+                "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
+                "audit_dataset_count": len(audit_dataset_paths),
+                "audit_dataset_root": (
+                    str(audit_source["dataset_root"])
+                    if audit_source["dataset_root"] is not None
+                    else None
+                ),
+                "audit_dataset_set_name": (
+                    audit_source["dataset_catalog_id"]
+                    or (
+                        audit_source["dataset_root"].name
+                        if audit_source["dataset_root"] is not None
+                        else None
+                    )
+                ),
+                "audit_evaluation_type": "audit",
+            }
+
+            if external_dataset_paths:
+                external_evaluation = run_external_validation(
+                    agent=agent,
+                    external_dataset_paths=external_dataset_paths,
+                    cost_penalty_weight=config.cost_penalty_weight,
+                    trade_cost_rate=config.trade_cost_rate,
+                    trade_count_penalty_weight=config.trade_count_penalty_weight,
+                    regime_filter_enabled=config.regime_filter_enabled,
+                    min_trend_long_for_entry=config.min_trend_long_for_entry,
+                    min_breakout_for_entry=config.min_breakout_for_entry,
+                    max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                )
+                row.update(
+                    build_evaluation_metrics(
+                        "external_validation",
+                        external_evaluation,
+                        external_dataset_paths,
+                        external_source["dataset_root"] or Path("."),
+                    )
+                )
+
+            if audit_dataset_paths:
+                audit_evaluation = run_external_validation(
+                    agent=agent,
+                    external_dataset_paths=audit_dataset_paths,
+                    cost_penalty_weight=config.cost_penalty_weight,
+                    trade_cost_rate=config.trade_cost_rate,
+                    trade_count_penalty_weight=config.trade_count_penalty_weight,
+                    regime_filter_enabled=config.regime_filter_enabled,
+                    min_trend_long_for_entry=config.min_trend_long_for_entry,
+                    min_breakout_for_entry=config.min_breakout_for_entry,
+                    max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                )
+                row.update(
+                    build_evaluation_metrics(
+                        "audit",
+                        audit_evaluation,
+                        audit_dataset_paths,
+                        audit_source["dataset_root"] or Path("."),
+                    )
+                )
+
+            rows.append(row)
+        except Exception as exc:
+            skipped_champions.append(
+                {
+                    "champion_id": champion.get("id"),
+                    "run_id": champion.get("run_id"),
+                    "config_name": champion.get("config_name"),
+                    "reason": str(exc),
+                }
+            )
+
+    return (
+        rows,
+        len(rows) if external_dataset_paths else 0,
+        len(rows) if audit_dataset_paths else 0,
+        skipped_champions,
     )
 
-    output_path = ensure_output_dir(output_dir)
-    rows: list[dict[str, Any]] = []
 
-    for champion in matched_champions:
-        metrics = champion.get("metrics", {})
-        genome = Genome.from_dict(champion["genome"])
-        agent = Agent.create(genome)
-
-        row: dict[str, Any] = {
-            "champion_id": champion["id"],
-            "run_id": champion["run_id"],
-            "generation_number": champion["generation_number"],
-            "mutation_seed": champion["mutation_seed"],
-            "config_name": champion["config_name"],
-            "champion_type": metrics.get("champion_type"),
-            "validation_selection": metrics.get("validation_selection"),
-            "validation_profit": metrics.get("validation_profit"),
-            "validation_drawdown": metrics.get("validation_drawdown"),
-            "validation_trades": metrics.get("validation_trades"),
-            "selection_gap": metrics.get("selection_gap"),
-            "external_source_type": external_source["source_type"],
-            "external_dataset_mode": external_source["dataset_mode"],
-            "external_dataset_catalog_id": external_source["dataset_catalog_id"],
-            "external_dataset_count": len(external_dataset_paths),
-            "audit_source_type": audit_source["source_type"],
-            "audit_dataset_mode": audit_source["dataset_mode"],
-            "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
-            "audit_dataset_count": len(audit_dataset_paths),
-        }
-
-        if external_dataset_paths:
-            external_evaluation = run_external_validation(
-                agent=agent,
-                external_dataset_paths=external_dataset_paths,
-                cost_penalty_weight=config.cost_penalty_weight,
-                trade_cost_rate=config.trade_cost_rate,
-                trade_count_penalty_weight=config.trade_count_penalty_weight,
-                regime_filter_enabled=config.regime_filter_enabled,
-                min_trend_long_for_entry=config.min_trend_long_for_entry,
-                min_breakout_for_entry=config.min_breakout_for_entry,
-                max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
-            )
-            row.update(
-                build_evaluation_metrics(
-                    "external_validation",
-                    external_evaluation,
-                    external_dataset_paths,
-                    external_source["dataset_root"] or Path("."),
-                )
-            )
-
-        if audit_dataset_paths:
-            audit_evaluation = run_external_validation(
-                agent=agent,
-                external_dataset_paths=audit_dataset_paths,
-                cost_penalty_weight=config.cost_penalty_weight,
-                trade_cost_rate=config.trade_cost_rate,
-                trade_count_penalty_weight=config.trade_count_penalty_weight,
-                regime_filter_enabled=config.regime_filter_enabled,
-                min_trend_long_for_entry=config.min_trend_long_for_entry,
-                min_breakout_for_entry=config.min_breakout_for_entry,
-                max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
-            )
-            row.update(
-                build_evaluation_metrics(
-                    "audit",
-                    audit_evaluation,
-                    audit_dataset_paths,
-                    audit_source["dataset_root"] or Path("."),
-                )
-            )
-
-        rows.append(row)
-
+def write_reevaluation_outputs(
+    rows: list[dict[str, Any]],
+    output_path: Path,
+    filters: dict[str, Any],
+    external_evaluations_run: int,
+    audit_evaluations_run: int,
+) -> dict[str, Any]:
+    output_path.mkdir(parents=True, exist_ok=True)
     csv_path = output_path / "reevaluated_champions.csv"
     json_path = output_path / "reevaluated_champions.json"
     report_path = output_path / "reevaluation_report.txt"
+    per_champion_dir = output_path / "champions"
 
     export_flat_csv(rows, csv_path)
     json_path.write_text(
@@ -499,35 +603,133 @@ def reevaluate_persisted_champions(
         encoding="utf-8",
     )
 
+    per_champion_dir.mkdir(parents=True, exist_ok=True)
+    for row in rows:
+        champion_json_path = per_champion_dir / f"champion_{row['champion_id']}.json"
+        champion_json_path.write_text(
+            json.dumps(row, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
     report_lines = build_report_lines(
         rows,
-        filters={
-            "db_path": db_path,
-            "config_path": config_path,
-            "dataset_root": dataset_root,
-            "config_name": config_name,
-            "run_id": run_id,
-            "champion_type": champion_type,
-            "limit": limit,
-            "external_validation_dir": external_validation_dir,
-            "external_dataset_mode": external_source["dataset_mode"],
-            "external_dataset_catalog_id": external_source["dataset_catalog_id"],
-            "audit_dir": audit_dir,
-            "audit_dataset_mode": audit_source["dataset_mode"],
-            "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
-        },
-        external_evaluations_run=len(rows) if external_dataset_paths else 0,
-        audit_evaluations_run=len(rows) if audit_dataset_paths else 0,
+        filters=filters,
+        external_evaluations_run=external_evaluations_run,
+        audit_evaluations_run=audit_evaluations_run,
     )
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
 
     return {
-        "matched_count": len(rows),
         "rows": rows,
         "output_dir": output_path,
         "csv_path": csv_path,
         "json_path": json_path,
         "report_path": report_path,
-        "external_evaluations_run": len(rows) if external_dataset_paths else 0,
-        "audit_evaluations_run": len(rows) if audit_dataset_paths else 0,
+        "per_champion_dir": per_champion_dir,
+        "external_evaluations_run": external_evaluations_run,
+        "audit_evaluations_run": audit_evaluations_run,
+        "rows_generated": len(rows),
     }
+
+
+def reevaluate_persisted_champions(
+    db_path: Path,
+    config_path: Path | None = None,
+    config_paths_by_run_id: dict[str, Path] | None = None,
+    dataset_root: Path | None = None,
+    config_name: str | None = None,
+    run_id: str | None = None,
+    run_ids: list[str] | None = None,
+    champion_type: str | None = None,
+    external_validation_dir: Path | None = None,
+    external_dataset_mode: str | None = None,
+    external_dataset_catalog_id: str | None = None,
+    audit_dir: Path | None = None,
+    audit_dataset_mode: str | None = None,
+    audit_dataset_catalog_id: str | None = None,
+    output_dir: Path | None = None,
+    limit: int | None = None,
+    fail_on_missing_datasets: bool = False,
+) -> dict[str, Any]:
+    store = SQLiteStore(str(db_path))
+    store.initialize()
+
+    if run_ids is not None and config_paths_by_run_id is None:
+        raise ValueError(
+            "run_ids requires config_paths_by_run_id so each champion can use the correct config."
+        )
+    if run_ids is None and config_path is None:
+        raise ValueError(
+            "config_path is required unless reevaluation is using config_paths_by_run_id."
+        )
+
+    champions = store.load_champions(run_id=run_id)
+    matched_champions = filter_champions(
+        champions,
+        config_name=config_name,
+        run_id=run_id,
+        run_ids=run_ids,
+        champion_type=champion_type,
+        limit=limit,
+    )
+
+    external_source, audit_source = resolve_reevaluation_sources(
+        dataset_root=dataset_root,
+        external_validation_dir=external_validation_dir,
+        external_dataset_mode=external_dataset_mode,
+        external_dataset_catalog_id=external_dataset_catalog_id,
+        audit_dir=audit_dir,
+        audit_dataset_mode=audit_dataset_mode,
+        audit_dataset_catalog_id=audit_dataset_catalog_id,
+        fail_on_missing_datasets=fail_on_missing_datasets,
+    )
+
+    rows, external_evaluations_run, audit_evaluations_run, skipped_champions = build_reevaluation_rows(
+        champions=matched_champions,
+        config_paths_by_name=None if run_ids is not None else {
+            champion["config_name"]: config_path
+            for champion in matched_champions
+        } if config_path is not None else None,
+        config_paths_by_run_id=config_paths_by_run_id,
+        dataset_root=dataset_root,
+        external_validation_dir=external_validation_dir,
+        external_dataset_mode=external_dataset_mode,
+        external_dataset_catalog_id=external_dataset_catalog_id,
+        audit_dir=audit_dir,
+        audit_dataset_mode=audit_dataset_mode,
+        audit_dataset_catalog_id=audit_dataset_catalog_id,
+        fail_on_missing_datasets=fail_on_missing_datasets,
+    )
+    output_path = ensure_output_dir(output_dir)
+    result = write_reevaluation_outputs(
+        rows,
+        output_path=output_path,
+        filters={
+            "db_path": db_path,
+            "config_path": config_path or "multiple",
+            "dataset_root": dataset_root,
+            "config_name": config_name,
+            "run_id": run_id,
+            "run_ids": run_ids,
+            "reevaluation_run_ids": sorted(
+                {champion["run_id"] for champion in matched_champions}
+            ),
+            "champion_type": champion_type,
+            "limit": limit,
+            "external_validation_dir": external_validation_dir,
+            "external_dataset_mode": external_dataset_mode,
+            "external_dataset_catalog_id": external_dataset_catalog_id,
+            "external_dataset_root": external_source["dataset_root"],
+            "audit_dir": audit_dir,
+            "audit_dataset_mode": audit_dataset_mode,
+            "audit_dataset_catalog_id": audit_dataset_catalog_id,
+            "audit_dataset_root": audit_source["dataset_root"],
+            "matched_champion_count": len(matched_champions),
+            "rows_generated": len(rows),
+            "skipped_champions": skipped_champions,
+        },
+        external_evaluations_run=external_evaluations_run,
+        audit_evaluations_run=audit_evaluations_run,
+    )
+    result["matched_count"] = len(rows)
+    return result

@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime
 from multiprocessing import get_context
 from pathlib import Path
@@ -35,6 +35,14 @@ from evo_system.experimentation.parallel_progress import (
     format_active_job_progress,
     read_progress_snapshot,
 )
+from evo_system.experimentation.post_batch_analysis import (
+    DEFAULT_AUDIT_DIR,
+    MULTISEED_QUICK_SUMMARY_NAME,
+    MULTISEED_CHAMPIONS_SUMMARY_NAME,
+    POST_MULTISEED_VALIDATION_DIRNAME,
+    run_post_multiseed_analysis,
+    write_multiseed_quick_summary,
+)
 from evo_system.experimentation.presets import (
     apply_preset_to_config_data,
     apply_preset_to_seeds,
@@ -42,13 +50,16 @@ from evo_system.experimentation.presets import (
     get_preset_by_name,
 )
 from evo_system.experimentation.single_run import execute_historical_run
+from evo_system.experimentation.single_run import DEFAULT_EXTERNAL_VALIDATION_DIR
 from evo_system.orchestration.config_loader import load_run_config
+from evo_system.reporting import DEFAULT_DB_PATH
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
 DEFAULT_SEED_START = 101
 DEFAULT_SEED_COUNT = 6
 DEFAULT_CONTEXT_NAME: str | None = None
+MULTISEED_RUN_SUMMARY_NAME = "multiseed_run_summary.txt"
 
 
 @dataclass(frozen=True)
@@ -60,6 +71,12 @@ class MultiseedJob:
     context_name: str | None
     preset_name: str | None
     progress_snapshot_path: Path
+
+
+@dataclass(frozen=True)
+class MultiseedExecutionOutcome:
+    run_summaries: list[HistoricalRunSummary]
+    failures: list[str]
 
 
 def calculate_effective_parallel_workers(
@@ -201,6 +218,17 @@ def build_progress_snapshot_path(
     return output_dir / f"progress_{config_path.stem}_seed{seed}.json"
 
 
+def preserve_original_config_path(
+    summary: HistoricalRunSummary,
+    original_config_path: Path,
+) -> HistoricalRunSummary:
+    if is_dataclass(summary):
+        return replace(summary, config_path=original_config_path)
+
+    setattr(summary, "config_path", original_config_path)
+    return summary
+
+
 def create_multiseed_dir() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     multiseed_dir = BATCHES_ROOT_DIR / f"multiseed_{timestamp}"
@@ -247,7 +275,7 @@ def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
     try:
         with open(os.devnull, "w", encoding="utf-8") as devnull:
             with redirect_stdout(devnull), redirect_stderr(devnull):
-                return execute_historical_run(
+                summary = execute_historical_run(
                     config_path=temp_config_path,
                     output_dir=job.output_dir,
                     log_name=build_log_name(job.config_path, job.seed),
@@ -256,6 +284,7 @@ def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
                     context_name=job.context_name,
                     progress_snapshot_path=job.progress_snapshot_path,
                 )
+                return preserve_original_config_path(summary, job.config_path)
     finally:
         temp_config_path.unlink(missing_ok=True)
 
@@ -269,7 +298,7 @@ def execute_multiseed_job_sequential(job: MultiseedJob) -> HistoricalRunSummary:
     temp_config_path = write_temp_config(config_copy)
 
     try:
-        return execute_historical_run(
+        summary = execute_historical_run(
             config_path=temp_config_path,
             output_dir=job.output_dir,
             log_name=build_log_name(job.config_path, job.seed),
@@ -278,6 +307,7 @@ def execute_multiseed_job_sequential(job: MultiseedJob) -> HistoricalRunSummary:
             context_name=job.context_name,
             progress_snapshot_path=job.progress_snapshot_path,
         )
+        return preserve_original_config_path(summary, job.config_path)
     finally:
         temp_config_path.unlink(missing_ok=True)
 
@@ -321,14 +351,14 @@ def is_champion(summary: HistoricalRunSummary) -> bool:
     return classify_summary_champion(summary) != "rejected"
 
 
-def execute_multiseed_runs(
+def execute_multiseed_runs_with_failures(
     config_paths: list[Path],
     output_dir: Path,
     dataset_root: Path,
     context_name: str | None,
     preset_name: str | None = None,
     requested_parallel_workers: int = 1,
-) -> list[HistoricalRunSummary]:
+) -> MultiseedExecutionOutcome:
     seed_map = resolve_seed_map(config_paths, preset_name)
     jobs = build_multiseed_jobs(
         seed_map=seed_map,
@@ -353,6 +383,7 @@ def execute_multiseed_runs(
 
     if effective_parallel_workers <= 1:
         summaries: list[HistoricalRunSummary] = []
+        failures: list[str] = []
         for index, job in enumerate(jobs, start=1):
             print()
             print(
@@ -368,8 +399,13 @@ def execute_multiseed_runs(
                     f"Preset: {preset.name} | "
                     f"generations={effective_config['generations_planned']}"
                 )
-            summaries.append(execute_multiseed_job_sequential(job))
-        return summaries
+            try:
+                summaries.append(execute_multiseed_job_sequential(job))
+            except Exception as exc:
+                failures.append(f"{job.config_path.name} seed {job.seed}: {exc}")
+                print(f"FAILED {job.config_path.name} seed {job.seed}: {exc}")
+                job.progress_snapshot_path.unlink(missing_ok=True)
+        return MultiseedExecutionOutcome(run_summaries=summaries, failures=failures)
 
     print(
         f"Running multiseed jobs in parallel with {effective_parallel_workers} workers."
@@ -468,13 +504,31 @@ def execute_multiseed_runs(
                 )
                 last_progress_report_time = current_time
 
-    if failures:
-        failure_summary = "\n".join(failures)
+    return MultiseedExecutionOutcome(run_summaries=summaries, failures=failures)
+
+
+def execute_multiseed_runs(
+    config_paths: list[Path],
+    output_dir: Path,
+    dataset_root: Path,
+    context_name: str | None,
+    preset_name: str | None = None,
+    requested_parallel_workers: int = 1,
+) -> list[HistoricalRunSummary]:
+    outcome = execute_multiseed_runs_with_failures(
+        config_paths=config_paths,
+        output_dir=output_dir,
+        dataset_root=dataset_root,
+        context_name=context_name,
+        preset_name=preset_name,
+        requested_parallel_workers=requested_parallel_workers,
+    )
+    if outcome.failures:
+        failure_summary = "\n".join(outcome.failures)
         raise RuntimeError(
             f"Multiseed execution completed with failures:\n{failure_summary}"
         )
-
-    return summaries
+    return outcome.run_summaries
 
 
 def build_grouped_summary_lines(
@@ -596,7 +650,8 @@ def write_multiseed_summary(
     preset_name: str | None,
     effective_generations: int | None,
 ) -> Path:
-    summary_path = output_dir / "multiseed_summary.txt"
+    summary_path = output_dir / MULTISEED_RUN_SUMMARY_NAME
+    output_dir.mkdir(parents=True, exist_ok=True)
     unique_seed_lists = {tuple(seeds) for seeds in seed_map.values()}
     seed_count_label = (
         str(len(next(iter(unique_seed_lists))))
@@ -633,6 +688,9 @@ def run_multiseed_experiment(
     preset_name: str | None = None,
     context_name: str | None = DEFAULT_CONTEXT_NAME,
     parallel_workers: int = 1,
+    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
+    audit_dir: Path = DEFAULT_AUDIT_DIR,
+    skip_post_multiseed_analysis: bool = False,
 ) -> Path | None:
     if parallel_workers <= 0:
         raise ValueError("parallel_workers must be greater than 0")
@@ -678,7 +736,7 @@ def run_multiseed_experiment(
     output_dir = create_multiseed_dir()
     print(f"Writing multiseed artifacts to {output_dir}")
 
-    summaries = execute_multiseed_runs(
+    outcome = execute_multiseed_runs_with_failures(
         config_paths=config_paths,
         output_dir=output_dir,
         dataset_root=dataset_root,
@@ -688,7 +746,7 @@ def run_multiseed_experiment(
     )
 
     summary_path = write_multiseed_summary(
-        summaries=summaries,
+        summaries=outcome.run_summaries,
         seed_map=seed_map,
         output_dir=output_dir,
         dataset_root_label=dataset_root_label,
@@ -697,8 +755,39 @@ def run_multiseed_experiment(
         effective_generations=effective_generations,
     )
 
+    if skip_post_multiseed_analysis:
+        write_multiseed_quick_summary(
+            multiseed_dir=output_dir,
+            run_summaries=outcome.run_summaries,
+            dataset_root_label=dataset_root_label,
+            failures=outcome.failures,
+            seeds_planned=job_count,
+        )
+        print(
+            "Post-multiseed analysis skipped -> champions/external/audit summaries not generated"
+        )
+    else:
+        run_post_multiseed_analysis(
+            multiseed_dir=output_dir,
+            summary_path=summary_path,
+            run_summaries=outcome.run_summaries,
+            dataset_root_label=dataset_root_label,
+            db_path=DEFAULT_DB_PATH,
+            external_validation_dir=external_validation_dir,
+            audit_dir=audit_dir,
+            failures=outcome.failures,
+            seeds_planned=job_count,
+        )
+
     print()
     print(f"Multiseed summary saved to {summary_path}")
+    print(f"Multiseed quick summary saved to {output_dir / MULTISEED_QUICK_SUMMARY_NAME}")
+
+    if outcome.failures:
+        failure_summary = "\n".join(outcome.failures)
+        raise RuntimeError(
+            f"Multiseed execution completed with failures:\n{failure_summary}"
+        )
     return summary_path
 
 
@@ -729,6 +818,23 @@ def main(argv: list[str] | None = None) -> None:
         default=1,
         help="Number of worker processes for independent runs. Default: 1.",
     )
+    parser.add_argument(
+        "--external-validation-dir",
+        type=Path,
+        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
+        help="Direct directory containing post-multiseed external validation CSV datasets.",
+    )
+    parser.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=DEFAULT_AUDIT_DIR,
+        help="Direct directory containing post-multiseed audit CSV datasets.",
+    )
+    parser.add_argument(
+        "--skip-post-multiseed-analysis",
+        action="store_true",
+        help="Skip automatic post-multiseed champion analysis and reevaluation.",
+    )
     args = parser.parse_args(argv)
 
     run_multiseed_experiment(
@@ -736,6 +842,9 @@ def main(argv: list[str] | None = None) -> None:
         dataset_root=args.dataset_root,
         preset_name=args.preset,
         parallel_workers=args.parallel_workers,
+        external_validation_dir=args.external_validation_dir,
+        audit_dir=args.audit_dir,
+        skip_post_multiseed_analysis=args.skip_post_multiseed_analysis,
     )
 
 

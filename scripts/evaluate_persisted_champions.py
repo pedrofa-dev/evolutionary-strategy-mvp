@@ -51,13 +51,16 @@ def parse_args() -> argparse.Namespace:
         "--dataset-root",
         type=Path,
         default=None,
-        help="Optional dataset root for reporting context consistency.",
+        help=(
+            "Optional dataset root used when resolving manifest/catalog-based "
+            "external or audit datasets."
+        ),
     )
     parser.add_argument(
         "--external-validation-dir",
         type=Path,
         default=None,
-        help="Optional directory containing external validation CSV datasets.",
+        help="Optional direct directory containing external validation CSV datasets.",
     )
     parser.add_argument(
         "--external-dataset-mode",
@@ -76,7 +79,7 @@ def parse_args() -> argparse.Namespace:
         "--audit-dir",
         type=Path,
         default=None,
-        help="Optional directory containing audit CSV datasets.",
+        help="Optional direct directory containing audit CSV datasets.",
     )
     parser.add_argument(
         "--audit-dataset-mode",

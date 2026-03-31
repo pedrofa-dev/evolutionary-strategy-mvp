@@ -1,12 +1,12 @@
 import argparse
 import os
 import time
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
 from multiprocessing import get_context
 from pathlib import Path
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
 from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.experimentation.dataset_roots import (
@@ -19,7 +19,17 @@ from evo_system.experimentation.parallel_progress import (
     format_active_job_progress,
     read_progress_snapshot,
 )
-from evo_system.experimentation.single_run import execute_historical_run
+from evo_system.experimentation.post_batch_analysis import (
+    DEFAULT_AUDIT_DIR,
+    run_post_batch_analysis,
+    write_batch_quick_summary,
+    write_batch_run_summary,
+)
+from evo_system.experimentation.single_run import (
+    DEFAULT_EXTERNAL_VALIDATION_DIR,
+    execute_historical_run,
+)
+from evo_system.reporting import DEFAULT_DB_PATH
 
 CONFIGS_DIR = Path("configs/runs")
 BATCHES_ROOT_DIR = Path("artifacts/batches")
@@ -32,6 +42,12 @@ class BatchJob:
     dataset_root: Path
     log_name: str
     progress_snapshot_path: Path
+
+
+@dataclass(frozen=True)
+class BatchExecutionOutcome:
+    run_summaries: list[HistoricalRunSummary]
+    failures: list[str]
 
 
 def calculate_effective_parallel_workers(
@@ -93,91 +109,6 @@ def collect_active_job_lines(
     return lines
 
 
-def build_ranking_lines_by_selection(
-    run_summaries: list[HistoricalRunSummary],
-) -> list[str]:
-    lines: list[str] = []
-
-    sorted_runs = sorted(
-        run_summaries,
-        key=lambda summary: summary.final_validation_selection_score,
-        reverse=True,
-    )
-
-    lines.append("Ranking by final validation selection score")
-
-    for index, summary in enumerate(sorted_runs, start=1):
-        lines.append(
-            f"{index}. "
-            f"{summary.config_name} | "
-            f"run_id={summary.run_id} | "
-            f"mutation_seed={summary.mutation_seed} | "
-            f"best_train={summary.best_train_selection_score:.4f} | "
-            f"validation_selection={summary.final_validation_selection_score:.4f} | "
-            f"validation_profit={summary.final_validation_profit:.4f} | "
-            f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
-            f"validation_trades={summary.final_validation_trades:.1f} | "
-            f"selection_gap={summary.train_validation_selection_gap:.4f} | "
-            f"profit_gap={summary.train_validation_profit_gap:.4f}"
-        )
-        lines.append(f"  best_genome={summary.best_genome_repr}")
-        lines.append(f"  log={summary.log_file_path}")
-        lines.append("")
-
-    return lines
-
-
-def build_ranking_lines_by_profit(
-    run_summaries: list[HistoricalRunSummary],
-) -> list[str]:
-    lines: list[str] = []
-
-    sorted_runs = sorted(
-        run_summaries,
-        key=lambda summary: summary.final_validation_profit,
-        reverse=True,
-    )
-
-    lines.append("Ranking by final validation profit")
-
-    for index, summary in enumerate(sorted_runs, start=1):
-        lines.append(
-            f"{index}. "
-            f"{summary.config_name} | "
-            f"run_id={summary.run_id} | "
-            f"mutation_seed={summary.mutation_seed} | "
-            f"validation_profit={summary.final_validation_profit:.4f} | "
-            f"validation_selection={summary.final_validation_selection_score:.4f} | "
-            f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
-            f"validation_trades={summary.final_validation_trades:.1f} | "
-            f"selection_gap={summary.train_validation_selection_gap:.4f} | "
-            f"profit_gap={summary.train_validation_profit_gap:.4f}"
-        )
-        lines.append(f"  best_genome={summary.best_genome_repr}")
-        lines.append(f"  log={summary.log_file_path}")
-        lines.append("")
-
-    return lines
-
-
-def build_batch_summary_lines(
-    run_summaries: list[HistoricalRunSummary],
-    dataset_root_label: str,
-) -> list[str]:
-    lines: list[str] = []
-
-    lines.append(f"Batch executed at: {datetime.now().isoformat(timespec='seconds')}")
-    lines.append(f"Dataset root: {dataset_root_label}")
-    lines.append(f"Runs executed: {len(run_summaries)}")
-    lines.append("")
-
-    lines.extend(build_ranking_lines_by_selection(run_summaries))
-    lines.append("")
-    lines.extend(build_ranking_lines_by_profit(run_summaries))
-
-    return lines
-
-
 def build_log_name(config_path: Path) -> str:
     return f"run_{config_path.stem}.txt"
 
@@ -205,12 +136,12 @@ def execute_batch_job(job: BatchJob) -> HistoricalRunSummary:
             )
 
 
-def execute_batch_jobs(
+def execute_batch_jobs_with_failures(
     config_files: list[Path],
     batch_dir: Path,
     dataset_root: Path,
     requested_parallel_workers: int,
-) -> list[HistoricalRunSummary]:
+) -> BatchExecutionOutcome:
     jobs = [
         BatchJob(
             config_path=config_path,
@@ -241,17 +172,17 @@ def execute_batch_jobs(
             print()
             print(f"[{index}/{total_jobs}] starting | mode=sequential | job={job.config_path.name}")
             print(f"=== Running {job.config_path.name} ===")
-            run_summaries.append(execute_historical_run(
-                config_path=job.config_path,
-                output_dir=job.output_dir,
-                log_name=job.log_name,
-                dataset_root=job.dataset_root,
-            ))
-        return run_summaries
+            run_summaries.append(
+                execute_historical_run(
+                    config_path=job.config_path,
+                    output_dir=job.output_dir,
+                    log_name=job.log_name,
+                    dataset_root=job.dataset_root,
+                )
+            )
+        return BatchExecutionOutcome(run_summaries=run_summaries, failures=[])
 
-    print(
-        f"Running batch jobs in parallel with {effective_parallel_workers} workers."
-    )
+    print(f"Running batch jobs in parallel with {effective_parallel_workers} workers.")
     run_summaries: list[HistoricalRunSummary] = []
     failures: list[str] = []
     completed_jobs = 0
@@ -278,10 +209,7 @@ def execute_batch_jobs(
             current_time = time.perf_counter()
 
             if not done_futures:
-                active_jobs = [
-                    future_to_job[future]
-                    for future in pending_futures
-                ]
+                active_jobs = [future_to_job[future] for future in pending_futures]
                 print_parallel_status(
                     completed_jobs=completed_jobs,
                     total_jobs=total_jobs,
@@ -331,10 +259,7 @@ def execute_batch_jobs(
                 last_progress_report_time == 0.0
                 or current_time - last_progress_report_time >= PROGRESS_POLL_INTERVAL_SECONDS
             ):
-                active_jobs = [
-                    future_to_job[future]
-                    for future in pending_futures
-                ]
+                active_jobs = [future_to_job[future] for future in pending_futures]
                 print_parallel_status(
                     completed_jobs=completed_jobs,
                     total_jobs=total_jobs,
@@ -344,31 +269,34 @@ def execute_batch_jobs(
                 )
                 last_progress_report_time = current_time
 
-    if failures:
-        failure_summary = "\n".join(failures)
-        raise RuntimeError(f"Batch execution completed with failures:\n{failure_summary}")
-
-    return run_summaries
+    return BatchExecutionOutcome(run_summaries=run_summaries, failures=failures)
 
 
-def write_batch_summary(
-    run_summaries: list[HistoricalRunSummary],
+def execute_batch_jobs(
+    config_files: list[Path],
     batch_dir: Path,
-    dataset_root_label: str,
-) -> Path:
-    batch_summary_path = batch_dir / "batch_summary.txt"
-    lines = build_batch_summary_lines(
-        run_summaries=run_summaries,
-        dataset_root_label=dataset_root_label,
+    dataset_root: Path,
+    requested_parallel_workers: int,
+) -> list[HistoricalRunSummary]:
+    outcome = execute_batch_jobs_with_failures(
+        config_files=config_files,
+        batch_dir=batch_dir,
+        dataset_root=dataset_root,
+        requested_parallel_workers=requested_parallel_workers,
     )
-    batch_summary_path.write_text("\n".join(lines), encoding="utf-8")
-    return batch_summary_path
+    if outcome.failures:
+        failure_summary = "\n".join(outcome.failures)
+        raise RuntimeError(f"Batch execution completed with failures:\n{failure_summary}")
+    return outcome.run_summaries
 
 
 def run_batch_experiment(
     configs_dir: Path = CONFIGS_DIR,
     dataset_root: Path = DEFAULT_DATASET_ROOT,
     parallel_workers: int = 1,
+    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
+    audit_dir: Path = DEFAULT_AUDIT_DIR,
+    skip_post_batch_analysis: bool = False,
 ) -> Path | None:
     if parallel_workers <= 0:
         raise ValueError("parallel_workers must be greater than 0")
@@ -404,21 +332,47 @@ def run_batch_experiment(
     batch_dir = create_batch_dir()
     print(f"Writing batch artifacts to {batch_dir}")
 
-    run_summaries = execute_batch_jobs(
+    outcome = execute_batch_jobs_with_failures(
         config_files=config_files,
         batch_dir=batch_dir,
         dataset_root=dataset_root,
         requested_parallel_workers=parallel_workers,
     )
 
-    batch_summary_path = write_batch_summary(
-        run_summaries=run_summaries,
-        batch_dir=batch_dir,
-        dataset_root_label=dataset_root_label,
-    )
+    if skip_post_batch_analysis:
+        batch_summary_path = write_batch_run_summary(
+            batch_dir=batch_dir,
+            run_summaries=outcome.run_summaries,
+            dataset_root_label=dataset_root_label,
+        )
+        write_batch_quick_summary(
+            batch_dir=batch_dir,
+            run_summaries=outcome.run_summaries,
+            dataset_root_label=dataset_root_label,
+            failures=outcome.failures,
+            runs_planned=len(config_files),
+        )
+        print("Post-batch analysis skipped -> champions/external/audit summaries not generated")
+    else:
+        post_batch_result = run_post_batch_analysis(
+            batch_dir=batch_dir,
+            run_summaries=outcome.run_summaries,
+            config_paths=config_files,
+            dataset_root_label=dataset_root_label,
+            db_path=DEFAULT_DB_PATH,
+            external_validation_dir=external_validation_dir,
+            audit_dir=audit_dir,
+            failures=outcome.failures,
+        )
+        batch_summary_path = post_batch_result.batch_summary_path
 
     print()
     print(f"Batch summary saved to {batch_summary_path}")
+
+    if outcome.failures:
+        failure_summary = "\n".join(outcome.failures)
+        raise RuntimeError(f"Batch execution completed with failures:\n{failure_summary}")
+
     return batch_summary_path
 
 
@@ -442,12 +396,32 @@ def main(argv: list[str] | None = None) -> None:
         default=1,
         help="Number of worker processes for independent runs. Default: 1.",
     )
+    parser.add_argument(
+        "--external-validation-dir",
+        type=Path,
+        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
+        help="Direct directory containing post-batch external validation CSV datasets.",
+    )
+    parser.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=DEFAULT_AUDIT_DIR,
+        help="Direct directory containing post-batch audit CSV datasets.",
+    )
+    parser.add_argument(
+        "--skip-post-batch-analysis",
+        action="store_true",
+        help="Skip automatic post-batch champion analysis and reevaluation.",
+    )
     args = parser.parse_args(argv)
 
     run_batch_experiment(
         configs_dir=args.configs_dir,
         dataset_root=args.dataset_root,
         parallel_workers=args.parallel_workers,
+        external_validation_dir=args.external_validation_dir,
+        audit_dir=args.audit_dir,
+        skip_post_batch_analysis=args.skip_post_batch_analysis,
     )
 
 

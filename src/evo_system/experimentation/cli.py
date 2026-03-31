@@ -7,6 +7,7 @@ from evo_system.experimentation.batch_run import (
 )
 from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.multiseed_run import run_multiseed_experiment
+from evo_system.experimentation.post_batch_analysis import DEFAULT_AUDIT_DIR
 from evo_system.experimentation.presets import get_available_preset_names
 from evo_system.experimentation.single_run import (
     DEFAULT_EXTERNAL_VALIDATION_DIR,
@@ -34,7 +35,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dataset-root",
         type=Path,
         default=DEFAULT_DATASET_ROOT,
-        help="Dataset root directory.",
+        help=(
+            "Requested dataset root directory. In manifest mode, the effective "
+            "dataset root resolves to data/datasets when the legacy default is used."
+        ),
     )
     single_parser.add_argument(
         "--preset",
@@ -47,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--external-validation-dir",
         type=Path,
         default=DEFAULT_EXTERNAL_VALIDATION_DIR,
-        help="Directory containing external validation CSV datasets.",
+        help="Direct directory containing external validation CSV datasets.",
     )
     single_parser.add_argument(
         "--skip-external-validation",
@@ -69,13 +73,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--dataset-root",
         type=Path,
         default=DEFAULT_DATASET_ROOT,
-        help="Dataset root directory.",
+        help=(
+            "Requested dataset root directory. In manifest mode, the effective "
+            "dataset root resolves to data/datasets when the legacy default is used."
+        ),
     )
     batch_parser.add_argument(
         "--parallel-workers",
         type=int,
         default=1,
         help="Number of worker processes for independent runs. Default: 1.",
+    )
+    batch_parser.add_argument(
+        "--external-validation-dir",
+        type=Path,
+        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
+        help="Direct directory containing post-batch external validation CSV datasets.",
+    )
+    batch_parser.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=DEFAULT_AUDIT_DIR,
+        help="Direct directory containing post-batch audit CSV datasets.",
+    )
+    batch_parser.add_argument(
+        "--skip-post-batch-analysis",
+        action="store_true",
+        help="Skip automatic post-batch champion analysis and reevaluation.",
     )
 
     multiseed_parser = subparsers.add_parser(
@@ -92,7 +116,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dataset-root",
         type=Path,
         default=DEFAULT_DATASET_ROOT,
-        help="Dataset root directory.",
+        help=(
+            "Requested dataset root directory. In manifest mode, the effective "
+            "dataset root resolves to data/datasets when the legacy default is used."
+        ),
     )
     multiseed_parser.add_argument(
         "--preset",
@@ -106,6 +133,23 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Number of worker processes for independent runs. Default: 1.",
+    )
+    multiseed_parser.add_argument(
+        "--external-validation-dir",
+        type=Path,
+        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
+        help="Direct directory containing post-multiseed external validation CSV datasets.",
+    )
+    multiseed_parser.add_argument(
+        "--audit-dir",
+        type=Path,
+        default=DEFAULT_AUDIT_DIR,
+        help="Direct directory containing post-multiseed audit CSV datasets.",
+    )
+    multiseed_parser.add_argument(
+        "--skip-post-multiseed-analysis",
+        action="store_true",
+        help="Skip automatic post-multiseed champion analysis and reevaluation.",
     )
 
     return parser
@@ -130,6 +174,9 @@ def main(argv: list[str] | None = None) -> None:
             configs_dir=args.configs_dir,
             dataset_root=args.dataset_root,
             parallel_workers=args.parallel_workers,
+            external_validation_dir=args.external_validation_dir,
+            audit_dir=args.audit_dir,
+            skip_post_batch_analysis=args.skip_post_batch_analysis,
         )
         return
 
@@ -139,6 +186,9 @@ def main(argv: list[str] | None = None) -> None:
             dataset_root=args.dataset_root,
             preset_name=args.preset,
             parallel_workers=args.parallel_workers,
+            external_validation_dir=args.external_validation_dir,
+            audit_dir=args.audit_dir,
+            skip_post_multiseed_analysis=args.skip_post_multiseed_analysis,
         )
         return
 

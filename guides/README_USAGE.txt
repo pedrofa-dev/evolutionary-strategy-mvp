@@ -1,168 +1,209 @@
-🚀 Usage Guide
+# Usage Guide
 
-This section explains how to use the full pipeline step by step.
+This guide reflects the current public workflow of the repository.
 
-🔁 Full Pipeline
-download_data → build_datasets → run_experiment → analyze_champions
+## Main Pipeline
 
-You can execute each step independently.
+Typical pipeline:
 
-📥 1. Download Market Data
+`download_data -> build_datasets -> run_experiment -> analyze_champions`
 
-Unified entrypoint for both spot and futures:
+Optional follow-up:
 
-Spot
-python scripts/download_data.py spot \
-  --symbols BTCUSDT ETHUSDT \
-  --interval 1h \
-  --start 2020-01-01 \
-  --end 2023-01-01
-Futures
-python scripts/download_data.py futures \
-  --symbols BTCUSDT ETHUSDT \
-  --interval 1h \
-  --start 2020-01-01 \
-  --end 2023-01-01
-Common options
---symbols → list of markets
---interval → timeframe (e.g. 1m, 5m, 1h, 1d)
---start / --end → date range
-🧱 2. Build Datasets
+`evaluate_persisted_champions`
 
-Convert raw data into training/validation datasets.
+## 1. Download Market Data
 
-python scripts/build_datasets.py \
-  --input-dir data/raw \
-  --output-dir data/processed
-What this does
-normalizes data
-splits datasets
-prepares them for backtesting
-🧪 3. Run Experiments
+Unified entrypoint for spot and futures:
 
-Main entrypoint:
+```bash
+python scripts/download_data.py spot --help
+python scripts/download_data.py futures --help
+```
 
-python scripts/run_experiment.py <mode> [options]
-🔹 Single Run
+Current preferred download root is `data/market_data`.
 
-Run a single configuration:
+Typical example:
 
-python scripts/run_experiment.py single \
-  --config configs/runs/run_balanced.json \
-  --dataset-root data/processed
-🔹 Batch Run
+```bash
+python scripts/download_data.py spot --symbol BTC/USDT --timeframe 1h --start 2020-10-01T00:00:00+00:00 --end 2024-08-16T00:00:00+00:00
+```
 
-Run multiple configs:
+## 2. Build Datasets
 
-python scripts/run_experiment.py batch \
-  --configs-dir configs/runs \
-  --dataset-root data/processed
-🔹 Multiseed Run
+Public modes:
 
-Run multiple configs across multiple seeds:
+```bash
+python scripts/build_datasets.py legacy --help
+python scripts/build_datasets.py manifest --help
+python scripts/build_datasets.py validate --help
+```
 
-python scripts/run_experiment.py multiseed \
-  --configs-dir configs/runs \
-  --dataset-root data/processed \
-  --preset screening
-🧩 Presets
+### Legacy builder
 
-Presets define how many seeds and generations are used.
+- older split-based builder
+- uses the older train/validation flow
 
-screening
-faster
-exploratory
-useful for comparing configs
-standard
-baseline multiseed validation
-same intensity as the old full preset
-extended
-broader validation
-more seeds than standard
-full
-heaviest preset
-highest seed count
-best for deep validation
-🧠 Important Behavior
-Only one champion per run is persisted
-It is the best persistable champion across the run
-Not necessarily from the final generation
-📊 4. Analyze Champions
-python scripts/analyze_champions.py
-What it does
-loads champions from SQLite
-groups by config
-computes statistics
-outputs summary reports
-Optional filters (if implemented)
---config run_balanced
---champion-type robust
---limit 10
-🧪 Example Full Workflow
-# 1. Download data
-python scripts/download_data.py spot --symbols BTCUSDT --interval 1h
+### Manifest builder
 
-# 2. Build datasets
-python scripts/build_datasets.py
-
-# 3. Run experiments
-python scripts/run_experiment.py multiseed \
-  --configs-dir configs/runs \
-  --dataset-root data/processed \
-  --preset screening
-
-# 4. Analyze results
-python scripts/analyze_champions.py
-⚙️ Config Files
-
-Configs are JSON files defining evolution parameters.
+- reads curated dataset catalogs from `configs/datasets/*.yaml`
+- builds datasets under `data/datasets/{catalog_id}/...`
+- supports layers:
+  - `train`
+  - `validation`
+  - `external`
+  - `audit`
 
 Example:
 
+```bash
+python scripts/build_datasets.py validate --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data
+```
+
+```bash
+python scripts/build_datasets.py manifest --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
+```
+
+## 3. Run Experiments
+
+Single public entrypoint:
+
+```bash
+python scripts/run_experiment.py -h
+```
+
+Modes:
+
+- `single`
+- `batch`
+- `multiseed`
+
+### Single
+
+```bash
+python scripts/run_experiment.py single --config-path configs/run_balanced_manifest.json
+```
+
+### Batch
+
+```bash
+python scripts/run_experiment.py batch --configs-dir configs/runs
+```
+
+### Multiseed
+
+```bash
+python scripts/run_experiment.py multiseed --configs-dir configs/runs --preset standard
+```
+
+### Parallel execution
+
+`batch` and `multiseed` support:
+
+```bash
+python scripts/run_experiment.py multiseed --configs-dir configs/runs --preset screening --parallel-workers 4
+```
+
+Notes:
+
+- `single` remains sequential.
+- `batch` and `multiseed` can use process-based parallelism.
+- If requested parallelism is not useful, the system falls back explicitly to sequential execution.
+
+## Dataset Modes In Run Configs
+
+The current run-config dataset modes are:
+
+- `legacy`
+- `manifest`
+
+Example manifest config fragment:
+
+```json
 {
-  "population_size": 18,
-  "target_population_size": 18,
-  "survivors_count": 4,
-  "generations_planned": 25,
-  "mutation_seed": 42,
-  "trade_cost_rate": 0.0,
-  "cost_penalty_weight": 0.0,
-  "mutation_profile": {
-    "strong_mutation_probability": 0.055,
-    "numeric_delta_scale": 0.75,
-    "flag_flip_probability": 0.025,
-    "weight_delta": 0.145,
-    "window_step_mode": "default"
-  }
+  "dataset_mode": "manifest",
+  "dataset_catalog_id": "bnb_1h_spot"
 }
-🧠 Tips
-1. Start with screening
+```
 
-Use screening preset to:
+Important:
 
-compare configs
-iterate fast
-2. Use multiseed for validation
+- `dataset_root` is the requested root from the CLI.
+- the effective dataset root may differ after resolution
+- when the legacy default root is requested in `manifest` mode, the effective root becomes `data/datasets`
 
-Single runs are noisy.
+## Validation Layers
 
-Multiseed reveals:
+Current layers in practice:
 
-stability
-robustness
-3. Keep configs small first
+- `train`
+- `validation`
+- `external`
+- `audit`
 
-Before scaling:
+Current runtime usage:
 
-test logic
-validate pipeline
-4. Analyze before optimizing
+- `train` and `validation` are part of the main experiment loop
+- `external` is used in post-run external validation of the persisted champion
+- `audit` is currently used outside the main loop through persisted champion reevaluation
 
-Don’t just run experiments:
-👉 inspect champions and patterns
+## 4. Analyze Champions
 
-🏁 Summary
+Analyze persisted champions from SQLite:
 
-You now have a clean and consistent workflow:
+```bash
+python scripts/analyze_champions.py --db-path data/evolution.db
+```
 
-data → datasets → experiments → champions → insights
+Supported filters:
+
+- `--run-id`
+- `--config-name`
+
+## 5. Reevaluate Persisted Champions
+
+Reevaluate stored champions on external and/or audit datasets without rerunning evolution:
+
+```bash
+python scripts/evaluate_persisted_champions.py -h
+```
+
+Supports both:
+
+- direct directory datasets
+- manifest/catalog-based external and audit datasets
+
+Example using direct external directory:
+
+```bash
+python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --config-name "balanced_bnb fee_5bps_fees.json" --config-path "configs/runs/balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-validation-dir data/datasets/external_validation
+```
+
+Example using manifest catalogs for reevaluation:
+
+```bash
+python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --config-name "balanced_bnb fee_5bps_fees.json" --config-path "configs/runs/balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-dataset-mode manifest --external-dataset-catalog-id bnb_external_catalog --audit-dataset-mode manifest --audit-dataset-catalog-id bnb_audit_catalog
+```
+
+## Presets
+
+Current multiseed presets:
+
+- `quick`
+- `screening`
+- `standard`
+- `extended`
+- `full`
+
+Current intent:
+
+- `screening`: fast comparison
+- `standard`: baseline multiseed validation
+- `extended`: broader multiseed validation
+- `full`: longest and most demanding preset
+
+## Practical Notes
+
+- A strong single run is not enough.
+- Validation and multiseed stability matter more than isolated peak performance.
+- External and audit layers are there to reduce false confidence, not to decorate reports.

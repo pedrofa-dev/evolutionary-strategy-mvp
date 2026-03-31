@@ -1014,6 +1014,7 @@ def execute_historical_run(
         generation_of_best=generation_of_best,
         train_validation_selection_gap=train_validation_selection_gap,
         train_validation_profit_gap=train_validation_profit_gap,
+        config_path=config_path,
     )
 
 

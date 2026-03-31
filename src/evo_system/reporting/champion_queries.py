@@ -8,13 +8,23 @@ from evo_system.reporting.champion_loader import ChampionRow, resolve_config_nam
 def filter_champions(
     champions: list[ChampionRow],
     config_name: str | None = None,
+    run_ids: set[str] | None = None,
 ) -> list[ChampionRow]:
+    filtered = champions
+
+    if run_ids is not None:
+        filtered = [
+            champion
+            for champion in filtered
+            if champion.run_id in run_ids
+        ]
+
     if config_name is None:
-        return champions
+        return filtered
 
     return [
         champion
-        for champion in champions
+        for champion in filtered
         if resolve_config_name(champion) == config_name
         or champion.config_name == config_name
     ]

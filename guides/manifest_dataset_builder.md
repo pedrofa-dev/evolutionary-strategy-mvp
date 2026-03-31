@@ -107,42 +107,27 @@ Minimal workflow using the manifest system:
 Example commands:
 
 ```bash
-python scripts/download_data.py spot \
-  --symbol BTC/USDT \
-  --timeframe 1h \
-  --start 2020-10-01T00:00:00+00:00 \
-  --end 2024-08-16T00:00:00+00:00
+python scripts/download_data.py spot --symbol BTC/USDT --timeframe 1h --start 2020-10-01T00:00:00+00:00 --end 2024-08-16T00:00:00+00:00
 ```
 
 ```bash
-python scripts/download_data.py spot \
-  --symbol ETH/USDT \
-  --timeframe 1h \
-  --start 2020-10-01T00:00:00+00:00 \
-  --end 2024-08-16T00:00:00+00:00
+python scripts/download_data.py spot --symbol ETH/USDT --timeframe 1h --start 2020-10-01T00:00:00+00:00 --end 2024-08-16T00:00:00+00:00
 ```
 
 ```bash
-python scripts/build_datasets.py validate \
-  --catalog-path configs/datasets/core_1h_spot.yaml \
-  --market-data-dir data/market_data
+python scripts/build_datasets.py validate --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data
 ```
 
 ```bash
-python scripts/build_datasets.py manifest \
-  --catalog-path configs/datasets/core_1h_spot.yaml \
-  --market-data-dir data/market_data \
-  --datasets-dir data/datasets
+python scripts/build_datasets.py manifest --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
 ```
 
 ```bash
-python scripts/run_experiment.py single \
-  --config-path configs/runs/run_balanced_manifest.json
+python scripts/run_experiment.py single --config-path configs/run_balanced_manifest.json
 ```
 
 ```bash
-python scripts/run_experiment.py batch \
-  --configs-dir configs/runs
+python scripts/run_experiment.py batch --configs-dir configs/runs
 ```
 
 Manifest mode uses:
