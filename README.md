@@ -22,8 +22,8 @@ The practical philosophy is simple: validation matters more than isolated optimi
 Implemented now:
 
 - Modular architecture split across `domain`, `environment`, `evaluation`, `champions`, `experimentation`, `storage`, and `reporting`.
-- Historical single, batch, and multiseed experiment execution through `scripts/run_experiment.py`.
-- Optional process-based parallelism for `batch` and `multiseed`.
+- Historical multiseed experiment execution through `scripts/run_experiment.py`.
+- Optional process-based parallelism for `multiseed`.
 - Champion classification and persistence policy extracted into `src/evo_system/champions`.
 - Train/validation separation during experiment runs.
 - Cost-aware evaluation through `trade_cost_rate` and `cost_penalty_weight`.
@@ -31,7 +31,7 @@ Implemented now:
 - Optional regime-entry filter using long-trend, breakout, and realized-volatility thresholds.
 - Best persistable champion tracking across the whole run, with only one champion persisted per run.
 - Post-run external validation for the persisted champion.
-- Manifest/catalog dataset mode for curated `train` / `validation` datasets.
+- Manifest/catalog datasets as the canonical workflow for curated `train` / `validation` datasets.
 - Reevaluation of persisted champions on external and audit datasets without rerunning evolution.
 - Champion reporting and flat exports from SQLite.
 
@@ -60,7 +60,7 @@ Main execution and analysis areas:
 - `src/evo_system/champions`
   - Champion type rules, comparison, persistence eligibility, and champion metrics.
 - `src/evo_system/experimentation`
-  - Single-run, batch, multiseed, presets, CLI wiring, external validation, and persisted champion reevaluation.
+  - Historical run execution, multiseed orchestration, presets, CLI wiring, external validation, and persisted champion reevaluation.
 - `src/evo_system/storage`
   - SQLite persistence for runs, generations, and champions.
 - `src/evo_system/reporting`
@@ -85,35 +85,26 @@ Typical workflow:
 4. Analyze persisted champions.
 5. Optionally reevaluate persisted champions on external or audit datasets.
 
-## Dataset Modes
+## Dataset Workflow
 
-The project currently supports two dataset modes in run configs:
+The project now uses a single canonical dataset workflow based on manifest catalogs.
 
-- `legacy`
-- `manifest`
+- Curated dataset catalogs live under `configs/datasets/*.yaml`.
+- Built dataset windows live under `data/datasets/{catalog_id}/{layer}/{dataset_id}/`.
+- Run configs select datasets with `dataset_catalog_id`.
 
-### Legacy mode
-
-- Uses the older train/validation layout under the requested dataset root.
-- The historical default requested root is `data/processed`.
-
-### Manifest mode
-
-- Uses curated catalog datasets under `data/datasets/{catalog_id}/...`.
-- When the requested dataset root is the legacy default, the effective dataset root resolves to `data/datasets`.
-- Run configs specify:
+Example:
 
 ```json
 {
-  "dataset_mode": "manifest",
   "dataset_catalog_id": "core_1h_spot"
 }
 ```
 
 Important terminology:
 
-- `dataset_root` is the requested root passed from CLI or code.
-- `effective dataset root` is the resolved root actually used after applying dataset-mode rules.
+- `dataset_root` is the root directory that contains built manifest datasets.
+- the runtime resolves datasets from that root plus `dataset_catalog_id`.
 
 ## Validation Flow
 
@@ -132,20 +123,18 @@ Outside the main run loop:
 
 This separation is intentional: the project tries to avoid mixing optimization and evaluation layers more than necessary.
 
-## Experiment Modes
+## Experiment Execution
 
 Public experiment CLI:
 
 ```bash
-python scripts/run_experiment.py single ...
-python scripts/run_experiment.py batch ...
-python scripts/run_experiment.py multiseed ...
+python scripts/run_experiment.py --configs-dir configs/runs --preset standard
 ```
 
 Notes:
 
-- `single` stays sequential.
-- `batch` and `multiseed` support optional process-based parallel execution with `--parallel-workers`.
+- `multiseed` is the canonical execution workflow.
+- It can run sequentially or with optional process-based parallelism through `--parallel-workers`.
 - If parallelism is requested but not useful, the system falls back explicitly to sequential execution.
 - Sequential mode keeps detailed generation-level output.
 - Parallel mode can show job-level progress and active-run progress snapshots.
@@ -157,8 +146,8 @@ Common config fields in current use:
 - `trade_cost_rate`
 - `cost_penalty_weight`
 - `trade_count_penalty_weight`
-- `dataset_mode`
 - `dataset_catalog_id`
+- `mutation_seed`
 - `seeds` or `seed_start` + `seed_count`
 - `regime_filter_enabled`
 - `min_trend_long_for_entry`
@@ -177,7 +166,6 @@ Example:
   "trade_cost_rate": 0.0005,
   "cost_penalty_weight": 0.25,
   "trade_count_penalty_weight": 0.001,
-  "dataset_mode": "manifest",
   "dataset_catalog_id": "bnb_1h_spot",
   "regime_filter_enabled": true,
   "min_trend_long_for_entry": 0.20,
@@ -214,6 +202,16 @@ The current practical focus is:
 - understand whether edge survives friction
 - reduce weak-context entries
 - improve strategy robustness before claiming anything meaningful
+
+## Canonical Workflow
+
+The repository now tells one main story:
+
+1. Download market data.
+2. Build curated datasets from manifest catalogs.
+3. Place active run configs under `configs/runs/`.
+4. Execute `multiseed`.
+5. Analyze or reevaluate persisted champions if needed.
 
 ## Useful Guides
 

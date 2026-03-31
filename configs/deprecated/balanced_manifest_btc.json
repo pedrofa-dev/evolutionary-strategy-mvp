@@ -8,7 +8,6 @@
   "mutation_seed": 42,
   "trade_cost_rate": 0.0005,
   "cost_penalty_weight": 0.0,
-  "dataset_mode": "manifest",
   "dataset_catalog_id": "btc_1h_spot",
   "mutation_profile": {
     "strong_mutation_probability": 0.055,

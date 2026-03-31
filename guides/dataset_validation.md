@@ -1,6 +1,6 @@
 # Dataset Validation
 
-The dataset validation tool checks whether a catalog is structurally correct and safe to use before building curated datasets.
+Dataset validation is part of the manifest build flow. The builder checks whether a catalog is structurally correct and safe to use before writing curated datasets.
 
 ## What Is Validated
 
@@ -29,8 +29,12 @@ For example, overlap between `train` and `validation`, or between `validation` a
 - Missing source data errors mean the expected market files are not available under `data/market_data`.
 - Very small dataset errors mean the window exists but likely contains too little data to be useful.
 
-## Example Command
+## Example Commands
 
 ```bash
-python scripts/build_datasets.py validate --catalog-path configs/datasets/core_1h_spot.yaml
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --validate-only
+```
+
+```bash
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
 ```

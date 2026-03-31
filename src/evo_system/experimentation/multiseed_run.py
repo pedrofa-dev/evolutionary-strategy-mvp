@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import statistics
@@ -35,10 +34,9 @@ from evo_system.experimentation.parallel_progress import (
     format_active_job_progress,
     read_progress_snapshot,
 )
-from evo_system.experimentation.post_batch_analysis import (
+from evo_system.experimentation.post_multiseed_analysis import (
     DEFAULT_AUDIT_DIR,
     MULTISEED_QUICK_SUMMARY_NAME,
-    MULTISEED_CHAMPIONS_SUMMARY_NAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
     run_post_multiseed_analysis,
     write_multiseed_quick_summary,
@@ -46,16 +44,17 @@ from evo_system.experimentation.post_batch_analysis import (
 from evo_system.experimentation.presets import (
     apply_preset_to_config_data,
     apply_preset_to_seeds,
-    get_available_preset_names,
     get_preset_by_name,
 )
-from evo_system.experimentation.single_run import execute_historical_run
-from evo_system.experimentation.single_run import DEFAULT_EXTERNAL_VALIDATION_DIR
+from evo_system.experimentation.historical_run import (
+    DEFAULT_EXTERNAL_VALIDATION_DIR,
+    execute_historical_run,
+)
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.reporting import DEFAULT_DB_PATH
 
 CONFIGS_DIR = Path("configs/runs")
-BATCHES_ROOT_DIR = Path("artifacts/batches")
+MULTISEED_ROOT_DIR = Path("artifacts/multiseed")
 DEFAULT_SEED_START = 101
 DEFAULT_SEED_COUNT = 6
 DEFAULT_CONTEXT_NAME: str | None = None
@@ -231,7 +230,7 @@ def preserve_original_config_path(
 
 def create_multiseed_dir() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    multiseed_dir = BATCHES_ROOT_DIR / f"multiseed_{timestamp}"
+    multiseed_dir = MULTISEED_ROOT_DIR / f"multiseed_{timestamp}"
     multiseed_dir.mkdir(parents=True, exist_ok=True)
     return multiseed_dir
 
@@ -660,7 +659,7 @@ def write_multiseed_summary(
     )
 
     lines = [
-        f"Multiseed batch executed at: {datetime.now().isoformat(timespec='seconds')}",
+        f"Multiseed executed at: {datetime.now().isoformat(timespec='seconds')}",
         f"Preset: {preset_name or 'none'}",
         f"Effective generations: {effective_generations if effective_generations is not None else 'config-defined'}",
         f"Context name: {context_name or 'none'}",
@@ -767,7 +766,7 @@ def run_multiseed_experiment(
             "Post-multiseed analysis skipped -> champions/external/audit summaries not generated"
         )
     else:
-        run_post_multiseed_analysis(
+        post_analysis_result = run_post_multiseed_analysis(
             multiseed_dir=output_dir,
             summary_path=summary_path,
             run_summaries=outcome.run_summaries,
@@ -777,6 +776,13 @@ def run_multiseed_experiment(
             audit_dir=audit_dir,
             failures=outcome.failures,
             seeds_planned=job_count,
+        )
+        print(
+            f"Multiseed champions summary saved to {post_analysis_result.champions_summary_path}"
+        )
+        print(
+            "Multiseed post-validation directory saved to "
+            f"{output_dir / POST_MULTISEED_VALIDATION_DIRNAME}"
         )
 
     print()
@@ -789,64 +795,3 @@ def run_multiseed_experiment(
             f"Multiseed execution completed with failures:\n{failure_summary}"
         )
     return summary_path
-
-
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Execute historical multiseed runs.")
-    parser.add_argument(
-        "--preset",
-        type=str,
-        choices=get_available_preset_names(),
-        default=None,
-        help="Optional execution preset overriding generations and seeds/max_seeds.",
-    )
-    parser.add_argument(
-        "--configs-dir",
-        type=Path,
-        default=CONFIGS_DIR,
-        help="Directory containing run config JSON files.",
-    )
-    parser.add_argument(
-        "--dataset-root",
-        type=Path,
-        default=DEFAULT_DATASET_ROOT,
-        help="Dataset root directory.",
-    )
-    parser.add_argument(
-        "--parallel-workers",
-        type=int,
-        default=1,
-        help="Number of worker processes for independent runs. Default: 1.",
-    )
-    parser.add_argument(
-        "--external-validation-dir",
-        type=Path,
-        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
-        help="Direct directory containing post-multiseed external validation CSV datasets.",
-    )
-    parser.add_argument(
-        "--audit-dir",
-        type=Path,
-        default=DEFAULT_AUDIT_DIR,
-        help="Direct directory containing post-multiseed audit CSV datasets.",
-    )
-    parser.add_argument(
-        "--skip-post-multiseed-analysis",
-        action="store_true",
-        help="Skip automatic post-multiseed champion analysis and reevaluation.",
-    )
-    args = parser.parse_args(argv)
-
-    run_multiseed_experiment(
-        configs_dir=args.configs_dir,
-        dataset_root=args.dataset_root,
-        preset_name=args.preset,
-        parallel_workers=args.parallel_workers,
-        external_validation_dir=args.external_validation_dir,
-        audit_dir=args.audit_dir,
-        skip_post_multiseed_analysis=args.skip_post_multiseed_analysis,
-    )
-
-
-if __name__ == "__main__":
-    main()

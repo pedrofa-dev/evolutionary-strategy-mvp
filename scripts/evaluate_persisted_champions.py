@@ -63,13 +63,6 @@ def parse_args() -> argparse.Namespace:
         help="Optional direct directory containing external validation CSV datasets.",
     )
     parser.add_argument(
-        "--external-dataset-mode",
-        type=str,
-        choices=["legacy", "manifest"],
-        default=None,
-        help="Optional dataset mode for external reevaluation when using a catalog id.",
-    )
-    parser.add_argument(
         "--external-dataset-catalog-id",
         type=str,
         default=None,
@@ -80,13 +73,6 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Optional direct directory containing audit CSV datasets.",
-    )
-    parser.add_argument(
-        "--audit-dataset-mode",
-        type=str,
-        choices=["legacy", "manifest"],
-        default=None,
-        help="Optional dataset mode for audit reevaluation when using a catalog id.",
     )
     parser.add_argument(
         "--audit-dataset-catalog-id",
@@ -124,10 +110,8 @@ def main() -> None:
         run_id=args.run_id,
         champion_type=args.champion_type,
         external_validation_dir=args.external_validation_dir,
-        external_dataset_mode=args.external_dataset_mode,
         external_dataset_catalog_id=args.external_dataset_catalog_id,
         audit_dir=args.audit_dir,
-        audit_dataset_mode=args.audit_dataset_mode,
         audit_dataset_catalog_id=args.audit_dataset_catalog_id,
         output_dir=args.output_dir,
         limit=args.limit,

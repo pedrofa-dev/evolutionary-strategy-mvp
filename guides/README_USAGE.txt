@@ -31,22 +31,14 @@ python scripts/download_data.py spot --symbol BTC/USDT --timeframe 1h --start 20
 
 ## 2. Build Datasets
 
-Public modes:
+The dataset builder now has a single manifest/catalog flow with integrated validation:
 
 ```bash
-python scripts/build_datasets.py legacy --help
-python scripts/build_datasets.py manifest --help
-python scripts/build_datasets.py validate --help
+python scripts/build_datasets.py --help
 ```
 
-### Legacy builder
-
-- older split-based builder
-- uses the older train/validation flow
-
-### Manifest builder
-
 - reads curated dataset catalogs from `configs/datasets/*.yaml`
+- validates manifest structure and source coverage before writing anything
 - builds datasets under `data/datasets/{catalog_id}/...`
 - supports layers:
   - `train`
@@ -54,14 +46,16 @@ python scripts/build_datasets.py validate --help
   - `external`
   - `audit`
 
-Example:
+Validate only:
 
 ```bash
-python scripts/build_datasets.py validate --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --validate-only
 ```
 
+Build after automatic validation:
+
 ```bash
-python scripts/build_datasets.py manifest --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
 ```
 
 ## 3. Run Experiments
@@ -72,65 +66,39 @@ Single public entrypoint:
 python scripts/run_experiment.py -h
 ```
 
-Modes:
-
-- `single`
-- `batch`
-- `multiseed`
-
-### Single
+Canonical workflow:
 
 ```bash
-python scripts/run_experiment.py single --config-path configs/run_balanced_manifest.json
-```
-
-### Batch
-
-```bash
-python scripts/run_experiment.py batch --configs-dir configs/runs
-```
-
-### Multiseed
-
-```bash
-python scripts/run_experiment.py multiseed --configs-dir configs/runs --preset standard
+python scripts/run_experiment.py --configs-dir configs/runs --preset standard
 ```
 
 ### Parallel execution
 
-`batch` and `multiseed` support:
+`multiseed` supports:
 
 ```bash
-python scripts/run_experiment.py multiseed --configs-dir configs/runs --preset screening --parallel-workers 4
+python scripts/run_experiment.py --configs-dir configs/runs --preset screening --parallel-workers 4
 ```
 
 Notes:
 
-- `single` remains sequential.
-- `batch` and `multiseed` can use process-based parallelism.
+- `multiseed` can run sequentially or with process-based parallelism.
 - If requested parallelism is not useful, the system falls back explicitly to sequential execution.
 
-## Dataset Modes In Run Configs
+## Dataset Catalogs In Run Configs
 
-The current run-config dataset modes are:
-
-- `legacy`
-- `manifest`
-
-Example manifest config fragment:
+Run configs now select curated datasets directly by catalog id:
 
 ```json
 {
-  "dataset_mode": "manifest",
   "dataset_catalog_id": "bnb_1h_spot"
 }
 ```
 
 Important:
 
-- `dataset_root` is the requested root from the CLI.
-- the effective dataset root may differ after resolution
-- when the legacy default root is requested in `manifest` mode, the effective root becomes `data/datasets`
+- `dataset_root` is the root containing built manifest datasets.
+- the runtime resolves `train` and `validation` datasets from `dataset_root / dataset_catalog_id`.
 
 ## Validation Layers
 
@@ -182,7 +150,7 @@ python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --con
 Example using manifest catalogs for reevaluation:
 
 ```bash
-python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --config-name "balanced_bnb fee_5bps_fees.json" --config-path "configs/runs/balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-dataset-mode manifest --external-dataset-catalog-id bnb_external_catalog --audit-dataset-mode manifest --audit-dataset-catalog-id bnb_audit_catalog
+python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --config-name "balanced_bnb fee_5bps_fees.json" --config-path "configs/runs/balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-dataset-catalog-id bnb_external_catalog --audit-dataset-catalog-id bnb_audit_catalog
 ```
 
 ## Presets
@@ -204,6 +172,6 @@ Current intent:
 
 ## Practical Notes
 
-- A strong single run is not enough.
+- A strong individual seed is not enough.
 - Validation and multiseed stability matter more than isolated peak performance.
 - External and audit layers are there to reduce false confidence, not to decorate reports.

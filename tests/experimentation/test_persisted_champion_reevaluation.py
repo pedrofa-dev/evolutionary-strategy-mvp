@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from evo_system.domain.genome import Genome
-from evo_system.experimentation.dataset_roots import DEFAULT_MANIFEST_DATASET_ROOT
+from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.persisted_champion_reevaluation import (
     build_reevaluation_rows,
     filter_champions,
@@ -40,6 +40,7 @@ def write_run_config(config_path: Path) -> None:
                 "target_population_size": 12,
                 "survivors_count": 4,
                 "generations_planned": 25,
+                "dataset_catalog_id": "core_1h_spot",
                 "trade_cost_rate": 0.001,
                 "cost_penalty_weight": 0.25,
                 "trade_count_penalty_weight": 0.0,
@@ -147,7 +148,6 @@ def test_reevaluate_persisted_champions_exports_direct_external_and_audit_output
 
     row = result["rows"][0]
     assert row["external_source_type"] == "directory"
-    assert row["external_dataset_mode"] is None
     assert row["external_dataset_catalog_id"] is None
     assert row["external_dataset_count"] == 1
     assert row["audit_source_type"] == "directory"
@@ -181,7 +181,6 @@ def test_reevaluate_persisted_champions_supports_manifest_external(
 
     row = result["rows"][0]
     assert row["external_source_type"] == "catalog"
-    assert row["external_dataset_mode"] == "manifest"
     assert row["external_dataset_catalog_id"] == "ext_catalog"
     assert row["external_dataset_count"] == 1
     assert str(row["external_dataset_root"]).endswith("data\\datasets")
@@ -471,10 +470,8 @@ def test_resolve_reevaluation_sources_provides_report_context_without_rows(
     external_source, audit_source = resolve_reevaluation_sources(
         dataset_root=tmp_path,
         external_validation_dir=external_dir,
-        external_dataset_mode=None,
         external_dataset_catalog_id=None,
         audit_dir=audit_dir,
-        audit_dataset_mode=None,
         audit_dataset_catalog_id=None,
         fail_on_missing_datasets=False,
     )
@@ -489,13 +486,11 @@ def test_resolve_evaluation_dataset_source_uses_main_flow_manifest_root_resoluti
     source = resolve_evaluation_dataset_source(
         dataset_dir=None,
         dataset_root=None,
-        dataset_mode="manifest",
         dataset_catalog_id="ext_catalog",
         dataset_layer="external",
         fail_on_missing_datasets=False,
     )
 
     assert source["source_type"] == "catalog"
-    assert source["dataset_mode"] == "manifest"
     assert source["dataset_catalog_id"] == "ext_catalog"
-    assert source["dataset_root"] == DEFAULT_MANIFEST_DATASET_ROOT
+    assert source["dataset_root"] == DEFAULT_DATASET_ROOT

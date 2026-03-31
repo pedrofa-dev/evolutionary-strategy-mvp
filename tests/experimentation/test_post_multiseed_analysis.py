@@ -3,16 +3,11 @@ from pathlib import Path
 
 from evo_system.domain.genome import Genome
 from evo_system.domain.run_summary import HistoricalRunSummary
-from evo_system.experimentation.post_batch_analysis import (
-    BATCH_CHAMPIONS_SUMMARY_NAME,
-    BATCH_QUICK_SUMMARY_NAME,
-    BATCH_RUN_SUMMARY_NAME,
+from evo_system.experimentation.post_multiseed_analysis import (
     CHAMPIONS_ANALYSIS_DIRNAME,
     MULTISEED_CHAMPIONS_SUMMARY_NAME,
     MULTISEED_QUICK_SUMMARY_NAME,
-    POST_BATCH_VALIDATION_DIRNAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
-    run_post_batch_analysis,
     run_post_multiseed_analysis,
 )
 from evo_system.storage.sqlite_store import SQLiteStore
@@ -53,6 +48,7 @@ def write_config(config_path: Path) -> None:
                 "target_population_size": 12,
                 "survivors_count": 4,
                 "generations_planned": 25,
+                "dataset_catalog_id": "core_1h_spot",
                 "trade_cost_rate": 0.001,
                 "cost_penalty_weight": 0.25,
                 "trade_count_penalty_weight": 0.0,
@@ -111,144 +107,6 @@ def seed_champion(
     )
 
 
-def test_run_post_batch_analysis_generates_expected_artifacts(tmp_path: Path) -> None:
-    batch_dir = tmp_path / "batch_20260330_120000"
-    batch_dir.mkdir(parents=True, exist_ok=True)
-    db_path = tmp_path / "evolution.db"
-    config_path = tmp_path / "run_a.json"
-    external_dir = tmp_path / "external_validation"
-    audit_dir = tmp_path / "audit"
-
-    write_config(config_path)
-    seed_champion(db_path, run_id="run-001", config_name="run_a.json")
-    write_dataset(external_dir / "set_a" / "candles.csv")
-    write_dataset(audit_dir / "set_b" / "candles.csv")
-
-    result = run_post_batch_analysis(
-        batch_dir=batch_dir,
-        run_summaries=[
-            build_summary(
-                tmp_path,
-                config_name="run_a.json",
-                run_id="run-001",
-                selection=1.2,
-                profit=0.03,
-            )
-        ],
-        config_paths=[config_path],
-        dataset_root_label="data\\processed",
-        db_path=db_path,
-        external_validation_dir=external_dir,
-        audit_dir=audit_dir,
-        failures=[],
-    )
-
-    assert result.batch_summary_path == batch_dir / BATCH_RUN_SUMMARY_NAME
-    assert result.quick_summary_path == batch_dir / BATCH_QUICK_SUMMARY_NAME
-    assert result.champions_summary_path == batch_dir / BATCH_CHAMPIONS_SUMMARY_NAME
-    assert (batch_dir / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv").exists()
-    assert (
-        batch_dir / POST_BATCH_VALIDATION_DIRNAME / "external" / "reevaluated_champions.csv"
-    ).exists()
-    assert (
-        batch_dir / POST_BATCH_VALIDATION_DIRNAME / "audit" / "reevaluated_champions.csv"
-    ).exists()
-    assert (
-        batch_dir
-        / POST_BATCH_VALIDATION_DIRNAME
-        / "external"
-        / "champions"
-        / "champion_1.json"
-    ).exists()
-    quick_summary = (batch_dir / BATCH_QUICK_SUMMARY_NAME).read_text(encoding="utf-8")
-    external_json = (
-        batch_dir / POST_BATCH_VALIDATION_DIRNAME / "external" / "reevaluated_champions.json"
-    ).read_text(encoding="utf-8")
-    assert "Runs planned: 1" in quick_summary
-    assert "Runs completed: 1" in quick_summary
-    assert "Runs failed: 0" in quick_summary
-    assert '"external_dataset_root"' in external_json
-    assert '"external_evaluation_type": "external"' in external_json
-
-
-def test_run_post_batch_analysis_filters_only_batch_run_ids(tmp_path: Path) -> None:
-    batch_dir = tmp_path / "batch_20260330_120000"
-    batch_dir.mkdir(parents=True, exist_ok=True)
-    db_path = tmp_path / "evolution.db"
-    config_path = tmp_path / "run_a.json"
-
-    write_config(config_path)
-    seed_champion(db_path, run_id="run-001", config_name="run_a.json")
-    seed_champion(db_path, run_id="run-999", config_name="run_a.json")
-
-    run_post_batch_analysis(
-        batch_dir=batch_dir,
-        run_summaries=[
-            build_summary(
-                tmp_path,
-                config_name="run_a.json",
-                run_id="run-001",
-                selection=1.2,
-                profit=0.03,
-            )
-        ],
-        config_paths=[config_path],
-        dataset_root_label="data\\processed",
-        db_path=db_path,
-        external_validation_dir=tmp_path / "missing_external",
-        audit_dir=tmp_path / "missing_audit",
-        failures=[],
-    )
-
-    champions_csv = (
-        batch_dir / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv"
-    ).read_text(encoding="utf-8")
-    assert "run-001" in champions_csv
-    assert "run-999" not in champions_csv
-
-
-def test_run_post_batch_analysis_handles_no_champions_and_missing_datasets(tmp_path: Path) -> None:
-    batch_dir = tmp_path / "batch_20260330_120000"
-    batch_dir.mkdir(parents=True, exist_ok=True)
-    db_path = tmp_path / "evolution.db"
-    config_path = tmp_path / "run_a.json"
-    write_config(config_path)
-
-    run_post_batch_analysis(
-        batch_dir=batch_dir,
-        run_summaries=[
-            build_summary(
-                tmp_path,
-                config_name="run_a.json",
-                run_id="run-001",
-                selection=1.2,
-                profit=0.03,
-            )
-        ],
-        config_paths=[config_path],
-        dataset_root_label="data\\processed",
-        db_path=db_path,
-        external_validation_dir=tmp_path / "missing_external",
-        audit_dir=tmp_path / "missing_audit",
-        failures=["run_b.json: boom"],
-    )
-
-    quick_summary = (batch_dir / BATCH_QUICK_SUMMARY_NAME).read_text(encoding="utf-8")
-    champions_summary = (
-        batch_dir / BATCH_CHAMPIONS_SUMMARY_NAME
-    ).read_text(encoding="utf-8")
-    external_report = (
-        batch_dir / POST_BATCH_VALIDATION_DIRNAME / "external" / "reevaluation_report.txt"
-    ).read_text(encoding="utf-8")
-
-    assert "run_b.json: boom" in quick_summary
-    assert "Runs planned: 1" in quick_summary
-    assert "Runs completed: 1" in quick_summary
-    assert "Runs failed: 1" in quick_summary
-    assert "No persisted champions were produced by this batch." in champions_summary
-    assert "No persisted champions were found for this batch." in external_report
-
-
 def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path) -> None:
     multiseed_dir = tmp_path / "multiseed_20260330_120000"
     multiseed_dir.mkdir(parents=True, exist_ok=True)
@@ -276,7 +134,7 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
                 profit=0.03,
             )
         ],
-        dataset_root_label="data\\processed",
+        dataset_root_label="data\\datasets",
         db_path=db_path,
         external_validation_dir=external_dir,
         audit_dir=audit_dir,
@@ -284,7 +142,7 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
         seeds_planned=1,
     )
 
-    assert result.batch_summary_path == summary_path
+    assert result.summary_path == summary_path
     assert result.quick_summary_path == multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME
     assert result.champions_summary_path == multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
     assert (multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv").exists()
@@ -299,6 +157,13 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
         / POST_MULTISEED_VALIDATION_DIRNAME
         / "audit"
         / "reevaluated_champions.csv"
+    ).exists()
+    assert (
+        multiseed_dir
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "external"
+        / "champions"
+        / "champion_1.json"
     ).exists()
 
     quick_summary = (
@@ -338,7 +203,7 @@ def test_run_post_multiseed_analysis_handles_no_champions_and_missing_datasets(t
                 profit=0.03,
             )
         ],
-        dataset_root_label="data\\processed",
+        dataset_root_label="data\\datasets",
         db_path=db_path,
         external_validation_dir=tmp_path / "missing_external",
         audit_dir=tmp_path / "missing_audit",
@@ -364,7 +229,7 @@ def test_run_post_multiseed_analysis_handles_no_champions_and_missing_datasets(t
     assert "Seeds completed: 1" in quick_summary
     assert "Seeds failed: 1" in quick_summary
     assert "No persisted champions were produced by this multiseed execution." in champions_summary
-    assert "No persisted champions were found for this multiseed." in external_report
+    assert "No persisted champions were found for this multiseed execution." in external_report
 
 
 def test_run_post_multiseed_analysis_filters_only_multiseed_run_ids(tmp_path: Path) -> None:
@@ -391,7 +256,7 @@ def test_run_post_multiseed_analysis_filters_only_multiseed_run_ids(tmp_path: Pa
                 profit=0.03,
             )
         ],
-        dataset_root_label="data\\processed",
+        dataset_root_label="data\\datasets",
         db_path=db_path,
         external_validation_dir=tmp_path / "missing_external",
         audit_dir=tmp_path / "missing_audit",

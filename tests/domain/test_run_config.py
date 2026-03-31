@@ -12,6 +12,7 @@ def test_run_config_builds_valid_instance() -> None:
         generations_planned=25,
         trade_cost_rate=0.001,
         cost_penalty_weight=0.25,
+        dataset_catalog_id="core_1h_spot",
     )
 
     assert config.mutation_seed == 42
@@ -26,22 +27,19 @@ def test_run_config_builds_valid_instance() -> None:
     assert config.min_trend_long_for_entry == 0.0
     assert config.min_breakout_for_entry == 0.0
     assert config.max_realized_volatility_for_entry is None
-    assert config.dataset_mode == "legacy"
-    assert config.dataset_catalog_id is None
+    assert config.dataset_catalog_id == "core_1h_spot"
 
 
-def test_run_config_accepts_manifest_mode_with_catalog_id() -> None:
+def test_run_config_accepts_required_dataset_catalog_id() -> None:
     config = RunConfig(
         mutation_seed=42,
         population_size=12,
         target_population_size=12,
         survivors_count=4,
         generations_planned=25,
-        dataset_mode="manifest",
         dataset_catalog_id="core_1h_spot",
     )
 
-    assert config.dataset_mode == "manifest"
     assert config.dataset_catalog_id == "core_1h_spot"
 
 
@@ -52,6 +50,7 @@ def test_run_config_accepts_explicit_seeds() -> None:
         target_population_size=12,
         survivors_count=4,
         generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
         seeds=[101, 102, 103],
     )
 
@@ -67,6 +66,7 @@ def test_run_config_accepts_seed_start_and_seed_count() -> None:
         target_population_size=12,
         survivors_count=4,
         generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
         seed_start=100,
         seed_count=6,
     )
@@ -84,6 +84,7 @@ def test_run_config_rejects_non_positive_population_size() -> None:
             target_population_size=12,
             survivors_count=4,
             generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
         )
 
 
@@ -95,6 +96,7 @@ def test_run_config_rejects_non_positive_target_population_size() -> None:
             target_population_size=0,
             survivors_count=4,
             generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
         )
 
 
@@ -106,6 +108,7 @@ def test_run_config_rejects_target_population_smaller_than_survivors() -> None:
             target_population_size=3,
             survivors_count=4,
             generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
         )
 
 
@@ -118,6 +121,7 @@ def test_run_config_rejects_negative_trade_cost_rate() -> None:
             survivors_count=4,
             generations_planned=25,
             trade_cost_rate=-0.001,
+            dataset_catalog_id="core_1h_spot",
         )
 
 
@@ -130,6 +134,7 @@ def test_run_config_rejects_negative_cost_penalty_weight() -> None:
             survivors_count=4,
             generations_planned=25,
             cost_penalty_weight=-0.1,
+            dataset_catalog_id="core_1h_spot",
         )
 
 
@@ -145,18 +150,7 @@ def test_run_config_rejects_negative_trade_count_penalty_weight() -> None:
             survivors_count=4,
             generations_planned=25,
             trade_count_penalty_weight=-0.001,
-        )
-
-
-def test_run_config_rejects_invalid_dataset_mode() -> None:
-    with pytest.raises(ValueError, match="dataset_mode must be either 'legacy' or 'manifest'"):
-        RunConfig(
-            mutation_seed=42,
-            population_size=12,
-            target_population_size=12,
-            survivors_count=4,
-            generations_planned=25,
-            dataset_mode="unknown",
+            dataset_catalog_id="core_1h_spot",
         )
 
 
@@ -171,6 +165,7 @@ def test_run_config_accepts_regime_filter_fields() -> None:
         min_trend_long_for_entry=0.2,
         min_breakout_for_entry=0.1,
         max_realized_volatility_for_entry=0.4,
+        dataset_catalog_id="core_1h_spot",
     )
 
     assert config.regime_filter_enabled is True
@@ -179,15 +174,15 @@ def test_run_config_accepts_regime_filter_fields() -> None:
     assert config.max_realized_volatility_for_entry == 0.4
 
 
-def test_run_config_requires_catalog_id_for_manifest_mode() -> None:
-    with pytest.raises(ValueError, match="dataset_catalog_id is required when dataset_mode is 'manifest'"):
+def test_run_config_requires_dataset_catalog_id() -> None:
+    with pytest.raises(ValueError, match="dataset_catalog_id is required"):
         RunConfig(
             mutation_seed=42,
             population_size=12,
             target_population_size=12,
             survivors_count=4,
             generations_planned=25,
-            dataset_mode="manifest",
+            dataset_catalog_id="",
         )
 
 
@@ -199,6 +194,7 @@ def test_run_config_rejects_seed_start_without_seed_count() -> None:
             target_population_size=12,
             survivors_count=4,
             generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
             seed_start=100,
         )
 
@@ -211,6 +207,7 @@ def test_run_config_rejects_combining_seeds_with_seed_range() -> None:
             target_population_size=12,
             survivors_count=4,
             generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
             seeds=[101, 102],
             seed_start=100,
             seed_count=6,

@@ -23,20 +23,6 @@ from evo_system.storage.sqlite_store import SQLiteStore
 DEFAULT_DB_PATH = Path("data/evolution.db")
 DEFAULT_OUTPUT_ROOT = Path("artifacts/analysis")
 
-
-def resolve_dataset_mode(
-    dataset_mode: str | None,
-    dataset_catalog_id: str | None,
-) -> str | None:
-    if dataset_mode is not None:
-        return dataset_mode
-
-    if dataset_catalog_id is not None:
-        return "manifest"
-
-    return None
-
-
 def ensure_output_dir(output_dir: Path | None) -> Path:
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -74,21 +60,11 @@ def resolve_dataset_paths(
 
 def resolve_catalog_dataset_paths(
     dataset_root: Path,
-    dataset_mode: str,
     dataset_catalog_id: str,
     dataset_layer: str,
     fail_on_missing_datasets: bool,
 ) -> list[Path]:
-    effective_dataset_root = resolve_dataset_root(
-        requested_dataset_root=dataset_root,
-        dataset_mode=dataset_mode,
-    )
-
-    if dataset_mode != "manifest":
-        raise ValueError(
-            f"Catalog-based reevaluation currently requires manifest mode, got: {dataset_mode}"
-        )
-
+    effective_dataset_root = resolve_dataset_root(dataset_root)
     catalog_root = effective_dataset_root / dataset_catalog_id / dataset_layer
     dataset_paths = sorted(catalog_root.rglob("candles.csv"))
     if dataset_paths:
@@ -104,7 +80,6 @@ def resolve_catalog_dataset_paths(
 def resolve_evaluation_dataset_source(
     dataset_dir: Path | None,
     dataset_root: Path | None,
-    dataset_mode: str | None,
     dataset_catalog_id: str | None,
     dataset_layer: str,
     fail_on_missing_datasets: bool,
@@ -112,7 +87,6 @@ def resolve_evaluation_dataset_source(
     if dataset_dir is not None:
         return {
             "source_type": "directory",
-            "dataset_mode": None,
             "dataset_catalog_id": None,
             "dataset_root": dataset_dir,
             "dataset_paths": resolve_dataset_paths(
@@ -121,30 +95,23 @@ def resolve_evaluation_dataset_source(
             ),
         }
 
-    resolved_mode = resolve_dataset_mode(dataset_mode, dataset_catalog_id)
-    if dataset_catalog_id is None or resolved_mode is None:
+    if dataset_catalog_id is None:
         return {
             "source_type": None,
-            "dataset_mode": None,
             "dataset_catalog_id": None,
             "dataset_root": None,
             "dataset_paths": [],
         }
 
     requested_dataset_root = dataset_root or DEFAULT_DATASET_ROOT
-    effective_dataset_root = resolve_dataset_root(
-        requested_dataset_root=requested_dataset_root,
-        dataset_mode=resolved_mode,
-    )
+    effective_dataset_root = resolve_dataset_root(requested_dataset_root)
 
     return {
         "source_type": "catalog",
-        "dataset_mode": resolved_mode,
         "dataset_catalog_id": dataset_catalog_id,
         "dataset_root": effective_dataset_root,
         "dataset_paths": resolve_catalog_dataset_paths(
             dataset_root=requested_dataset_root,
-            dataset_mode=resolved_mode,
             dataset_catalog_id=dataset_catalog_id,
             dataset_layer=dataset_layer,
             fail_on_missing_datasets=fail_on_missing_datasets,
@@ -156,17 +123,14 @@ def resolve_reevaluation_sources(
     *,
     dataset_root: Path | None,
     external_validation_dir: Path | None,
-    external_dataset_mode: str | None,
     external_dataset_catalog_id: str | None,
     audit_dir: Path | None,
-    audit_dataset_mode: str | None,
     audit_dataset_catalog_id: str | None,
     fail_on_missing_datasets: bool,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     external_source = resolve_evaluation_dataset_source(
         dataset_dir=external_validation_dir,
         dataset_root=dataset_root,
-        dataset_mode=external_dataset_mode,
         dataset_catalog_id=external_dataset_catalog_id,
         dataset_layer="external",
         fail_on_missing_datasets=fail_on_missing_datasets,
@@ -174,7 +138,6 @@ def resolve_reevaluation_sources(
     audit_source = resolve_evaluation_dataset_source(
         dataset_dir=audit_dir,
         dataset_root=dataset_root,
-        dataset_mode=audit_dataset_mode,
         dataset_catalog_id=audit_dataset_catalog_id,
         dataset_layer="audit",
         fail_on_missing_datasets=fail_on_missing_datasets,
@@ -347,11 +310,9 @@ def build_report_lines(
         f"  champion_type={filters['champion_type'] or 'none'}",
         f"  limit={filters['limit'] if filters['limit'] is not None else 'none'}",
         f"  external_validation_dir={filters['external_validation_dir'] or 'none'}",
-        f"  external_dataset_mode={filters['external_dataset_mode'] or 'none'}",
         f"  external_dataset_catalog_id={filters['external_dataset_catalog_id'] or 'none'}",
         f"  external_dataset_root={filters.get('external_dataset_root') or 'none'}",
         f"  audit_dir={filters['audit_dir'] or 'none'}",
-        f"  audit_dataset_mode={filters['audit_dataset_mode'] or 'none'}",
         f"  audit_dataset_catalog_id={filters['audit_dataset_catalog_id'] or 'none'}",
         f"  audit_dataset_root={filters.get('audit_dataset_root') or 'none'}",
         "",
@@ -423,20 +384,16 @@ def build_reevaluation_rows(
     config_paths_by_run_id: dict[str, Path] | None = None,
     dataset_root: Path | None = None,
     external_validation_dir: Path | None = None,
-    external_dataset_mode: str | None = None,
     external_dataset_catalog_id: str | None = None,
     audit_dir: Path | None = None,
-    audit_dataset_mode: str | None = None,
     audit_dataset_catalog_id: str | None = None,
     fail_on_missing_datasets: bool = False,
 ) -> tuple[list[dict[str, Any]], int, int, list[dict[str, Any]]]:
     external_source, audit_source = resolve_reevaluation_sources(
         dataset_root=dataset_root,
         external_validation_dir=external_validation_dir,
-        external_dataset_mode=external_dataset_mode,
         external_dataset_catalog_id=external_dataset_catalog_id,
         audit_dir=audit_dir,
-        audit_dataset_mode=audit_dataset_mode,
         audit_dataset_catalog_id=audit_dataset_catalog_id,
         fail_on_missing_datasets=fail_on_missing_datasets,
     )
@@ -486,7 +443,6 @@ def build_reevaluation_rows(
                 "validation_trades": metrics.get("validation_trades"),
                 "selection_gap": metrics.get("selection_gap"),
                 "external_source_type": external_source["source_type"],
-                "external_dataset_mode": external_source["dataset_mode"],
                 "external_dataset_catalog_id": external_source["dataset_catalog_id"],
                 "external_dataset_count": len(external_dataset_paths),
                 "external_dataset_root": (
@@ -504,7 +460,6 @@ def build_reevaluation_rows(
                 ),
                 "external_evaluation_type": "external",
                 "audit_source_type": audit_source["source_type"],
-                "audit_dataset_mode": audit_source["dataset_mode"],
                 "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
                 "audit_dataset_count": len(audit_dataset_paths),
                 "audit_dataset_root": (
@@ -642,10 +597,8 @@ def reevaluate_persisted_champions(
     run_ids: list[str] | None = None,
     champion_type: str | None = None,
     external_validation_dir: Path | None = None,
-    external_dataset_mode: str | None = None,
     external_dataset_catalog_id: str | None = None,
     audit_dir: Path | None = None,
-    audit_dataset_mode: str | None = None,
     audit_dataset_catalog_id: str | None = None,
     output_dir: Path | None = None,
     limit: int | None = None,
@@ -676,10 +629,8 @@ def reevaluate_persisted_champions(
     external_source, audit_source = resolve_reevaluation_sources(
         dataset_root=dataset_root,
         external_validation_dir=external_validation_dir,
-        external_dataset_mode=external_dataset_mode,
         external_dataset_catalog_id=external_dataset_catalog_id,
         audit_dir=audit_dir,
-        audit_dataset_mode=audit_dataset_mode,
         audit_dataset_catalog_id=audit_dataset_catalog_id,
         fail_on_missing_datasets=fail_on_missing_datasets,
     )
@@ -693,10 +644,8 @@ def reevaluate_persisted_champions(
         config_paths_by_run_id=config_paths_by_run_id,
         dataset_root=dataset_root,
         external_validation_dir=external_validation_dir,
-        external_dataset_mode=external_dataset_mode,
         external_dataset_catalog_id=external_dataset_catalog_id,
         audit_dir=audit_dir,
-        audit_dataset_mode=audit_dataset_mode,
         audit_dataset_catalog_id=audit_dataset_catalog_id,
         fail_on_missing_datasets=fail_on_missing_datasets,
     )
@@ -717,11 +666,9 @@ def reevaluate_persisted_champions(
             "champion_type": champion_type,
             "limit": limit,
             "external_validation_dir": external_validation_dir,
-            "external_dataset_mode": external_dataset_mode,
             "external_dataset_catalog_id": external_dataset_catalog_id,
             "external_dataset_root": external_source["dataset_root"],
             "audit_dir": audit_dir,
-            "audit_dataset_mode": audit_dataset_mode,
             "audit_dataset_catalog_id": audit_dataset_catalog_id,
             "audit_dataset_root": audit_source["dataset_root"],
             "matched_champion_count": len(matched_champions),

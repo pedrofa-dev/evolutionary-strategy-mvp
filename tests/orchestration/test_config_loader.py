@@ -15,6 +15,7 @@ def test_load_run_config_reads_required_and_optional_fields(tmp_path) -> None:
                 "generations_planned": 25,
                 "trade_cost_rate": 0.001,
                 "cost_penalty_weight": 0.25,
+                "dataset_catalog_id": "core_1h_spot",
             }
         ),
         encoding="utf-8",
@@ -46,6 +47,7 @@ def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
                 "target_population_size": 12,
                 "survivors_count": 4,
                 "generations_planned": 25,
+                "dataset_catalog_id": "core_1h_spot",
             }
         ),
         encoding="utf-8",
@@ -71,6 +73,7 @@ def test_load_run_config_reads_trade_count_penalty_weight(tmp_path) -> None:
                 "survivors_count": 4,
                 "generations_planned": 25,
                 "trade_count_penalty_weight": 0.001,
+                "dataset_catalog_id": "core_1h_spot",
             }
         ),
         encoding="utf-8",
@@ -95,6 +98,7 @@ def test_load_run_config_reads_regime_filter_fields(tmp_path) -> None:
                 "min_trend_long_for_entry": 0.2,
                 "min_breakout_for_entry": 0.1,
                 "max_realized_volatility_for_entry": 0.4,
+                "dataset_catalog_id": "core_1h_spot",
             }
         ),
         encoding="utf-8",
@@ -119,6 +123,7 @@ def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:
                 "survivors_count": 4,
                 "generations_planned": 25,
                 "seeds": [101, 102, 103],
+                "dataset_catalog_id": "core_1h_spot",
             }
         ),
         encoding="utf-8",
@@ -143,6 +148,7 @@ def test_load_run_config_reads_seed_range(tmp_path) -> None:
                 "generations_planned": 25,
                 "seed_start": 100,
                 "seed_count": 6,
+                "dataset_catalog_id": "core_1h_spot",
             }
         ),
         encoding="utf-8",
@@ -153,3 +159,27 @@ def test_load_run_config_reads_seed_range(tmp_path) -> None:
     assert config.seeds is None
     assert config.seed_start == 100
     assert config.seed_count == 6
+
+
+def test_load_run_config_preserves_null_catalog_id_for_validation(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "dataset_catalog_id": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_run_config(str(config_path))
+    except ValueError as exc:
+        assert "dataset_catalog_id is required" in str(exc)
+    else:
+        raise AssertionError("Expected dataset_catalog_id validation to fail for null.")

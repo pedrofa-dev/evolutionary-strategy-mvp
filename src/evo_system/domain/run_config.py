@@ -10,6 +10,7 @@ class RunConfig:
     target_population_size: int
     survivors_count: int
     generations_planned: int
+    dataset_catalog_id: str
     mutation_profile: MutationProfile = field(default_factory=MutationProfile)
     trade_cost_rate: float = 0.0
     cost_penalty_weight: float = 0.25
@@ -18,8 +19,6 @@ class RunConfig:
     min_trend_long_for_entry: float = 0.0
     min_breakout_for_entry: float = 0.0
     max_realized_volatility_for_entry: float | None = None
-    dataset_mode: str = "legacy"
-    dataset_catalog_id: str | None = None
     seeds: list[int] | None = None
     seed_start: int | None = None
     seed_count: int | None = None
@@ -63,12 +62,8 @@ class RunConfig:
                     "max_realized_volatility_for_entry must be between 0.0 and 1.0"
                 )
 
-        if self.dataset_mode not in {"legacy", "manifest"}:
-            raise ValueError("dataset_mode must be either 'legacy' or 'manifest'")
-
-        if self.dataset_mode == "manifest":
-            if not isinstance(self.dataset_catalog_id, str) or not self.dataset_catalog_id.strip():
-                raise ValueError("dataset_catalog_id is required when dataset_mode is 'manifest'")
+        if not isinstance(self.dataset_catalog_id, str) or not self.dataset_catalog_id.strip():
+            raise ValueError("dataset_catalog_id is required")
 
         if self.seeds is not None:
             if not self.seeds:

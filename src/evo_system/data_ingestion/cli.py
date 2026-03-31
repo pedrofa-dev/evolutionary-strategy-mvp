@@ -32,8 +32,7 @@ def add_common_download_arguments(parser: argparse.ArgumentParser) -> None:
         default=Path("data/market_data"),
         help=(
             "Root directory for downloaded market files. "
-            "Preferred default: data/market_data. "
-            "Use data/raw temporarily for backward compatibility during migration."
+            "Default: data/market_data."
         ),
     )
 

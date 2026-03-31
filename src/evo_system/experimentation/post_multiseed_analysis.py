@@ -7,30 +7,27 @@ from statistics import mean
 from typing import Any, Callable
 
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
+from evo_system.experimentation.historical_run import DEFAULT_EXTERNAL_VALIDATION_DIR
 from evo_system.experimentation.persisted_champion_reevaluation import (
     build_reevaluation_rows,
     filter_champions,
     write_reevaluation_outputs,
 )
-from evo_system.experimentation.single_run import DEFAULT_EXTERNAL_VALIDATION_DIR
 from evo_system.reporting.report_builder import analyze_champions
 from evo_system.storage.sqlite_store import SQLiteStore
 
 
-DEFAULT_AUDIT_DIR = Path("data/processed/audit")
-BATCH_RUN_SUMMARY_NAME = "batch_run_summary.txt"
-BATCH_QUICK_SUMMARY_NAME = "batch_quick_summary.txt"
-BATCH_CHAMPIONS_SUMMARY_NAME = "batch_champions_summary.txt"
+DEFAULT_AUDIT_DIR = DEFAULT_DATASET_ROOT / "audit"
 MULTISEED_QUICK_SUMMARY_NAME = "multiseed_quick_summary.txt"
 MULTISEED_CHAMPIONS_SUMMARY_NAME = "multiseed_champions_summary.txt"
 CHAMPIONS_ANALYSIS_DIRNAME = "champions_analysis"
-POST_BATCH_VALIDATION_DIRNAME = "post_batch_validation"
 POST_MULTISEED_VALIDATION_DIRNAME = "post_multiseed_validation"
 
 
 @dataclass(frozen=True)
-class PostBatchAnalysisResult:
-    batch_summary_path: Path
+class PostMultiseedAnalysisResult:
+    summary_path: Path
     quick_summary_path: Path
     champions_summary_path: Path
     champions_analysis_dir: Path
@@ -48,125 +45,6 @@ def build_config_paths_by_run_id(
     }
 
 
-def build_batch_run_summary_lines(
-    run_summaries: list[HistoricalRunSummary],
-    dataset_root_label: str,
-    batch_dir: Path,
-) -> list[str]:
-    lines = [
-        f"Batch executed at: {datetime.now().isoformat(timespec='seconds')}",
-        f"Batch directory: {batch_dir}",
-        f"Dataset root: {dataset_root_label}",
-        f"Runs executed: {len(run_summaries)}",
-        "",
-        "Ranking by final validation selection score",
-    ]
-
-    sorted_by_selection = sorted(
-        run_summaries,
-        key=lambda summary: summary.final_validation_selection_score,
-        reverse=True,
-    )
-    for index, summary in enumerate(sorted_by_selection, start=1):
-        lines.append(
-            f"{index}. "
-            f"{summary.config_name} | "
-            f"run_id={summary.run_id} | "
-            f"mutation_seed={summary.mutation_seed} | "
-            f"best_train={summary.best_train_selection_score:.4f} | "
-            f"validation_selection={summary.final_validation_selection_score:.4f} | "
-            f"validation_profit={summary.final_validation_profit:.4f} | "
-            f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
-            f"validation_trades={summary.final_validation_trades:.1f} | "
-            f"selection_gap={summary.train_validation_selection_gap:.4f} | "
-            f"profit_gap={summary.train_validation_profit_gap:.4f}"
-        )
-        lines.append(f"  best_genome={summary.best_genome_repr}")
-        lines.append(f"  log={summary.log_file_path}")
-        lines.append("")
-
-    lines.append("")
-    lines.append("Ranking by final validation profit")
-
-    sorted_by_profit = sorted(
-        run_summaries,
-        key=lambda summary: summary.final_validation_profit,
-        reverse=True,
-    )
-    for index, summary in enumerate(sorted_by_profit, start=1):
-        lines.append(
-            f"{index}. "
-            f"{summary.config_name} | "
-            f"run_id={summary.run_id} | "
-            f"mutation_seed={summary.mutation_seed} | "
-            f"validation_profit={summary.final_validation_profit:.4f} | "
-            f"validation_selection={summary.final_validation_selection_score:.4f} | "
-            f"validation_drawdown={summary.final_validation_drawdown:.4f} | "
-            f"validation_trades={summary.final_validation_trades:.1f} | "
-            f"selection_gap={summary.train_validation_selection_gap:.4f} | "
-            f"profit_gap={summary.train_validation_profit_gap:.4f}"
-        )
-        lines.append(f"  best_genome={summary.best_genome_repr}")
-        lines.append(f"  log={summary.log_file_path}")
-        lines.append("")
-
-    return lines
-
-
-def write_batch_run_summary(
-    batch_dir: Path,
-    run_summaries: list[HistoricalRunSummary],
-    dataset_root_label: str,
-) -> Path:
-    batch_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = batch_dir / BATCH_RUN_SUMMARY_NAME
-    summary_path.write_text(
-        "\n".join(
-            build_batch_run_summary_lines(
-                run_summaries=run_summaries,
-                dataset_root_label=dataset_root_label,
-                batch_dir=batch_dir,
-            )
-        ),
-        encoding="utf-8",
-    )
-    return summary_path
-
-
-def build_batch_quick_summary_lines(
-    batch_dir: Path,
-    run_summaries: list[HistoricalRunSummary],
-    dataset_root_label: str,
-    failures: list[str],
-    runs_planned: int,
-) -> list[str]:
-    lines = [
-        f"Batch directory: {batch_dir}",
-        f"Batch identifier: {batch_dir.name}",
-        f"Dataset root: {dataset_root_label}",
-        f"Runs planned: {runs_planned}",
-        f"Runs completed: {len(run_summaries)}",
-        f"Runs failed: {len(failures)}",
-    ]
-    lines.extend(
-        build_quick_top_lines(
-            run_summaries,
-            first_field_label="config_name",
-            first_field_value=lambda summary: summary.config_name,
-        )
-    )
-
-    lines.append("")
-    lines.append("Failures")
-    if failures:
-        for failure in failures[:5]:
-            lines.append(f"  {failure}")
-    else:
-        lines.append("  No failures.")
-
-    return lines
-
-
 def build_multiseed_quick_summary_lines(
     multiseed_dir: Path,
     run_summaries: list[HistoricalRunSummary],
@@ -181,6 +59,7 @@ def build_multiseed_quick_summary_lines(
         config_label = config_names[0]
     else:
         config_label = f"{len(config_names)} configs"
+
     lines = [
         f"Multiseed directory: {multiseed_dir}",
         f"Multiseed identifier: {multiseed_dir.name}",
@@ -232,30 +111,6 @@ def build_multiseed_quick_summary_lines(
     return lines
 
 
-def write_batch_quick_summary(
-    batch_dir: Path,
-    run_summaries: list[HistoricalRunSummary],
-    dataset_root_label: str,
-    failures: list[str],
-    runs_planned: int,
-) -> Path:
-    batch_dir.mkdir(parents=True, exist_ok=True)
-    quick_summary_path = batch_dir / BATCH_QUICK_SUMMARY_NAME
-    quick_summary_path.write_text(
-        "\n".join(
-            build_batch_quick_summary_lines(
-                batch_dir=batch_dir,
-                run_summaries=run_summaries,
-                dataset_root_label=dataset_root_label,
-                failures=failures,
-                runs_planned=runs_planned,
-            )
-        ),
-        encoding="utf-8",
-    )
-    return quick_summary_path
-
-
 def write_multiseed_quick_summary(
     multiseed_dir: Path,
     run_summaries: list[HistoricalRunSummary],
@@ -280,7 +135,7 @@ def write_multiseed_quick_summary(
     return quick_summary_path
 
 
-def load_batch_champions(db_path: Path, run_ids: list[str]) -> list[dict[str, Any]]:
+def load_multiseed_champions(db_path: Path, run_ids: list[str]) -> list[dict[str, Any]]:
     store = SQLiteStore(str(db_path))
     store.initialize()
     return filter_champions(store.load_champions(), run_ids=run_ids)
@@ -429,94 +284,6 @@ def build_candidate_lines(rows: list[dict[str, Any]], field_name: str) -> list[s
     return lines
 
 
-def write_batch_champions_summary(
-    batch_dir: Path,
-    champion_count: int,
-    champion_analysis_result: dict[str, Any] | None,
-    external_result: dict[str, Any],
-    audit_result: dict[str, Any],
-) -> Path:
-    summary_path = batch_dir / BATCH_CHAMPIONS_SUMMARY_NAME
-    lines = [
-        "Batch champions summary",
-        f"Generated at: {datetime.now().isoformat(timespec='seconds')}",
-        f"Champions found in batch: {champion_count}",
-        "",
-    ]
-
-    if champion_count == 0:
-        lines.append("No persisted champions were produced by this batch.")
-        summary_path.write_text("\n".join(lines), encoding="utf-8")
-        return summary_path
-
-    lines.append("Champions observed during the batch")
-    if champion_analysis_result is None:
-        lines.append("  Champion analysis could not be generated.")
-    else:
-        report_data = champion_analysis_result["report_data"]
-        top_examples = report_data.get("top_examples", {})
-        if top_examples:
-            for label, row in top_examples.items():
-                lines.append(
-                    f"  {label}: id={row.get('id')} | "
-                    f"config={row.get('config_name')} | "
-                    f"run_id={row.get('run_id')} | "
-                    f"validation_selection={float(row.get('validation_selection', 0.0)):.4f} | "
-                    f"validation_profit={float(row.get('validation_profit', 0.0)):.4f}"
-                )
-        else:
-            lines.append("  No top examples available.")
-
-    lines.append("")
-    lines.append("Best candidates leaving the batch")
-    lines.extend(build_candidate_lines(external_result["rows"], "external_validation_selection"))
-
-    lines.append("")
-    lines.append("External behavior")
-    external_summary = summarize_rows(external_result["rows"], "external_validation")
-    if external_result["rows"]:
-        lines.append(
-            f"  mean_validation_selection={external_summary['mean_validation_selection']}"
-        )
-        lines.append(f"  mean_external_selection={external_summary['mean_post_selection']}")
-        lines.append(
-            f"  mean_validation_profit={external_summary['mean_validation_profit']}"
-        )
-        lines.append(f"  mean_external_profit={external_summary['mean_post_profit']}")
-        lines.append(
-            f"  champions_with_positive_external_profit={external_summary['positive_profit_count']}"
-        )
-        lines.append(
-            f"  champions_with_valid_external={external_summary['valid_count']}"
-        )
-    else:
-        lines.append("  External datasets not evaluated or no champions available.")
-
-    lines.append("")
-    lines.append("Audit behavior")
-    audit_summary = summarize_rows(audit_result["rows"], "audit")
-    if audit_result["rows"]:
-        lines.append(
-            f"  mean_validation_selection={audit_summary['mean_validation_selection']}"
-        )
-        lines.append(f"  mean_audit_selection={audit_summary['mean_post_selection']}")
-        lines.append(
-            f"  mean_validation_profit={audit_summary['mean_validation_profit']}"
-        )
-        lines.append(f"  mean_audit_profit={audit_summary['mean_post_profit']}")
-        lines.append(
-            f"  champions_with_positive_audit_profit={audit_summary['positive_profit_count']}"
-        )
-        lines.append(
-            f"  champions_with_valid_audit={audit_summary['valid_count']}"
-        )
-    else:
-        lines.append("  Audit datasets not evaluated or no champions available.")
-
-    summary_path.write_text("\n".join(lines), encoding="utf-8")
-    return summary_path
-
-
 def run_post_execution_validation(
     *,
     champions: list[dict[str, Any]],
@@ -526,19 +293,17 @@ def run_post_execution_validation(
     audit_dir: Path,
     external_output_dir: Path,
     audit_output_dir: Path,
-    title_prefix: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    execution_label = title_prefix.lower().removeprefix("post-")
     if not champions:
         external_result = write_skip_reevaluation(
             external_output_dir,
-            f"{title_prefix} external validation",
-            f"No persisted champions were found for this {execution_label}.",
+            "Post-multiseed external validation",
+            "No persisted champions were found for this multiseed execution.",
         )
         audit_result = write_skip_reevaluation(
             audit_output_dir,
-            f"{title_prefix} audit validation",
-            f"No persisted champions were found for this {execution_label}.",
+            "Post-multiseed audit validation",
+            "No persisted champions were found for this multiseed execution.",
         )
         return external_result, audit_result
 
@@ -565,11 +330,9 @@ def run_post_execution_validation(
                     "champion_type": None,
                     "limit": None,
                     "external_validation_dir": external_validation_dir,
-                    "external_dataset_mode": None,
                     "external_dataset_catalog_id": None,
                     "external_dataset_root": external_validation_dir,
                     "audit_dir": None,
-                    "audit_dataset_mode": None,
                     "audit_dataset_catalog_id": None,
                     "audit_dataset_root": None,
                     "matched_champion_count": len(champions),
@@ -580,20 +343,20 @@ def run_post_execution_validation(
                 audit_evaluations_run=0,
             )
         except ValueError as exc:
-            print(f"WARNING: external {execution_label} validation skipped -> {exc}")
+            print(f"WARNING: external multiseed validation skipped -> {exc}")
             external_result = write_skip_reevaluation(
                 external_output_dir,
-                f"{title_prefix} external validation",
+                "Post-multiseed external validation",
                 str(exc),
             )
     else:
         print(
-            f"WARNING: external {execution_label} validation skipped -> "
+            "WARNING: external multiseed validation skipped -> "
             f"directory not found: {external_validation_dir}"
         )
         external_result = write_skip_reevaluation(
             external_output_dir,
-            f"{title_prefix} external validation",
+            "Post-multiseed external validation",
             f"Dataset directory not found: {external_validation_dir}",
         )
 
@@ -618,11 +381,9 @@ def run_post_execution_validation(
                     "champion_type": None,
                     "limit": None,
                     "external_validation_dir": None,
-                    "external_dataset_mode": None,
                     "external_dataset_catalog_id": None,
                     "external_dataset_root": None,
                     "audit_dir": audit_dir,
-                    "audit_dataset_mode": None,
                     "audit_dataset_catalog_id": None,
                     "audit_dataset_root": audit_dir,
                     "matched_champion_count": len(champions),
@@ -633,20 +394,20 @@ def run_post_execution_validation(
                 audit_evaluations_run=audit_count,
             )
         except ValueError as exc:
-            print(f"WARNING: audit {execution_label} validation skipped -> {exc}")
+            print(f"WARNING: audit multiseed validation skipped -> {exc}")
             audit_result = write_skip_reevaluation(
                 audit_output_dir,
-                f"{title_prefix} audit validation",
+                "Post-multiseed audit validation",
                 str(exc),
             )
     else:
         print(
-            f"WARNING: audit {execution_label} validation skipped -> "
+            "WARNING: audit multiseed validation skipped -> "
             f"directory not found: {audit_dir}"
         )
         audit_result = write_skip_reevaluation(
             audit_output_dir,
-            f"{title_prefix} audit validation",
+            "Post-multiseed audit validation",
             f"Dataset directory not found: {audit_dir}",
         )
 
@@ -739,74 +500,6 @@ def write_multiseed_champions_summary(
     return summary_path
 
 
-def run_post_batch_analysis(
-    *,
-    batch_dir: Path,
-    run_summaries: list[HistoricalRunSummary],
-    config_paths: list[Path],
-    dataset_root_label: str,
-    db_path: Path,
-    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
-    audit_dir: Path = DEFAULT_AUDIT_DIR,
-    failures: list[str] | None = None,
-) -> PostBatchAnalysisResult:
-    failures = failures or []
-
-    batch_summary_path = write_batch_run_summary(
-        batch_dir=batch_dir,
-        run_summaries=run_summaries,
-        dataset_root_label=dataset_root_label,
-    )
-    quick_summary_path = write_batch_quick_summary(
-        batch_dir=batch_dir,
-        run_summaries=run_summaries,
-        dataset_root_label=dataset_root_label,
-        failures=failures,
-        runs_planned=len(config_paths),
-    )
-
-    run_ids = [summary.run_id for summary in run_summaries]
-    champions = load_batch_champions(db_path, run_ids)
-    champions_analysis_dir = batch_dir / CHAMPIONS_ANALYSIS_DIRNAME
-    champion_analysis_result = None
-    if champions:
-        champion_analysis_result = analyze_champions(
-            db_path=db_path,
-            output_dir=champions_analysis_dir,
-            run_ids=run_ids,
-        )
-    post_batch_validation_dir = batch_dir / POST_BATCH_VALIDATION_DIRNAME
-    external_output_dir = post_batch_validation_dir / "external"
-    audit_output_dir = post_batch_validation_dir / "audit"
-    external_result, audit_result = run_post_execution_validation(
-        champions=champions,
-        run_summaries=run_summaries,
-        db_path=db_path,
-        external_validation_dir=external_validation_dir,
-        audit_dir=audit_dir,
-        external_output_dir=external_output_dir,
-        audit_output_dir=audit_output_dir,
-        title_prefix="Post-batch",
-    )
-
-    champions_summary_path = write_batch_champions_summary(
-        batch_dir=batch_dir,
-        champion_count=len(champions),
-        champion_analysis_result=champion_analysis_result,
-        external_result=external_result,
-        audit_result=audit_result,
-    )
-
-    return PostBatchAnalysisResult(
-        batch_summary_path=batch_summary_path,
-        quick_summary_path=quick_summary_path,
-        champions_summary_path=champions_summary_path,
-        champions_analysis_dir=champions_analysis_dir,
-        external_output_dir=external_output_dir,
-        audit_output_dir=audit_output_dir,
-    )
-
-
 def run_post_multiseed_analysis(
     *,
     multiseed_dir: Path,
@@ -818,7 +511,7 @@ def run_post_multiseed_analysis(
     audit_dir: Path = DEFAULT_AUDIT_DIR,
     failures: list[str] | None = None,
     seeds_planned: int,
-) -> PostBatchAnalysisResult:
+) -> PostMultiseedAnalysisResult:
     failures = failures or []
 
     quick_summary_path = write_multiseed_quick_summary(
@@ -830,7 +523,7 @@ def run_post_multiseed_analysis(
     )
 
     run_ids = [summary.run_id for summary in run_summaries]
-    champions = load_batch_champions(db_path, run_ids)
+    champions = load_multiseed_champions(db_path, run_ids)
     champions_analysis_dir = multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME
     champion_analysis_result = None
     if champions:
@@ -851,7 +544,6 @@ def run_post_multiseed_analysis(
         audit_dir=audit_dir,
         external_output_dir=external_output_dir,
         audit_output_dir=audit_output_dir,
-        title_prefix="Post-multiseed",
     )
 
     champions_summary_path = write_multiseed_champions_summary(
@@ -862,8 +554,8 @@ def run_post_multiseed_analysis(
         audit_result=audit_result,
     )
 
-    return PostBatchAnalysisResult(
-        batch_summary_path=summary_path,
+    return PostMultiseedAnalysisResult(
+        summary_path=summary_path,
         quick_summary_path=quick_summary_path,
         champions_summary_path=champions_summary_path,
         champions_analysis_dir=champions_analysis_dir,

@@ -1,22 +1,9 @@
 from pathlib import Path
 
-from evo_system.orchestration.config_loader import load_run_config
+DEFAULT_DATASET_ROOT = Path("data/datasets")
 
 
-DEFAULT_DATASET_ROOT = Path("data/processed")
-DEFAULT_MANIFEST_DATASET_ROOT = Path("data/datasets")
-
-
-def resolve_dataset_root(
-    requested_dataset_root: Path,
-    dataset_mode: str,
-) -> Path:
-    if (
-        dataset_mode == "manifest"
-        and requested_dataset_root == DEFAULT_DATASET_ROOT
-    ):
-        return DEFAULT_MANIFEST_DATASET_ROOT
-
+def resolve_dataset_root(requested_dataset_root: Path) -> Path:
     return requested_dataset_root
 
 
@@ -24,13 +11,7 @@ def resolve_effective_dataset_roots(
     config_paths: list[Path],
     requested_dataset_root: Path,
 ) -> list[Path]:
-    effective_roots = {
-        resolve_dataset_root(
-            requested_dataset_root=requested_dataset_root,
-            dataset_mode=load_run_config(str(config_path)).dataset_mode,
-        )
-        for config_path in config_paths
-    }
+    effective_roots = {resolve_dataset_root(requested_dataset_root)}
     return sorted(effective_roots)
 
 

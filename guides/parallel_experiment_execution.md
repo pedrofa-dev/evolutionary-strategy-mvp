@@ -1,6 +1,6 @@
 # Parallel Experiment Execution
 
-Batch and multiseed experiment modes support optional process-based parallel execution.
+The multiseed experiment mode supports optional process-based parallel execution.
 
 ## Why Processes
 
@@ -10,10 +10,7 @@ Independent experiment runs are isolated units of work, so process-based paralle
 
 Parallel execution is supported for:
 
-- `batch`
 - `multiseed`
-
-Single-run mode remains sequential.
 
 ## Usage
 
@@ -22,11 +19,7 @@ Use `--parallel-workers N` to enable multiple worker processes.
 Examples:
 
 ```bash
-python scripts/run_experiment.py batch --configs-dir configs/runs --parallel-workers 4
-```
-
-```bash
-python scripts/run_experiment.py multiseed --configs-dir configs/runs --preset screening --parallel-workers 4
+python scripts/run_experiment.py --configs-dir configs/runs --preset screening --parallel-workers 4
 ```
 
 If `--parallel-workers 1` is used, behavior stays sequential.

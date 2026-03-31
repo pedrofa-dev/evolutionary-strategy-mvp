@@ -2,13 +2,12 @@
 
 The manifest dataset builder creates curated dataset windows from an explicit catalog file.
 
-It is additive and does not replace the legacy split-based builder yet.
-
 ## What It Does
 
 The manifest builder:
 
 - reads dataset definitions from a catalog such as `configs/datasets/core_1h_spot.yaml`
+- validates the catalog and source data coverage before writing datasets
 - loads source market files from `data/market_data/{market_type}/{symbol}/{timeframe}/`
 - slices the exact date windows defined in the catalog
 - writes curated outputs under `data/datasets/{catalog_id}/{layer}/{dataset_id}/`
@@ -18,21 +17,15 @@ Each dataset directory contains:
 - `candles.csv`
 - `metadata.json`
 
-## How It Differs From The Legacy Builder
+## Build Flow
 
-The legacy builder:
+Building datasets means:
 
-- reads from `data/raw`
-- concatenates all source candles for one symbol/timeframe
-- splits by ratio into train and validation
-- writes to `data/processed`
-
-The manifest builder:
-
-- reads from a catalog file
-- uses explicit windows and explicit dataset layers
-- supports `train`, `validation`, `external`, and `audit`
-- writes curated dataset directories to `data/datasets`
+1. parse the manifest catalog
+2. validate manifest structure
+3. validate source data coverage
+4. build dataset windows
+5. fail fast if validation or build fails
 
 ## Expected Input Layout
 
@@ -52,33 +45,24 @@ The builder writes curated outputs like:
 
 ## Example Commands
 
-Legacy split builder:
+Validate only:
 
 ```bash
-python scripts/build_datasets.py legacy --symbol BTC/USDT --timeframe 1h --validation-ratio 0.2
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --validate-only
 ```
 
-Manifest builder:
+Build datasets:
 
 ```bash
-python scripts/build_datasets.py manifest --catalog-path configs/datasets/core_1h_spot.yaml
-```
-
-Backward-compatible legacy shortcut:
-
-```bash
-python scripts/build_datasets.py --symbol BTC/USDT --timeframe 1h --validation-ratio 0.2
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
 ```
 
 ## Using Manifest Datasets In Experiments
 
-Experiments can continue using legacy datasets, or they can switch to curated manifest datasets.
-
-Add these fields to a run config:
+Run configs select curated datasets directly by catalog id:
 
 ```json
 {
-  "dataset_mode": "manifest",
   "dataset_catalog_id": "core_1h_spot"
 }
 ```
@@ -93,16 +77,15 @@ Notes:
 - `train` datasets are used only for training.
 - `validation` datasets are used only for validation.
 - `external` and `audit` are not used by the main experiment loop yet.
-- Legacy experiments continue to work unchanged.
 
 ## End-To-End Manifest Workflow
 
 Minimal workflow using the manifest system:
 
 1. Download market data into the new market data layout.
-2. Validate the dataset catalog.
+2. Validate the dataset catalog and source coverage.
 3. Build curated datasets from the manifest.
-4. Run experiments using a manifest-enabled config.
+4. Run multiseed experiments using curated run configs under `configs/runs/`.
 
 Example commands:
 
@@ -115,22 +98,18 @@ python scripts/download_data.py spot --symbol ETH/USDT --timeframe 1h --start 20
 ```
 
 ```bash
-python scripts/build_datasets.py validate --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --validate-only
 ```
 
 ```bash
-python scripts/build_datasets.py manifest --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
+python scripts/build_datasets.py --catalog-path configs/datasets/core_1h_spot.yaml --market-data-dir data/market_data --datasets-dir data/datasets
 ```
 
 ```bash
-python scripts/run_experiment.py single --config-path configs/run_balanced_manifest.json
+python scripts/run_experiment.py --configs-dir configs/runs --preset standard
 ```
 
-```bash
-python scripts/run_experiment.py batch --configs-dir configs/runs
-```
-
-Manifest mode uses:
+Runtime uses:
 
 - `data/datasets/{catalog_id}/train/.../candles.csv`
 - `data/datasets/{catalog_id}/validation/.../candles.csv`

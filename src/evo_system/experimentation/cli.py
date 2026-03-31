@@ -1,152 +1,55 @@
 import argparse
 from pathlib import Path
 
-from evo_system.experimentation.batch_run import (
-    CONFIGS_DIR,
-    run_batch_experiment,
-)
 from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
-from evo_system.experimentation.multiseed_run import run_multiseed_experiment
-from evo_system.experimentation.post_batch_analysis import DEFAULT_AUDIT_DIR
+from evo_system.experimentation.multiseed_run import CONFIGS_DIR, run_multiseed_experiment
+from evo_system.experimentation.post_multiseed_analysis import DEFAULT_AUDIT_DIR
 from evo_system.experimentation.presets import get_available_preset_names
-from evo_system.experimentation.single_run import (
-    DEFAULT_EXTERNAL_VALIDATION_DIR,
-    run_single_experiment,
-)
+from evo_system.experimentation.historical_run import DEFAULT_EXTERNAL_VALIDATION_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Execute historical experiments.",
+        description="Execute historical experiments across multiple mutation seeds.",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    single_parser = subparsers.add_parser(
-        "single",
-        help="Execute a single historical run.",
-    )
-    single_parser.add_argument(
-        "--config-path",
-        type=Path,
-        default=Path("configs/run_config.json"),
-        help="Path to the run config JSON.",
-    )
-    single_parser.add_argument(
-        "--dataset-root",
-        type=Path,
-        default=DEFAULT_DATASET_ROOT,
-        help=(
-            "Requested dataset root directory. In manifest mode, the effective "
-            "dataset root resolves to data/datasets when the legacy default is used."
-        ),
-    )
-    single_parser.add_argument(
-        "--preset",
-        type=str,
-        choices=get_available_preset_names(),
-        default=None,
-        help="Optional execution preset overriding generations only.",
-    )
-    single_parser.add_argument(
-        "--external-validation-dir",
-        type=Path,
-        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
-        help="Direct directory containing external validation CSV datasets.",
-    )
-    single_parser.add_argument(
-        "--skip-external-validation",
-        action="store_true",
-        help="Skip post-run external validation.",
-    )
-
-    batch_parser = subparsers.add_parser(
-        "batch",
-        help="Execute all run configs in a directory.",
-    )
-    batch_parser.add_argument(
+    parser.add_argument(
         "--configs-dir",
         type=Path,
         default=CONFIGS_DIR,
         help="Directory containing run config JSON files.",
     )
-    batch_parser.add_argument(
+    parser.add_argument(
         "--dataset-root",
         type=Path,
         default=DEFAULT_DATASET_ROOT,
-        help=(
-            "Requested dataset root directory. In manifest mode, the effective "
-            "dataset root resolves to data/datasets when the legacy default is used."
-        ),
+        help="Dataset root directory for manifest catalogs. Default: data/datasets.",
     )
-    batch_parser.add_argument(
-        "--parallel-workers",
-        type=int,
-        default=1,
-        help="Number of worker processes for independent runs. Default: 1.",
-    )
-    batch_parser.add_argument(
-        "--external-validation-dir",
-        type=Path,
-        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
-        help="Direct directory containing post-batch external validation CSV datasets.",
-    )
-    batch_parser.add_argument(
-        "--audit-dir",
-        type=Path,
-        default=DEFAULT_AUDIT_DIR,
-        help="Direct directory containing post-batch audit CSV datasets.",
-    )
-    batch_parser.add_argument(
-        "--skip-post-batch-analysis",
-        action="store_true",
-        help="Skip automatic post-batch champion analysis and reevaluation.",
-    )
-
-    multiseed_parser = subparsers.add_parser(
-        "multiseed",
-        help="Execute all run configs across multiple mutation seeds.",
-    )
-    multiseed_parser.add_argument(
-        "--configs-dir",
-        type=Path,
-        default=CONFIGS_DIR,
-        help="Directory containing run config JSON files.",
-    )
-    multiseed_parser.add_argument(
-        "--dataset-root",
-        type=Path,
-        default=DEFAULT_DATASET_ROOT,
-        help=(
-            "Requested dataset root directory. In manifest mode, the effective "
-            "dataset root resolves to data/datasets when the legacy default is used."
-        ),
-    )
-    multiseed_parser.add_argument(
+    parser.add_argument(
         "--preset",
         type=str,
         choices=get_available_preset_names(),
         default=None,
         help="Optional execution preset overriding generations and seeds/max_seeds.",
     )
-    multiseed_parser.add_argument(
+    parser.add_argument(
         "--parallel-workers",
         type=int,
         default=1,
         help="Number of worker processes for independent runs. Default: 1.",
     )
-    multiseed_parser.add_argument(
+    parser.add_argument(
         "--external-validation-dir",
         type=Path,
         default=DEFAULT_EXTERNAL_VALIDATION_DIR,
         help="Direct directory containing post-multiseed external validation CSV datasets.",
     )
-    multiseed_parser.add_argument(
+    parser.add_argument(
         "--audit-dir",
         type=Path,
         default=DEFAULT_AUDIT_DIR,
         help="Direct directory containing post-multiseed audit CSV datasets.",
     )
-    multiseed_parser.add_argument(
+    parser.add_argument(
         "--skip-post-multiseed-analysis",
         action="store_true",
         help="Skip automatic post-multiseed champion analysis and reevaluation.",
@@ -159,37 +62,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "single":
-        run_single_experiment(
-            config_path=args.config_path,
-            dataset_root=args.dataset_root,
-            preset_name=args.preset,
-            external_validation_dir=args.external_validation_dir,
-            skip_external_validation=args.skip_external_validation,
-        )
-        return
-
-    if args.command == "batch":
-        run_batch_experiment(
-            configs_dir=args.configs_dir,
-            dataset_root=args.dataset_root,
-            parallel_workers=args.parallel_workers,
-            external_validation_dir=args.external_validation_dir,
-            audit_dir=args.audit_dir,
-            skip_post_batch_analysis=args.skip_post_batch_analysis,
-        )
-        return
-
-    if args.command == "multiseed":
-        run_multiseed_experiment(
-            configs_dir=args.configs_dir,
-            dataset_root=args.dataset_root,
-            preset_name=args.preset,
-            parallel_workers=args.parallel_workers,
-            external_validation_dir=args.external_validation_dir,
-            audit_dir=args.audit_dir,
-            skip_post_multiseed_analysis=args.skip_post_multiseed_analysis,
-        )
-        return
-
-    raise ValueError(f"Unsupported command: {args.command}")
+    run_multiseed_experiment(
+        configs_dir=args.configs_dir,
+        dataset_root=args.dataset_root,
+        preset_name=args.preset,
+        parallel_workers=args.parallel_workers,
+        external_validation_dir=args.external_validation_dir,
+        audit_dir=args.audit_dir,
+        skip_post_multiseed_analysis=args.skip_post_multiseed_analysis,
+    )

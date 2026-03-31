@@ -1,9 +1,8 @@
-import argparse
 import json
 import random
 import time
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 from evo_system.champions import (
@@ -43,19 +42,12 @@ from evo_system.experimentation.external_validation import (
 )
 from evo_system.experimentation.dataset_roots import (
     DEFAULT_DATASET_ROOT,
-    DEFAULT_MANIFEST_DATASET_ROOT,
     resolve_dataset_root,
 )
 from evo_system.experimentation.parallel_progress import write_progress_snapshot
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
 from evo_system.storage.sqlite_store import SQLiteStore
-from evo_system.experimentation.presets import (
-    apply_preset_to_config_data,
-    get_available_preset_names,
-    get_preset_by_name,
-)
-
 DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
@@ -355,10 +347,6 @@ def append_lines(log_file_path: Path, lines: list[str]) -> None:
         log_file.write("\n".join(lines) + "\n")
 
 
-def load_config_data(config_path: Path) -> dict:
-    return json.loads(config_path.read_text(encoding="utf-8"))
-
-
 def resolve_external_validation_dataset_paths(
     external_validation_dir: Path,
 ) -> list[Path]:
@@ -372,7 +360,6 @@ def execute_historical_run(
     config_name_override: str | None = None,
     dataset_root: Path = DEFAULT_DATASET_ROOT,
     context_name: str | None = None,
-    generations_override: int | None = None,
     external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
     skip_external_validation: bool = False,
     progress_snapshot_path: Path | None = None,
@@ -380,13 +367,8 @@ def execute_historical_run(
     run_start_time = time.perf_counter()
 
     config = load_run_config(str(config_path))
-    if generations_override is not None:
-        config = replace(config, generations_planned=generations_override)
     config_name = config_name_override or config_path.name
-    effective_dataset_root = resolve_dataset_root(
-        requested_dataset_root=dataset_root,
-        dataset_mode=config.dataset_mode,
-    )
+    effective_dataset_root = resolve_dataset_root(dataset_root)
 
     evaluator = AgentEvaluator(
         cost_penalty_weight=config.cost_penalty_weight,
@@ -395,7 +377,6 @@ def execute_historical_run(
     loader = DatasetPoolLoader()
     train_dataset_paths, validation_dataset_paths = loader.load_paths(
         effective_dataset_root,
-        dataset_mode=config.dataset_mode,
         dataset_catalog_id=config.dataset_catalog_id,
     )
     dataset_signature = build_dataset_signature(
@@ -443,7 +424,6 @@ def execute_historical_run(
         f"Config name: {config_name}",
         f"Context name: {context_name or 'none'}",
         f"Run ID: {run_id}",
-        f"Dataset mode: {config.dataset_mode}",
         f"Dataset catalog: {config.dataset_catalog_id or 'none'}",
         f"Dataset root: {effective_dataset_root}",
         f"Dataset signature: {dataset_signature}",
@@ -482,7 +462,6 @@ def execute_historical_run(
     print(f"Config name: {config_name}")
     if context_name:
         print(f"Context name: {context_name}")
-    print(f"Dataset mode: {config.dataset_mode}")
     if config.dataset_catalog_id:
         print(f"Dataset catalog: {config.dataset_catalog_id}")
     print(f"Dataset root: {effective_dataset_root}")
@@ -1016,73 +995,3 @@ def execute_historical_run(
         train_validation_profit_gap=train_validation_profit_gap,
         config_path=config_path,
     )
-
-
-def run_single_experiment(
-    config_path: Path = Path("configs/run_config.json"),
-    dataset_root: Path = DEFAULT_DATASET_ROOT,
-    preset_name: str | None = None,
-    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
-    skip_external_validation: bool = False,
-) -> HistoricalRunSummary:
-    preset = get_preset_by_name(preset_name)
-    generations_override: int | None = None
-
-    if preset is not None:
-        preset_config = apply_preset_to_config_data(
-            load_config_data(config_path),
-            preset,
-        )
-        generations_override = int(preset_config["generations_planned"])
-        print(
-            f"Using preset '{preset.name}' -> generations={generations_override}"
-        )
-
-    return execute_historical_run(
-        config_path=config_path,
-        dataset_root=dataset_root,
-        generations_override=generations_override,
-        external_validation_dir=external_validation_dir,
-        skip_external_validation=skip_external_validation,
-    )
-
-
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Execute a single historical run.")
-    parser.add_argument(
-        "--config-path",
-        type=Path,
-        default=Path("configs/run_config.json"),
-        help="Path to the run config JSON.",
-    )
-    parser.add_argument(
-        "--preset",
-        type=str,
-        choices=get_available_preset_names(),
-        default=None,
-        help="Optional execution preset overriding generations only.",
-    )
-    parser.add_argument(
-        "--external-validation-dir",
-        type=Path,
-        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
-        help="Directory containing external validation CSV datasets.",
-    )
-    parser.add_argument(
-        "--skip-external-validation",
-        action="store_true",
-        help="Skip post-run external validation.",
-    )
-    args = parser.parse_args(argv)
-
-    run_single_experiment(
-        config_path=args.config_path,
-        dataset_root=DEFAULT_DATASET_ROOT,
-        preset_name=args.preset,
-        external_validation_dir=args.external_validation_dir,
-        skip_external_validation=args.skip_external_validation,
-    )
-
-
-if __name__ == "__main__":
-    main()
