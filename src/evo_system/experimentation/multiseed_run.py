@@ -3,6 +3,7 @@ import os
 import statistics
 import tempfile
 import time
+import uuid
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from contextlib import redirect_stderr, redirect_stdout
@@ -11,6 +12,7 @@ from datetime import datetime
 from multiprocessing import get_context
 from pathlib import Path
 
+from evo_system.champions.metrics import build_dataset_signature
 from evo_system.champions.rules import (
     ROBUST_MAX_ABS_SELECTION_GAP,
     ROBUST_MAX_VALIDATION_DRAWDOWN,
@@ -24,9 +26,11 @@ from evo_system.champions.rules import (
     SPECIALIST_MIN_VALIDATION_TRADES,
 )
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.experimentation.dataset_roots import (
     DEFAULT_DATASET_ROOT,
     format_effective_dataset_roots,
+    resolve_dataset_root,
     resolve_effective_dataset_roots,
 )
 from evo_system.experimentation.parallel_progress import (
@@ -36,8 +40,10 @@ from evo_system.experimentation.parallel_progress import (
 )
 from evo_system.experimentation.post_multiseed_analysis import (
     DEFAULT_AUDIT_DIR,
+    MULTISEED_CHAMPIONS_SUMMARY_NAME,
     MULTISEED_QUICK_SUMMARY_NAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
+    load_multiseed_champions,
     run_post_multiseed_analysis,
     write_multiseed_quick_summary,
 )
@@ -48,10 +54,18 @@ from evo_system.experimentation.presets import (
 )
 from evo_system.experimentation.historical_run import (
     DEFAULT_EXTERNAL_VALIDATION_DIR,
+    TRAIN_SAMPLE_SIZE,
     execute_historical_run,
 )
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.reporting import DEFAULT_DB_PATH
+from evo_system.storage import (
+    CURRENT_LOGIC_VERSION,
+    DEFAULT_PERSISTENCE_DB_PATH,
+    PersistenceStore,
+    build_execution_fingerprint,
+    hash_config_snapshot,
+)
 
 CONFIGS_DIR = Path("configs/runs")
 MULTISEED_ROOT_DIR = Path("artifacts/multiseed")
@@ -70,12 +84,34 @@ class MultiseedJob:
     context_name: str | None
     preset_name: str | None
     progress_snapshot_path: Path
+    run_execution_uid: str
+    effective_config_snapshot: dict
+    dataset_catalog_id: str
+    dataset_signature: str
+    dataset_context_json: dict
+    requested_dataset_root: Path
+    resolved_dataset_root: Path
+    execution_fingerprint: str
 
 
 @dataclass(frozen=True)
 class MultiseedExecutionOutcome:
     run_summaries: list[HistoricalRunSummary]
     failures: list[str]
+
+
+@dataclass(frozen=True)
+class PreparedRunExecution:
+    run_execution_uid: str
+    config_name: str
+    effective_seed: int
+    config_json_snapshot: dict
+    dataset_catalog_id: str
+    dataset_signature: str
+    dataset_context_json: dict
+    requested_dataset_root: Path
+    resolved_dataset_root: Path
+    execution_fingerprint: str
 
 
 def calculate_effective_parallel_workers(
@@ -139,6 +175,88 @@ def collect_active_job_lines(
 
 def load_config(config_path: Path) -> dict:
     return json.loads(config_path.read_text(encoding="utf-8"))
+
+
+def build_effective_config_snapshot(
+    config_path: Path,
+    preset_name: str | None,
+    seed: int,
+) -> dict:
+    preset = get_preset_by_name(preset_name)
+    base_config = load_config(config_path)
+    effective_config = apply_preset_to_config_data(base_config, preset)
+    config_copy = dict(effective_config)
+    config_copy["mutation_seed"] = seed
+    return config_copy
+
+
+def build_dataset_context_snapshot(
+    *,
+    effective_config_snapshot: dict,
+    requested_dataset_root: Path,
+) -> tuple[str, Path, dict]:
+    resolved_dataset_root = resolve_dataset_root(requested_dataset_root)
+    dataset_catalog_id = effective_config_snapshot["dataset_catalog_id"]
+    loader = DatasetPoolLoader()
+    train_dataset_paths, validation_dataset_paths = loader.load_paths(
+        resolved_dataset_root,
+        dataset_catalog_id=dataset_catalog_id,
+    )
+    train_sample_size = min(TRAIN_SAMPLE_SIZE, len(train_dataset_paths))
+    dataset_signature = build_dataset_signature(
+        all_train_dataset_paths=train_dataset_paths,
+        validation_dataset_paths=validation_dataset_paths,
+        dataset_root=resolved_dataset_root,
+        train_sample_size=train_sample_size,
+    )
+    dataset_context_json = {
+        "dataset_catalog_id": dataset_catalog_id,
+        "resolved_train_paths": [str(path) for path in train_dataset_paths],
+        "resolved_validation_paths": [str(path) for path in validation_dataset_paths],
+        "train_count": len(train_dataset_paths),
+        "validation_count": len(validation_dataset_paths),
+        "train_sample_size": train_sample_size,
+        "resolved_dataset_root": str(resolved_dataset_root),
+    }
+    return dataset_signature, resolved_dataset_root, dataset_context_json
+
+
+def prepare_run_execution(
+    config_path: Path,
+    *,
+    seed: int,
+    preset_name: str | None,
+    dataset_root: Path,
+) -> PreparedRunExecution:
+    effective_config_snapshot = build_effective_config_snapshot(
+        config_path,
+        preset_name,
+        seed,
+    )
+    dataset_signature, resolved_dataset_root, dataset_context_json = (
+        build_dataset_context_snapshot(
+            effective_config_snapshot=effective_config_snapshot,
+            requested_dataset_root=dataset_root,
+        )
+    )
+    config_hash = hash_config_snapshot(effective_config_snapshot)
+    return PreparedRunExecution(
+        run_execution_uid=str(uuid.uuid4()),
+        config_name=config_path.name,
+        effective_seed=seed,
+        config_json_snapshot=effective_config_snapshot,
+        dataset_catalog_id=effective_config_snapshot["dataset_catalog_id"],
+        dataset_signature=dataset_signature,
+        dataset_context_json=dataset_context_json,
+        requested_dataset_root=dataset_root,
+        resolved_dataset_root=resolved_dataset_root,
+        execution_fingerprint=build_execution_fingerprint(
+            config_hash=config_hash,
+            effective_seed=seed,
+            dataset_signature=dataset_signature,
+            logic_version=CURRENT_LOGIC_VERSION,
+        ),
+    )
 
 
 def build_default_multiseed_seeds() -> list[int]:
@@ -245,6 +363,12 @@ def build_multiseed_jobs(
     jobs: list[MultiseedJob] = []
     for config_path in sorted(seed_map):
         for seed in seed_map[config_path]:
+            prepared_execution = prepare_run_execution(
+                config_path,
+                seed=seed,
+                preset_name=preset_name,
+                dataset_root=dataset_root,
+            )
             jobs.append(
                 MultiseedJob(
                     config_path=config_path,
@@ -258,18 +382,21 @@ def build_multiseed_jobs(
                         config_path,
                         seed,
                     ),
+                    run_execution_uid=prepared_execution.run_execution_uid,
+                    effective_config_snapshot=prepared_execution.config_json_snapshot,
+                    dataset_catalog_id=prepared_execution.dataset_catalog_id,
+                    dataset_signature=prepared_execution.dataset_signature,
+                    dataset_context_json=prepared_execution.dataset_context_json,
+                    requested_dataset_root=prepared_execution.requested_dataset_root,
+                    resolved_dataset_root=prepared_execution.resolved_dataset_root,
+                    execution_fingerprint=prepared_execution.execution_fingerprint,
                 )
             )
     return jobs
 
 
 def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
-    preset = get_preset_by_name(job.preset_name)
-    base_config = load_config(job.config_path)
-    effective_config = apply_preset_to_config_data(base_config, preset)
-    config_copy = dict(effective_config)
-    config_copy["mutation_seed"] = job.seed
-    temp_config_path = write_temp_config(config_copy)
+    temp_config_path = write_temp_config(job.effective_config_snapshot)
 
     try:
         with open(os.devnull, "w", encoding="utf-8") as devnull:
@@ -289,12 +416,7 @@ def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
 
 
 def execute_multiseed_job_sequential(job: MultiseedJob) -> HistoricalRunSummary:
-    preset = get_preset_by_name(job.preset_name)
-    base_config = load_config(job.config_path)
-    effective_config = apply_preset_to_config_data(base_config, preset)
-    config_copy = dict(effective_config)
-    config_copy["mutation_seed"] = job.seed
-    temp_config_path = write_temp_config(config_copy)
+    temp_config_path = write_temp_config(job.effective_config_snapshot)
 
     try:
         summary = execute_historical_run(
@@ -350,6 +472,137 @@ def is_champion(summary: HistoricalRunSummary) -> bool:
     return classify_summary_champion(summary) != "rejected"
 
 
+def build_configs_dir_snapshot(config_paths: list[Path]) -> dict:
+    return {
+        "config_count": len(config_paths),
+        "configs": [
+            {
+                "config_name": path.name,
+                "config_path": str(path),
+            }
+            for path in sorted(config_paths)
+        ],
+    }
+
+
+def build_run_summary_payload(summary: HistoricalRunSummary) -> dict:
+    return {
+        "run_id": summary.run_id,
+        "config_name": summary.config_name,
+        "mutation_seed": summary.mutation_seed,
+        "best_train_selection_score": summary.best_train_selection_score,
+        "final_validation_selection_score": summary.final_validation_selection_score,
+        "final_validation_profit": summary.final_validation_profit,
+        "final_validation_drawdown": summary.final_validation_drawdown,
+        "final_validation_trades": summary.final_validation_trades,
+        "best_genome_repr": summary.best_genome_repr,
+        "generation_of_best": summary.generation_of_best,
+        "train_validation_selection_gap": summary.train_validation_selection_gap,
+        "train_validation_profit_gap": summary.train_validation_profit_gap,
+        "log_file_path": str(summary.log_file_path),
+        "config_path": str(summary.config_path) if summary.config_path is not None else None,
+    }
+
+
+def create_multiseed_run_record(
+    *,
+    store: PersistenceStore,
+    output_dir: Path,
+    configs_dir: Path,
+    config_paths: list[Path],
+    dataset_root: Path,
+    preset_name: str | None,
+    context_name: str | None,
+    requested_parallel_workers: int,
+    effective_parallel_workers: int,
+    runs_planned: int,
+) -> tuple[int, str]:
+    multiseed_run_uid = output_dir.name
+    multiseed_run_id = store.save_multiseed_run(
+        multiseed_run_uid=multiseed_run_uid,
+        configs_dir_snapshot={
+            "configs_dir": str(configs_dir),
+            **build_configs_dir_snapshot(config_paths),
+        },
+        requested_parallel_workers=requested_parallel_workers,
+        effective_parallel_workers=effective_parallel_workers,
+        dataset_root=dataset_root,
+        runs_planned=runs_planned,
+        runs_completed=0,
+        runs_failed=0,
+        champions_found=False,
+        champion_analysis_status="pending",
+        external_evaluation_status="pending",
+        audit_evaluation_status="pending",
+        status="running",
+        logic_version=CURRENT_LOGIC_VERSION,
+        preset_name=preset_name,
+        context_name=context_name,
+        artifacts_root_path=output_dir,
+    )
+    return multiseed_run_id, multiseed_run_uid
+
+
+def persist_run_execution_start(
+    *,
+    store: PersistenceStore,
+    multiseed_run_id: int,
+    job: MultiseedJob,
+    context_name: str | None,
+) -> int:
+    store.find_run_execution_by_fingerprint(job.execution_fingerprint)
+    return store.save_run_execution(
+        run_execution_uid=job.run_execution_uid,
+        multiseed_run_id=multiseed_run_id,
+        run_id=job.run_execution_uid,
+        config_name=job.config_path.name,
+        config_json_snapshot=job.effective_config_snapshot,
+        effective_seed=job.seed,
+        dataset_catalog_id=job.dataset_catalog_id,
+        dataset_signature=job.dataset_signature,
+        dataset_context_json=job.dataset_context_json,
+        status="running",
+        logic_version=CURRENT_LOGIC_VERSION,
+        context_name=context_name,
+        preset_name=job.preset_name,
+        requested_dataset_root=job.requested_dataset_root,
+        resolved_dataset_root=job.resolved_dataset_root,
+        progress_snapshot_artifact_path=job.progress_snapshot_path,
+    )
+
+
+def persist_run_execution_success(
+    *,
+    store: PersistenceStore,
+    run_execution_id: int,
+    summary: HistoricalRunSummary,
+    job: MultiseedJob,
+) -> None:
+    store.update_run_execution_status(
+        run_execution_id,
+        status="completed",
+        run_id=summary.run_id,
+        log_artifact_path=summary.log_file_path,
+        progress_snapshot_artifact_path=job.progress_snapshot_path,
+        summary_json=build_run_summary_payload(summary),
+    )
+
+
+def persist_run_execution_failure(
+    *,
+    store: PersistenceStore,
+    run_execution_id: int,
+    job: MultiseedJob,
+    error: Exception,
+) -> None:
+    store.update_run_execution_status(
+        run_execution_id,
+        status="failed",
+        failure_reason=str(error),
+        progress_snapshot_artifact_path=job.progress_snapshot_path,
+    )
+
+
 def execute_multiseed_runs_with_failures(
     config_paths: list[Path],
     output_dir: Path,
@@ -357,6 +610,8 @@ def execute_multiseed_runs_with_failures(
     context_name: str | None,
     preset_name: str | None = None,
     requested_parallel_workers: int = 1,
+    persistence_store: PersistenceStore | None = None,
+    multiseed_run_id: int | None = None,
 ) -> MultiseedExecutionOutcome:
     seed_map = resolve_seed_map(config_paths, preset_name)
     jobs = build_multiseed_jobs(
@@ -384,6 +639,14 @@ def execute_multiseed_runs_with_failures(
         summaries: list[HistoricalRunSummary] = []
         failures: list[str] = []
         for index, job in enumerate(jobs, start=1):
+            run_execution_id: int | None = None
+            if persistence_store is not None and multiseed_run_id is not None:
+                run_execution_id = persist_run_execution_start(
+                    store=persistence_store,
+                    multiseed_run_id=multiseed_run_id,
+                    job=job,
+                    context_name=context_name,
+                )
             print()
             print(
                 f"[{index}/{total_jobs}] starting | "
@@ -399,9 +662,24 @@ def execute_multiseed_runs_with_failures(
                     f"generations={effective_config['generations_planned']}"
                 )
             try:
-                summaries.append(execute_multiseed_job_sequential(job))
+                summary = execute_multiseed_job_sequential(job)
+                summaries.append(summary)
+                if persistence_store is not None and run_execution_id is not None:
+                    persist_run_execution_success(
+                        store=persistence_store,
+                        run_execution_id=run_execution_id,
+                        summary=summary,
+                        job=job,
+                    )
             except Exception as exc:
                 failures.append(f"{job.config_path.name} seed {job.seed}: {exc}")
+                if persistence_store is not None and run_execution_id is not None:
+                    persist_run_execution_failure(
+                        store=persistence_store,
+                        run_execution_id=run_execution_id,
+                        job=job,
+                        error=exc,
+                    )
                 print(f"FAILED {job.config_path.name} seed {job.seed}: {exc}")
                 job.progress_snapshot_path.unlink(missing_ok=True)
         return MultiseedExecutionOutcome(run_summaries=summaries, failures=failures)
@@ -419,6 +697,17 @@ def execute_multiseed_runs_with_failures(
         max_workers=effective_parallel_workers,
         mp_context=get_context("spawn"),
     ) as executor:
+        run_execution_ids_by_job_key: dict[tuple[str, int], int] = {}
+        if persistence_store is not None and multiseed_run_id is not None:
+            for job in jobs:
+                run_execution_ids_by_job_key[(str(job.config_path), job.seed)] = (
+                    persist_run_execution_start(
+                        store=persistence_store,
+                        multiseed_run_id=multiseed_run_id,
+                        job=job,
+                        context_name=context_name,
+                    )
+                )
         future_to_job = {
             executor.submit(execute_multiseed_job, job): job
             for job in jobs
@@ -457,6 +746,16 @@ def execute_multiseed_runs_with_failures(
                 except Exception as exc:
                     failures.append(f"{job.config_path.name} seed {job.seed}: {exc}")
                     failure_count += 1
+                    run_execution_id = run_execution_ids_by_job_key.get(
+                        (str(job.config_path), job.seed)
+                    )
+                    if persistence_store is not None and run_execution_id is not None:
+                        persist_run_execution_failure(
+                            store=persistence_store,
+                            run_execution_id=run_execution_id,
+                            job=job,
+                            error=exc,
+                        )
                     print(
                         format_parallel_progress(
                             completed_jobs=completed_jobs,
@@ -472,6 +771,16 @@ def execute_multiseed_runs_with_failures(
 
                 summaries.append(summary)
                 success_count += 1
+                run_execution_id = run_execution_ids_by_job_key.get(
+                    (str(job.config_path), job.seed)
+                )
+                if persistence_store is not None and run_execution_id is not None:
+                    persist_run_execution_success(
+                        store=persistence_store,
+                        run_execution_id=run_execution_id,
+                        summary=summary,
+                        job=job,
+                    )
                 print(
                     format_parallel_progress(
                         completed_jobs=completed_jobs,
@@ -513,6 +822,8 @@ def execute_multiseed_runs(
     context_name: str | None,
     preset_name: str | None = None,
     requested_parallel_workers: int = 1,
+    persistence_store: PersistenceStore | None = None,
+    multiseed_run_id: int | None = None,
 ) -> list[HistoricalRunSummary]:
     outcome = execute_multiseed_runs_with_failures(
         config_paths=config_paths,
@@ -521,6 +832,8 @@ def execute_multiseed_runs(
         context_name=context_name,
         preset_name=preset_name,
         requested_parallel_workers=requested_parallel_workers,
+        persistence_store=persistence_store,
+        multiseed_run_id=multiseed_run_id,
     )
     if outcome.failures:
         failure_summary = "\n".join(outcome.failures)
@@ -681,6 +994,41 @@ def write_multiseed_summary(
     return summary_path
 
 
+def resolve_multiseed_persistence_statuses(
+    *,
+    run_summaries: list[HistoricalRunSummary],
+    skip_post_multiseed_analysis: bool,
+) -> tuple[bool, str, str, str]:
+    champions = load_multiseed_champions(
+        DEFAULT_DB_PATH,
+        [summary.run_id for summary in run_summaries],
+    )
+    champions_found = bool(champions)
+
+    if not champions_found:
+        return (
+            False,
+            "skipped_no_champions",
+            "skipped_no_champions",
+            "skipped_no_champions",
+        )
+
+    if skip_post_multiseed_analysis:
+        return (
+            True,
+            "skipped_by_flag",
+            "skipped_by_flag",
+            "skipped_by_flag",
+        )
+
+    return (
+        True,
+        "legacy_completed",
+        "legacy_managed",
+        "legacy_managed",
+    )
+
+
 def run_multiseed_experiment(
     configs_dir: Path = CONFIGS_DIR,
     dataset_root: Path = DEFAULT_DATASET_ROOT,
@@ -735,55 +1083,130 @@ def run_multiseed_experiment(
     output_dir = create_multiseed_dir()
     print(f"Writing multiseed artifacts to {output_dir}")
 
-    outcome = execute_multiseed_runs_with_failures(
+    persistence_store = PersistenceStore(DEFAULT_PERSISTENCE_DB_PATH)
+    persistence_store.initialize()
+    multiseed_run_id, _ = create_multiseed_run_record(
+        store=persistence_store,
+        output_dir=output_dir,
+        configs_dir=configs_dir,
         config_paths=config_paths,
-        output_dir=output_dir,
         dataset_root=dataset_root,
-        context_name=context_name,
         preset_name=preset_name,
+        context_name=context_name,
         requested_parallel_workers=parallel_workers,
+        effective_parallel_workers=effective_parallel_workers,
+        runs_planned=job_count,
     )
+    outcome: MultiseedExecutionOutcome | None = None
+    summary_path: Path | None = None
 
-    summary_path = write_multiseed_summary(
-        summaries=outcome.run_summaries,
-        seed_map=seed_map,
-        output_dir=output_dir,
-        dataset_root_label=dataset_root_label,
-        context_name=context_name,
-        preset_name=preset_name,
-        effective_generations=effective_generations,
-    )
+    try:
+        outcome = execute_multiseed_runs_with_failures(
+            config_paths=config_paths,
+            output_dir=output_dir,
+            dataset_root=dataset_root,
+            context_name=context_name,
+            preset_name=preset_name,
+            requested_parallel_workers=parallel_workers,
+            persistence_store=persistence_store,
+            multiseed_run_id=multiseed_run_id,
+        )
 
-    if skip_post_multiseed_analysis:
-        write_multiseed_quick_summary(
-            multiseed_dir=output_dir,
-            run_summaries=outcome.run_summaries,
+        summary_path = write_multiseed_summary(
+            summaries=outcome.run_summaries,
+            seed_map=seed_map,
+            output_dir=output_dir,
             dataset_root_label=dataset_root_label,
-            failures=outcome.failures,
-            seeds_planned=job_count,
+            context_name=context_name,
+            preset_name=preset_name,
+            effective_generations=effective_generations,
         )
-        print(
-            "Post-multiseed analysis skipped -> champions/external/audit summaries not generated"
+
+        if skip_post_multiseed_analysis:
+            write_multiseed_quick_summary(
+                multiseed_dir=output_dir,
+                run_summaries=outcome.run_summaries,
+                dataset_root_label=dataset_root_label,
+                failures=outcome.failures,
+                seeds_planned=job_count,
+            )
+            print(
+                "Post-multiseed analysis skipped -> champions/external/audit summaries not generated"
+            )
+        else:
+            post_analysis_result = run_post_multiseed_analysis(
+                multiseed_dir=output_dir,
+                summary_path=summary_path,
+                run_summaries=outcome.run_summaries,
+                dataset_root_label=dataset_root_label,
+                db_path=DEFAULT_DB_PATH,
+                external_validation_dir=external_validation_dir,
+                audit_dir=audit_dir,
+                failures=outcome.failures,
+                seeds_planned=job_count,
+            )
+            print(
+                f"Multiseed champions summary saved to {post_analysis_result.champions_summary_path}"
+            )
+            print(
+                "Multiseed post-validation directory saved to "
+                f"{output_dir / POST_MULTISEED_VALIDATION_DIRNAME}"
+            )
+
+        champions_found, champion_analysis_status, external_evaluation_status, audit_evaluation_status = (
+            resolve_multiseed_persistence_statuses(
+                run_summaries=outcome.run_summaries,
+                skip_post_multiseed_analysis=skip_post_multiseed_analysis,
+            )
         )
-    else:
-        post_analysis_result = run_post_multiseed_analysis(
-            multiseed_dir=output_dir,
-            summary_path=summary_path,
-            run_summaries=outcome.run_summaries,
-            dataset_root_label=dataset_root_label,
-            db_path=DEFAULT_DB_PATH,
-            external_validation_dir=external_validation_dir,
-            audit_dir=audit_dir,
-            failures=outcome.failures,
-            seeds_planned=job_count,
+        persistence_store.update_multiseed_run_status(
+            multiseed_run_id,
+            status="completed_with_failures" if outcome.failures else "completed",
+            runs_completed=len(outcome.run_summaries),
+            runs_failed=len(outcome.failures),
+            champions_found=champions_found,
+            champion_analysis_status=champion_analysis_status,
+            external_evaluation_status=external_evaluation_status,
+            audit_evaluation_status=audit_evaluation_status,
+            failure_summary_json=(
+                {"failures": outcome.failures}
+                if outcome.failures
+                else None
+            ),
+            summary_artifact_path=summary_path,
+            quick_summary_artifact_path=output_dir / MULTISEED_QUICK_SUMMARY_NAME,
+            champions_summary_artifact_path=(
+                output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
+                if (output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
+                else None
+            ),
+            artifacts_root_path=output_dir,
         )
-        print(
-            f"Multiseed champions summary saved to {post_analysis_result.champions_summary_path}"
+    except Exception as exc:
+        persistence_store.update_multiseed_run_status(
+            multiseed_run_id,
+            status="failed",
+            runs_completed=len(outcome.run_summaries) if outcome is not None else 0,
+            runs_failed=len(outcome.failures) if outcome is not None else job_count,
+            champions_found=False,
+            champion_analysis_status="failed",
+            external_evaluation_status="failed",
+            audit_evaluation_status="failed",
+            failure_summary_json={"failures": [str(exc)]},
+            summary_artifact_path=summary_path,
+            quick_summary_artifact_path=(
+                output_dir / MULTISEED_QUICK_SUMMARY_NAME
+                if (output_dir / MULTISEED_QUICK_SUMMARY_NAME).exists()
+                else None
+            ),
+            champions_summary_artifact_path=(
+                output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
+                if (output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
+                else None
+            ),
+            artifacts_root_path=output_dir,
         )
-        print(
-            "Multiseed post-validation directory saved to "
-            f"{output_dir / POST_MULTISEED_VALIDATION_DIRNAME}"
-        )
+        raise
 
     print()
     print(f"Multiseed summary saved to {summary_path}")

@@ -561,6 +561,7 @@ class PersistenceStore:
         run_execution_id: int,
         *,
         status: str,
+        run_id: str | None = None,
         completed_at: str | None = None,
         failure_reason: str | None = None,
         log_artifact_path: str | Path | None = None,
@@ -572,6 +573,7 @@ class PersistenceStore:
         parameters: list[Any] = [status, completed_at or utc_now_iso()]
 
         optional_updates = {
+            "run_id": run_id,
             "failure_reason": failure_reason,
             "log_artifact_path": to_repo_relative_path(log_artifact_path),
             "progress_snapshot_artifact_path": to_repo_relative_path(progress_snapshot_artifact_path),
