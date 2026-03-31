@@ -93,6 +93,16 @@ champion_evaluation
   -> champion (many-to-many via evaluation membership)
 ```
 
+Concrete table names chosen for implementation:
+
+- `multiseed_runs`
+- `run_executions`
+- `champions`
+- `champion_analyses`
+- `champion_analysis_members`
+- `champion_evaluations`
+- `champion_evaluation_members`
+
 ## 1. Entity: `multiseed_run`
 
 ### Purpose
@@ -587,6 +597,10 @@ Rules:
 This version is intentionally manual and explicit.
 It is not inferred automatically from git state.
 
+Current implementation default:
+
+- `CURRENT_LOGIC_VERSION = "v1"`
+
 ## Automatic Multiseed Outputs
 
 Every completed `multiseed_run` must persist, at minimum:
@@ -652,6 +666,10 @@ Artifacts should always be associated back to:
 - one `champion_evaluation`
 - optionally one `run_execution`
 
+Concrete implementation decision:
+
+- artifact paths are stored as repo-relative text paths
+
 ## Storage Guidance: Structured Columns vs JSON
 
 Use structured columns for:
@@ -678,6 +696,13 @@ Use JSON for:
 - optional environment snapshots
 
 Do not rely only on blobs for fields that must be filtered or indexed frequently.
+
+Concrete implementation decisions:
+
+- timestamps are stored as ISO-8601 UTC text
+- `config_hash` uses SHA-256 hex
+- `genome_hash` uses SHA-256 hex
+- `execution_fingerprint` uses SHA-256 hex
 
 ## Required Query Capabilities
 
@@ -711,13 +736,10 @@ For later implementation, likely indexes include:
 
 These are intentionally deferred:
 
-1. Exact table names and SQL types.
-2. Whether some summary JSON fields should later be normalized further.
-3. Whether `run_execution` reuse should be silent, explicit, or operator-controlled.
-4. Whether artifact paths should be absolute or repo-relative.
-5. Whether `dataset_context_json` should store all dataset paths or only a signature plus counts.
-6. Whether `config_hash` and `genome_hash` should use SHA-256 or another stable hash.
-7. Whether `logic_version` is a string like `v3` or a richer compatibility token.
+1. Whether some summary JSON fields should later be normalized further.
+2. Whether `run_execution` reuse should be silent, explicit, or operator-controlled.
+3. Whether `dataset_context_json` should store all dataset paths or only a signature plus counts.
+4. Whether `logic_version` should remain a simple string like `v1` or evolve into a richer compatibility token.
 
 ## Recommended Next Refactor Order
 
