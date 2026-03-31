@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from evo_system.reporting.champion_loader import ChampionRow, resolve_config_name
+from evo_system.reporting.champion_loader import (
+    ChampionRow,
+    resolve_champion_type,
+    resolve_config_name,
+)
 
 
 def filter_champions(
     champions: list[ChampionRow],
     config_name: str | None = None,
     run_ids: set[str] | None = None,
+    champion_type: str | None = None,
 ) -> list[ChampionRow]:
     filtered = champions
 
@@ -19,14 +24,21 @@ def filter_champions(
             if champion.run_id in run_ids
         ]
 
-    if config_name is None:
+    if config_name is not None:
+        filtered = [
+            champion
+            for champion in filtered
+            if resolve_config_name(champion) == config_name
+            or champion.config_name == config_name
+        ]
+
+    if champion_type is None:
         return filtered
 
     return [
         champion
         for champion in filtered
-        if resolve_config_name(champion) == config_name
-        or champion.config_name == config_name
+        if resolve_champion_type(champion) == champion_type
     ]
 
 

@@ -120,13 +120,14 @@ Current runtime usage:
 Analyze persisted champions from SQLite:
 
 ```bash
-python scripts/analyze_champions.py --db-path data/evolution.db
+python scripts/analyze_champions.py --db-path data/evolution_v2.db
 ```
 
 Supported filters:
 
 - `--run-id`
 - `--config-name`
+- `--champion-type`
 
 ## 5. Reevaluate Persisted Champions
 
@@ -144,13 +145,13 @@ Supports both:
 Example using direct external directory:
 
 ```bash
-python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --config-name "balanced_bnb fee_5bps_fees.json" --config-path "configs/runs/balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-validation-dir data/datasets/external_validation
+python scripts/evaluate_persisted_champions.py --db-path data/evolution_v2.db --config-name "balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-validation-dir data/datasets/external_validation
 ```
 
 Example using manifest catalogs for reevaluation:
 
 ```bash
-python scripts/evaluate_persisted_champions.py --db-path data/evolution.db --config-name "balanced_bnb fee_5bps_fees.json" --config-path "configs/runs/balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-dataset-catalog-id bnb_external_catalog --audit-dataset-catalog-id bnb_audit_catalog
+python scripts/evaluate_persisted_champions.py --db-path data/evolution_v2.db --config-name "balanced_bnb fee_5bps_fees.json" --dataset-root data/datasets --external-dataset-catalog-id bnb_external_catalog --audit-dataset-catalog-id bnb_audit_catalog
 ```
 
 ## Presets

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH, PersistenceStore
 
 
 @dataclass
@@ -17,53 +17,106 @@ class ChampionRow:
     genome: dict[str, Any]
     metrics: dict[str, Any]
     created_at: str | None
+    champion_type: str | None
+    config_snapshot: dict[str, Any]
+    dataset_catalog_id: str | None
+    dataset_signature: str | None
 
 
-def load_champions(db_path: Path, run_id: str | None = None) -> list[ChampionRow]:
+def build_normalized_metrics(champion_row: dict[str, Any]) -> dict[str, Any]:
+    metrics = dict(champion_row.get("champion_metrics_json") or {})
+    train_metrics = champion_row.get("train_metrics_json") or {}
+    validation_metrics = champion_row.get("validation_metrics_json") or {}
+    config_snapshot = champion_row.get("config_json_snapshot") or {}
+
+    metrics.setdefault("config_name", champion_row.get("config_name"))
+    metrics.setdefault("dataset_catalog_id", champion_row.get("dataset_catalog_id"))
+    metrics.setdefault("dataset_signature", champion_row.get("dataset_signature"))
+    metrics.setdefault("champion_type", champion_row.get("champion_type"))
+    metrics.setdefault("dataset_root", config_snapshot.get("dataset_root"))
+
+    train_field_map = {
+        "train_selection": "selection_score",
+        "train_profit": "median_profit",
+        "train_drawdown": "median_drawdown",
+        "train_trades": "median_trades",
+        "train_dataset_scores": "dataset_scores",
+        "train_dataset_profits": "dataset_profits",
+        "train_dataset_drawdowns": "dataset_drawdowns",
+        "train_violations": "violations",
+        "train_is_valid": "is_valid",
+    }
+    validation_field_map = {
+        "validation_selection": "selection_score",
+        "validation_profit": "median_profit",
+        "validation_drawdown": "median_drawdown",
+        "validation_trades": "median_trades",
+        "validation_dispersion": "dispersion",
+        "validation_dataset_scores": "dataset_scores",
+        "validation_dataset_profits": "dataset_profits",
+        "validation_dataset_drawdowns": "dataset_drawdowns",
+        "validation_violations": "violations",
+        "validation_is_valid": "is_valid",
+    }
+
+    for target_field, source_field in train_field_map.items():
+        metrics.setdefault(target_field, train_metrics.get(source_field))
+    for target_field, source_field in validation_field_map.items():
+        metrics.setdefault(target_field, validation_metrics.get(source_field))
+
+    for list_field in (
+        "train_dataset_scores",
+        "train_dataset_profits",
+        "train_dataset_drawdowns",
+        "train_violations",
+        "validation_dataset_scores",
+        "validation_dataset_profits",
+        "validation_dataset_drawdowns",
+        "validation_violations",
+        "all_train_dataset_names",
+        "all_validation_dataset_names",
+        "sampled_train_dataset_names",
+        "validation_dataset_names",
+        "train_dataset_names",
+    ):
+        if metrics.get(list_field) is None:
+            metrics[list_field] = []
+
+    return metrics
+
+
+def load_champions(
+    db_path: Path = DEFAULT_PERSISTENCE_DB_PATH,
+    run_id: str | None = None,
+    run_ids: list[str] | None = None,
+) -> list[ChampionRow]:
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
 
-    query = """
-        SELECT
-            id,
-            run_id,
-            generation_number,
-            mutation_seed,
-            config_name,
-            genome_json,
-            metrics_json,
-            created_at
-        FROM champions
-    """
-    conditions: list[str] = []
-    params: list[Any] = []
-
+    resolved_run_ids = list(run_ids or [])
     if run_id is not None:
-        conditions.append("run_id = ?")
-        params.append(run_id)
+        resolved_run_ids.append(run_id)
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += " ORDER BY id ASC"
-
+    store = PersistenceStore(db_path)
+    store.initialize()
     rows: list[ChampionRow] = []
-    with sqlite3.connect(db_path) as connection:
-        cursor = connection.execute(query, tuple(params))
-        for db_row in cursor.fetchall():
-            rows.append(
-                ChampionRow(
-                    id=int(db_row[0]),
-                    run_id=str(db_row[1]),
-                    generation_number=db_row[2],
-                    mutation_seed=db_row[3],
-                    config_name=db_row[4],
-                    genome=json.loads(db_row[5]),
-                    metrics=json.loads(db_row[6]),
-                    created_at=db_row[7],
-                )
+    for champion_row in store.load_champions(run_ids=resolved_run_ids or None):
+        rows.append(
+            ChampionRow(
+                id=int(champion_row["id"]),
+                run_id=str(champion_row["run_id"]),
+                generation_number=champion_row.get("generation_number"),
+                mutation_seed=champion_row.get("mutation_seed"),
+                config_name=champion_row.get("config_name"),
+                genome=dict(champion_row.get("genome_json_snapshot") or {}),
+                metrics=build_normalized_metrics(champion_row),
+                created_at=champion_row.get("persisted_at"),
+                champion_type=champion_row.get("champion_type"),
+                config_snapshot=dict(champion_row.get("config_json_snapshot") or {}),
+                dataset_catalog_id=champion_row.get("dataset_catalog_id"),
+                dataset_signature=champion_row.get("dataset_signature"),
             )
-
+        )
     return rows
 
 
@@ -96,6 +149,8 @@ def resolve_dataset_signature(champion: ChampionRow) -> str | None:
 
 
 def resolve_champion_type(champion: ChampionRow) -> str | None:
+    if isinstance(champion.champion_type, str) and champion.champion_type.strip():
+        return champion.champion_type
     champion_type = champion.metrics.get("champion_type")
     if isinstance(champion_type, str) and champion_type.strip():
         return champion_type

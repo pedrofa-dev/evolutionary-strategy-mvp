@@ -119,7 +119,7 @@ After a run:
 
 Outside the main run loop:
 
-- Persisted champions can be reevaluated on external and/or audit datasets with `scripts/evaluate_persisted_champions.py`.
+- Persisted champions can be analyzed and reevaluated from the redesigned persistence store with `scripts/analyze_champions.py` and `scripts/evaluate_persisted_champions.py`.
 
 This separation is intentional: the project tries to avoid mixing optimization and evaluation layers more than necessary.
 
@@ -189,8 +189,8 @@ Champion persistence behavior:
 
 Reporting flow:
 
-- `scripts/analyze_champions.py` analyzes persisted champions from SQLite.
-- `scripts/evaluate_persisted_champions.py` reevaluates stored champions on external/audit datasets and exports flat CSV, JSON, and report artifacts.
+- `scripts/analyze_champions.py` analyzes persisted champions from `data/evolution_v2.db` and persists a manual `champion_analysis`.
+- `scripts/evaluate_persisted_champions.py` reevaluates stored champions from persisted snapshots, without depending on the original config file as the normal source of truth.
 
 ## Current Practical Focus
 

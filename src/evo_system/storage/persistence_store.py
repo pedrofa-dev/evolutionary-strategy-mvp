@@ -617,6 +617,30 @@ class PersistenceStore:
 
         return _row_to_dict(row, RUN_EXECUTIONS_JSON_COLUMNS)
 
+    def load_champions(
+        self,
+        *,
+        run_ids: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        query = """
+            SELECT *
+            FROM champions
+        """
+        parameters: list[Any] = []
+
+        if run_ids:
+            placeholders = ", ".join("?" for _ in run_ids)
+            query += f" WHERE run_id IN ({placeholders})"
+            parameters.extend(run_ids)
+
+        query += " ORDER BY id ASC"
+
+        with self.connect() as connection:
+            cursor = connection.execute(query, tuple(parameters))
+            rows = cursor.fetchall()
+
+        return [_row_to_dict(row, CHAMPIONS_JSON_COLUMNS) for row in rows]
+
     def save_champion(
         self,
         *,

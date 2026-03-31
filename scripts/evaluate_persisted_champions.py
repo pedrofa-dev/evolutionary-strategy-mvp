@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
         "--db-path",
         type=Path,
         default=DEFAULT_DB_PATH,
-        help="Path to SQLite database. Default: data/evolution.db",
+        help="Path to persistence SQLite database. Default: data/evolution_v2.db",
     )
     parser.add_argument(
         "--config-name",
@@ -31,8 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-id",
         type=str,
+        action="append",
         default=None,
-        help="Optional run_id filter.",
+        help="Optional run_id filter. Repeat the flag to reevaluate multiple runs.",
     )
     parser.add_argument(
         "--champion-type",
@@ -44,8 +45,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config-path",
         type=Path,
-        required=True,
-        help="Path to the original run config JSON.",
+        default=None,
+        help=(
+            "Optional compatibility fallback for older champions that do not "
+            "have a persisted config snapshot."
+        ),
     )
     parser.add_argument(
         "--dataset-root",
@@ -107,7 +111,8 @@ def main() -> None:
         config_path=args.config_path,
         dataset_root=args.dataset_root,
         config_name=args.config_name,
-        run_id=args.run_id,
+        run_id=args.run_id[0] if args.run_id and len(args.run_id) == 1 else None,
+        run_ids=args.run_id if args.run_id and len(args.run_id) > 1 else None,
         champion_type=args.champion_type,
         external_validation_dir=args.external_validation_dir,
         external_dataset_catalog_id=args.external_dataset_catalog_id,

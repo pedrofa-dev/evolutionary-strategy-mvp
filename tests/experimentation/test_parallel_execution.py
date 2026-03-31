@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from evo_system.domain.agent import Agent
+from evo_system.domain.agent_evaluation import AgentEvaluation
+from evo_system.domain.genome import Genome
 from evo_system.experimentation.cli import build_parser
 from evo_system.experimentation.dataset_roots import (
     DEFAULT_DATASET_ROOT,
@@ -29,6 +32,7 @@ from evo_system.experimentation.multiseed_run import (
     run_multiseed_experiment,
 )
 from evo_system.storage.persistence_store import hash_config_snapshot
+from evo_system.storage.persistence_store import PersistenceStore
 from evo_system.experimentation.parallel_progress import format_active_job_progress
 from evo_system.experimentation.post_multiseed_analysis import (
     CHAMPIONS_ANALYSIS_DIRNAME,
@@ -183,6 +187,170 @@ def test_execute_historical_run_uses_manifest_dataset_root_by_default(
         execute_historical_run(config_path=config_path)
 
     assert captured_dataset_root["value"] == DEFAULT_DATASET_ROOT
+
+
+def test_execute_historical_run_persists_champion_in_new_store(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "run_manifest.json"
+    config_snapshot = {
+        "mutation_seed": 42,
+        "population_size": 1,
+        "target_population_size": 1,
+        "survivors_count": 1,
+        "generations_planned": 1,
+        "dataset_catalog_id": "core_1h_spot",
+        "trade_cost_rate": 0.0,
+        "cost_penalty_weight": 0.25,
+        "trade_count_penalty_weight": 0.0,
+        "regime_filter_enabled": False,
+    }
+    config_path.write_text(json.dumps(config_snapshot), encoding="utf-8")
+
+    persistence_db_path = tmp_path / "evolution_v2.db"
+    store = PersistenceStore(persistence_db_path)
+    store.initialize()
+    multiseed_run_id = store.save_multiseed_run(
+        multiseed_run_uid="multiseed-001",
+        configs_dir_snapshot={"configs": [config_path.name]},
+        requested_parallel_workers=1,
+        effective_parallel_workers=1,
+        dataset_root=str(tmp_path / "datasets"),
+        runs_planned=1,
+        runs_completed=0,
+        runs_failed=0,
+        champions_found=False,
+        champion_analysis_status="pending",
+        external_evaluation_status="pending",
+        audit_evaluation_status="pending",
+    )
+    run_execution_id = store.save_run_execution(
+        run_execution_uid="execution-001",
+        multiseed_run_id=multiseed_run_id,
+        run_id="provisional-run",
+        config_name=config_path.name,
+        config_json_snapshot=config_snapshot,
+        effective_seed=42,
+        dataset_catalog_id="core_1h_spot",
+        dataset_signature="sig-001",
+        dataset_context_json={"train_count": 1, "validation_count": 1},
+        status="running",
+    )
+
+    train_path = tmp_path / "datasets" / "core_1h_spot" / "train" / "set_a" / "candles.csv"
+    validation_path = tmp_path / "datasets" / "core_1h_spot" / "validation" / "set_b" / "candles.csv"
+
+    genome = Genome(
+        threshold_open=0.4,
+        threshold_close=0.1,
+        position_size=0.1,
+        stop_loss=0.03,
+        take_profit=0.08,
+    )
+    agent = Agent.create(genome)
+
+    def fake_load_paths(self, dataset_root: Path, dataset_catalog_id: str):
+        return [train_path], [validation_path]
+
+    def fake_build_environment(*args, **kwargs):
+        return args[0]
+
+    def fake_build_initial_population(population_size: int):
+        return [agent]
+
+    def fake_evaluate(self, agent, environments):
+        dataset_label = str(environments[0])
+        if "\\train\\" in dataset_label:
+            return AgentEvaluation(
+                aggregated_score=1.7,
+                dispersion=0.0,
+                selection_score=1.8,
+                median_trades=12.0,
+                median_profit=0.03,
+                median_drawdown=0.01,
+                dataset_scores=[1.8],
+                dataset_profits=[0.03],
+                dataset_drawdowns=[0.01],
+                is_valid=True,
+                violations=[],
+                worst_dataset_score=1.8,
+                bottom_quartile_score=1.8,
+                score_mad=0.0,
+            )
+        return AgentEvaluation(
+            aggregated_score=1.6,
+            dispersion=0.0,
+            selection_score=1.55,
+            median_trades=12.0,
+            median_profit=0.025,
+            median_drawdown=0.01,
+            dataset_scores=[1.55],
+            dataset_profits=[0.025],
+            dataset_drawdowns=[0.01],
+            is_valid=True,
+            violations=[],
+            worst_dataset_score=1.55,
+            bottom_quartile_score=1.55,
+            score_mad=0.0,
+        )
+
+    monkeypatch.setattr(
+        "evo_system.experimentation.historical_run.DatasetPoolLoader.load_paths",
+        fake_load_paths,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.historical_run.build_environment",
+        fake_build_environment,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.historical_run.build_initial_population",
+        fake_build_initial_population,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.historical_run.AgentEvaluator.evaluate",
+        fake_evaluate,
+    )
+
+    summary = execute_historical_run(
+        config_path=config_path,
+        output_dir=tmp_path / "out",
+        log_name="run_manifest.txt",
+        config_name_override=config_path.name,
+        dataset_root=tmp_path / "datasets",
+        external_validation_dir=tmp_path / "missing_external",
+        persistence_db_path=persistence_db_path,
+        run_execution_id=run_execution_id,
+        config_json_snapshot=config_snapshot,
+    )
+
+    assert summary.run_id
+
+    with sqlite3.connect(persistence_db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT
+                run_execution_id,
+                run_id,
+                config_name,
+                config_hash,
+                champion_type,
+                dataset_catalog_id,
+                dataset_signature,
+                config_json_snapshot
+            FROM champions
+            """
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] == run_execution_id
+    assert row[1] == summary.run_id
+    assert row[2] == config_path.name
+    assert row[3] == hash_config_snapshot(config_snapshot)
+    assert row[4] == "robust"
+    assert row[5] == "core_1h_spot"
+    assert row[6]
+    assert '"dataset_catalog_id":"core_1h_spot"' in row[7]
 
 
 def test_build_multiseed_jobs_expands_config_seed_pairs(tmp_path: Path) -> None:
@@ -358,6 +526,7 @@ def test_execute_multiseed_job_sequential_preserves_original_config_path(
             requested_dataset_root=dataset_root,
             resolved_dataset_root=dataset_root,
             execution_fingerprint="fingerprint-001",
+            persistence_db_path=tmp_path / "evolution_v2.db",
         )
     )
 
@@ -452,6 +621,10 @@ def test_run_multiseed_experiment_reports_effective_manifest_dataset_root(
                 "champions_analysis_dir": tmp_path / "analysis",
                 "external_output_dir": tmp_path / "external",
                 "audit_output_dir": tmp_path / "audit",
+                "champion_count": 0,
+                "champion_analysis_status": "skipped_no_champions",
+                "external_evaluation_status": "skipped_no_champions",
+                "audit_evaluation_status": "skipped_no_champions",
             },
         )(),
     )
@@ -511,6 +684,10 @@ def test_run_multiseed_experiment_generates_post_multiseed_artifacts(
                 "champions_analysis_dir": multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME,
                 "external_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "external",
                 "audit_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champion_count": 0,
+                "champion_analysis_status": "completed",
+                "external_evaluation_status": "completed",
+                "audit_evaluation_status": "completed",
             },
         )()
 
@@ -567,6 +744,10 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
                 "champions_analysis_dir": kwargs["multiseed_dir"] / CHAMPIONS_ANALYSIS_DIRNAME,
                 "external_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "external",
                 "audit_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champion_count": 1,
+                "champion_analysis_status": "completed",
+                "external_evaluation_status": "completed",
+                "audit_evaluation_status": "completed",
             },
         )(),
     )
@@ -590,7 +771,15 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
     with sqlite3.connect(persistence_db_path) as connection:
         multiseed_row = connection.execute(
             """
-            SELECT status, runs_planned, runs_completed, runs_failed, champions_found
+            SELECT
+                status,
+                runs_planned,
+                runs_completed,
+                runs_failed,
+                champions_found,
+                champion_analysis_status,
+                external_evaluation_status,
+                audit_evaluation_status
             FROM multiseed_runs
             """
         ).fetchone()
@@ -615,7 +804,16 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
             """
         ).fetchone()
 
-    assert multiseed_row == ("completed", 1, 1, 0, 0)
+    assert multiseed_row == (
+        "completed",
+        1,
+        1,
+        0,
+        1,
+        "completed",
+        "completed",
+        "completed",
+    )
     assert execution_row is not None
     assert execution_row[0] == "run-101"
     assert execution_row[1] == "run_a.json"

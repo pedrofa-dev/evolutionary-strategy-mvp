@@ -43,7 +43,6 @@ from evo_system.experimentation.post_multiseed_analysis import (
     MULTISEED_CHAMPIONS_SUMMARY_NAME,
     MULTISEED_QUICK_SUMMARY_NAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
-    load_multiseed_champions,
     run_post_multiseed_analysis,
     write_multiseed_quick_summary,
 )
@@ -58,7 +57,6 @@ from evo_system.experimentation.historical_run import (
     execute_historical_run,
 )
 from evo_system.orchestration.config_loader import load_run_config
-from evo_system.reporting import DEFAULT_DB_PATH
 from evo_system.storage import (
     CURRENT_LOGIC_VERSION,
     DEFAULT_PERSISTENCE_DB_PATH,
@@ -69,6 +67,8 @@ from evo_system.storage import (
 
 CONFIGS_DIR = Path("configs/runs")
 MULTISEED_ROOT_DIR = Path("artifacts/multiseed")
+LEGACY_REPORTING_DB_PATH = Path("data/evolution.db")
+DEFAULT_DB_PATH = LEGACY_REPORTING_DB_PATH
 DEFAULT_SEED_START = 101
 DEFAULT_SEED_COUNT = 6
 DEFAULT_CONTEXT_NAME: str | None = None
@@ -92,6 +92,8 @@ class MultiseedJob:
     requested_dataset_root: Path
     resolved_dataset_root: Path
     execution_fingerprint: str
+    persistence_db_path: Path
+    run_execution_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -390,6 +392,7 @@ def build_multiseed_jobs(
                     requested_dataset_root=prepared_execution.requested_dataset_root,
                     resolved_dataset_root=prepared_execution.resolved_dataset_root,
                     execution_fingerprint=prepared_execution.execution_fingerprint,
+                    persistence_db_path=DEFAULT_PERSISTENCE_DB_PATH,
                 )
             )
     return jobs
@@ -409,6 +412,9 @@ def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
                     dataset_root=job.dataset_root,
                     context_name=job.context_name,
                     progress_snapshot_path=job.progress_snapshot_path,
+                    persistence_db_path=job.persistence_db_path,
+                    run_execution_id=job.run_execution_id,
+                    config_json_snapshot=job.effective_config_snapshot,
                 )
                 return preserve_original_config_path(summary, job.config_path)
     finally:
@@ -427,6 +433,9 @@ def execute_multiseed_job_sequential(job: MultiseedJob) -> HistoricalRunSummary:
             dataset_root=job.dataset_root,
             context_name=job.context_name,
             progress_snapshot_path=job.progress_snapshot_path,
+            persistence_db_path=job.persistence_db_path,
+            run_execution_id=job.run_execution_id,
+            config_json_snapshot=job.effective_config_snapshot,
         )
         return preserve_original_config_path(summary, job.config_path)
     finally:
@@ -640,6 +649,7 @@ def execute_multiseed_runs_with_failures(
         failures: list[str] = []
         for index, job in enumerate(jobs, start=1):
             run_execution_id: int | None = None
+            execution_job = job
             if persistence_store is not None and multiseed_run_id is not None:
                 run_execution_id = persist_run_execution_start(
                     store=persistence_store,
@@ -647,6 +657,7 @@ def execute_multiseed_runs_with_failures(
                     job=job,
                     context_name=context_name,
                 )
+                execution_job = replace(job, run_execution_id=run_execution_id)
             print()
             print(
                 f"[{index}/{total_jobs}] starting | "
@@ -662,7 +673,7 @@ def execute_multiseed_runs_with_failures(
                     f"generations={effective_config['generations_planned']}"
                 )
             try:
-                summary = execute_multiseed_job_sequential(job)
+                summary = execute_multiseed_job_sequential(execution_job)
                 summaries.append(summary)
                 if persistence_store is not None and run_execution_id is not None:
                     persist_run_execution_success(
@@ -698,19 +709,21 @@ def execute_multiseed_runs_with_failures(
         mp_context=get_context("spawn"),
     ) as executor:
         run_execution_ids_by_job_key: dict[tuple[str, int], int] = {}
+        execution_jobs = jobs
         if persistence_store is not None and multiseed_run_id is not None:
+            execution_jobs = []
             for job in jobs:
-                run_execution_ids_by_job_key[(str(job.config_path), job.seed)] = (
-                    persist_run_execution_start(
-                        store=persistence_store,
-                        multiseed_run_id=multiseed_run_id,
-                        job=job,
-                        context_name=context_name,
-                    )
+                run_execution_id = persist_run_execution_start(
+                    store=persistence_store,
+                    multiseed_run_id=multiseed_run_id,
+                    job=job,
+                    context_name=context_name,
                 )
+                run_execution_ids_by_job_key[(str(job.config_path), job.seed)] = run_execution_id
+                execution_jobs.append(replace(job, run_execution_id=run_execution_id))
         future_to_job = {
             executor.submit(execute_multiseed_job, job): job
-            for job in jobs
+            for job in execution_jobs
         }
         pending_futures = set(future_to_job)
         last_progress_report_time = 0.0
@@ -994,39 +1007,14 @@ def write_multiseed_summary(
     return summary_path
 
 
-def resolve_multiseed_persistence_statuses(
-    *,
+def count_persisted_multiseed_champions(
+    persistence_store: PersistenceStore,
     run_summaries: list[HistoricalRunSummary],
-    skip_post_multiseed_analysis: bool,
-) -> tuple[bool, str, str, str]:
-    champions = load_multiseed_champions(
-        DEFAULT_DB_PATH,
-        [summary.run_id for summary in run_summaries],
+) -> int:
+    champions = persistence_store.load_champions(
+        run_ids=[summary.run_id for summary in run_summaries],
     )
-    champions_found = bool(champions)
-
-    if not champions_found:
-        return (
-            False,
-            "skipped_no_champions",
-            "skipped_no_champions",
-            "skipped_no_champions",
-        )
-
-    if skip_post_multiseed_analysis:
-        return (
-            True,
-            "skipped_by_flag",
-            "skipped_by_flag",
-            "skipped_by_flag",
-        )
-
-    return (
-        True,
-        "legacy_completed",
-        "legacy_managed",
-        "legacy_managed",
-    )
+    return len(champions)
 
 
 def run_multiseed_experiment(
@@ -1139,7 +1127,9 @@ def run_multiseed_experiment(
                 summary_path=summary_path,
                 run_summaries=outcome.run_summaries,
                 dataset_root_label=dataset_root_label,
-                db_path=DEFAULT_DB_PATH,
+                db_path=LEGACY_REPORTING_DB_PATH,
+                persistence_db_path=DEFAULT_PERSISTENCE_DB_PATH,
+                multiseed_run_id=multiseed_run_id,
                 external_validation_dir=external_validation_dir,
                 audit_dir=audit_dir,
                 failures=outcome.failures,
@@ -1152,13 +1142,25 @@ def run_multiseed_experiment(
                 "Multiseed post-validation directory saved to "
                 f"{output_dir / POST_MULTISEED_VALIDATION_DIRNAME}"
             )
-
-        champions_found, champion_analysis_status, external_evaluation_status, audit_evaluation_status = (
-            resolve_multiseed_persistence_statuses(
-                run_summaries=outcome.run_summaries,
-                skip_post_multiseed_analysis=skip_post_multiseed_analysis,
+        if skip_post_multiseed_analysis:
+            champion_count = count_persisted_multiseed_champions(
+                persistence_store,
+                outcome.run_summaries,
             )
-        )
+            champions_found = champion_count > 0
+            if champions_found:
+                champion_analysis_status = "skipped_by_flag"
+                external_evaluation_status = "skipped_by_flag"
+                audit_evaluation_status = "skipped_by_flag"
+            else:
+                champion_analysis_status = "skipped_no_champions"
+                external_evaluation_status = "skipped_no_champions"
+                audit_evaluation_status = "skipped_no_champions"
+        else:
+            champions_found = post_analysis_result.champion_count > 0
+            champion_analysis_status = post_analysis_result.champion_analysis_status
+            external_evaluation_status = post_analysis_result.external_evaluation_status
+            audit_evaluation_status = post_analysis_result.audit_evaluation_status
         persistence_store.update_multiseed_run_status(
             multiseed_run_id,
             status="completed_with_failures" if outcome.failures else "completed",

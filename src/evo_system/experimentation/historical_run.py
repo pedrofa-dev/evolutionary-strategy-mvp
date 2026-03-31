@@ -47,6 +47,11 @@ from evo_system.experimentation.dataset_roots import (
 from evo_system.experimentation.parallel_progress import write_progress_snapshot
 from evo_system.orchestration.config_loader import load_run_config
 from evo_system.orchestration.runner import EvolutionRunner
+from evo_system.storage import (
+    CURRENT_LOGIC_VERSION,
+    DEFAULT_PERSISTENCE_DB_PATH,
+    PersistenceStore,
+)
 from evo_system.storage.sqlite_store import SQLiteStore
 DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
 TRAIN_SAMPLE_SIZE = 4
@@ -347,6 +352,25 @@ def append_lines(log_file_path: Path, lines: list[str]) -> None:
         log_file.write("\n".join(lines) + "\n")
 
 
+def serialize_agent_evaluation(evaluation: AgentEvaluation) -> dict:
+    return {
+        "aggregated_score": evaluation.aggregated_score,
+        "dispersion": evaluation.dispersion,
+        "selection_score": evaluation.selection_score,
+        "median_trades": evaluation.median_trades,
+        "median_profit": evaluation.median_profit,
+        "median_drawdown": evaluation.median_drawdown,
+        "dataset_scores": evaluation.dataset_scores,
+        "dataset_profits": evaluation.dataset_profits,
+        "dataset_drawdowns": evaluation.dataset_drawdowns,
+        "is_valid": evaluation.is_valid,
+        "violations": evaluation.violations,
+        "worst_dataset_score": evaluation.worst_dataset_score,
+        "bottom_quartile_score": evaluation.bottom_quartile_score,
+        "score_mad": evaluation.score_mad,
+    }
+
+
 def resolve_external_validation_dataset_paths(
     external_validation_dir: Path,
 ) -> list[Path]:
@@ -363,6 +387,9 @@ def execute_historical_run(
     external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
     skip_external_validation: bool = False,
     progress_snapshot_path: Path | None = None,
+    persistence_db_path: Path = DEFAULT_PERSISTENCE_DB_PATH,
+    run_execution_id: int | None = None,
+    config_json_snapshot: dict | None = None,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
@@ -786,6 +813,11 @@ def execute_historical_run(
     external_validation_status = "not_run"
 
     if best_persistable_champion is not None:
+        effective_config_snapshot = (
+            dict(config_json_snapshot)
+            if config_json_snapshot is not None
+            else json.loads(config_path.read_text(encoding="utf-8"))
+        )
         champion_metrics = build_champion_metrics(
             train_evaluation=best_persistable_champion.train_evaluation,
             validation_evaluation=best_persistable_champion.validation_evaluation,
@@ -920,6 +952,30 @@ def execute_historical_run(
             genome=best_persistable_champion.genome,
             metrics=champion_metrics,
         )
+        if run_execution_id is not None:
+            persistence_store = PersistenceStore(persistence_db_path)
+            persistence_store.initialize()
+            persistence_store.save_champion(
+                champion_uid=str(uuid.uuid4()),
+                run_execution_id=run_execution_id,
+                run_id=run_id,
+                config_name=best_persistable_champion.config_name,
+                config_json_snapshot=effective_config_snapshot,
+                generation_number=best_persistable_champion.generation_number,
+                mutation_seed=best_persistable_champion.mutation_seed,
+                champion_type=best_persistable_champion.champion_type,
+                genome_json_snapshot=best_persistable_champion.genome.to_dict(),
+                dataset_catalog_id=config.dataset_catalog_id,
+                dataset_signature=champion_metrics["dataset_signature"],
+                train_metrics_json=serialize_agent_evaluation(
+                    best_persistable_champion.train_evaluation
+                ),
+                validation_metrics_json=serialize_agent_evaluation(
+                    best_persistable_champion.validation_evaluation
+                ),
+                champion_metrics_json=champion_metrics,
+                logic_version=CURRENT_LOGIC_VERSION,
+            )
 
     summary_lines = [
         "",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from statistics import mean, median
@@ -15,12 +16,16 @@ from evo_system.experimentation.dataset_roots import (
     DEFAULT_DATASET_ROOT,
     resolve_dataset_root,
 )
-from evo_system.orchestration.config_loader import load_run_config
 from evo_system.reporting.report_builder import export_flat_csv
-from evo_system.storage.sqlite_store import SQLiteStore
+from evo_system.storage import (
+    CURRENT_LOGIC_VERSION,
+    DEFAULT_PERSISTENCE_DB_PATH,
+    PersistenceStore,
+)
+from evo_system.storage.persistence_store import serialize_json, sha256_hex
 
 
-DEFAULT_DB_PATH = Path("data/evolution.db")
+DEFAULT_DB_PATH = DEFAULT_PERSISTENCE_DB_PATH
 DEFAULT_OUTPUT_ROOT = Path("artifacts/analysis")
 
 def ensure_output_dir(output_dir: Path | None) -> Path:
@@ -181,7 +186,8 @@ def filter_champions(
         filtered = [
             champion
             for champion in filtered
-            if champion.get("metrics", {}).get("champion_type") == champion_type
+            if champion.get("champion_type") == champion_type
+            or champion.get("metrics", {}).get("champion_type") == champion_type
         ]
 
     filtered = sorted(filtered, key=lambda champion: int(champion["id"]))
@@ -190,6 +196,179 @@ def filter_champions(
         filtered = filtered[:limit]
 
     return filtered
+
+
+def build_persisted_champion_metrics(champion_row: dict[str, Any]) -> dict[str, Any]:
+    metrics = dict(champion_row.get("champion_metrics_json") or {})
+    train_metrics = champion_row.get("train_metrics_json") or {}
+    validation_metrics = champion_row.get("validation_metrics_json") or {}
+
+    metrics.setdefault("champion_type", champion_row.get("champion_type"))
+    metrics.setdefault("dataset_signature", champion_row.get("dataset_signature"))
+    metrics.setdefault("config_name", champion_row.get("config_name"))
+
+    metrics.setdefault("train_selection", train_metrics.get("selection_score"))
+    metrics.setdefault("train_profit", train_metrics.get("median_profit"))
+    metrics.setdefault("train_drawdown", train_metrics.get("median_drawdown"))
+    metrics.setdefault("train_trades", train_metrics.get("median_trades"))
+    metrics.setdefault("train_dataset_scores", train_metrics.get("dataset_scores"))
+    metrics.setdefault("train_dataset_profits", train_metrics.get("dataset_profits"))
+    metrics.setdefault("train_dataset_drawdowns", train_metrics.get("dataset_drawdowns"))
+    metrics.setdefault("train_violations", train_metrics.get("violations"))
+    metrics.setdefault("train_is_valid", train_metrics.get("is_valid"))
+
+    metrics.setdefault("validation_selection", validation_metrics.get("selection_score"))
+    metrics.setdefault("validation_profit", validation_metrics.get("median_profit"))
+    metrics.setdefault("validation_drawdown", validation_metrics.get("median_drawdown"))
+    metrics.setdefault("validation_trades", validation_metrics.get("median_trades"))
+    metrics.setdefault("validation_dispersion", validation_metrics.get("dispersion"))
+    metrics.setdefault("validation_dataset_scores", validation_metrics.get("dataset_scores"))
+    metrics.setdefault("validation_dataset_profits", validation_metrics.get("dataset_profits"))
+    metrics.setdefault("validation_dataset_drawdowns", validation_metrics.get("dataset_drawdowns"))
+    metrics.setdefault("validation_violations", validation_metrics.get("violations"))
+    metrics.setdefault("validation_is_valid", validation_metrics.get("is_valid"))
+    return metrics
+
+
+def normalize_persisted_champion(champion_row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(champion_row["id"]),
+        "run_id": str(champion_row["run_id"]),
+        "generation_number": champion_row.get("generation_number"),
+        "mutation_seed": champion_row.get("mutation_seed"),
+        "config_name": champion_row.get("config_name"),
+        "genome": dict(champion_row.get("genome_json_snapshot") or {}),
+        "metrics": build_persisted_champion_metrics(champion_row),
+        "config_snapshot": dict(champion_row.get("config_json_snapshot") or {}),
+        "champion_type": champion_row.get("champion_type"),
+        "dataset_catalog_id": champion_row.get("dataset_catalog_id"),
+        "dataset_signature": champion_row.get("dataset_signature"),
+        "persisted_at": champion_row.get("persisted_at"),
+    }
+
+
+def resolve_champion_config_snapshot(
+    champion: dict[str, Any],
+    config_paths_by_name: dict[str, Path] | None = None,
+    config_paths_by_run_id: dict[str, Path] | None = None,
+) -> dict[str, Any]:
+    config_snapshot = champion.get("config_snapshot") or champion.get("config_json_snapshot")
+    if isinstance(config_snapshot, dict) and config_snapshot:
+        return config_snapshot
+
+    config_path = None
+    if config_paths_by_run_id is not None:
+        config_path = config_paths_by_run_id.get(champion["run_id"])
+    if config_path is None and config_paths_by_name is not None:
+        config_path = config_paths_by_name.get(champion["config_name"])
+    if config_path is None:
+        raise ValueError("Config snapshot not available for persisted champion.")
+
+    return json.loads(Path(config_path).read_text(encoding="utf-8"))
+
+
+def evaluate_with_config_snapshot(
+    *,
+    agent: Agent,
+    dataset_paths: list[Path],
+    config_snapshot: dict[str, Any],
+):
+    return run_external_validation(
+        agent=agent,
+        external_dataset_paths=dataset_paths,
+        cost_penalty_weight=float(config_snapshot.get("cost_penalty_weight", 0.25)),
+        trade_cost_rate=float(config_snapshot.get("trade_cost_rate", 0.0)),
+        trade_count_penalty_weight=float(
+            config_snapshot.get("trade_count_penalty_weight", 0.0)
+        ),
+        regime_filter_enabled=bool(config_snapshot.get("regime_filter_enabled", False)),
+        min_trend_long_for_entry=float(
+            config_snapshot.get("min_trend_long_for_entry", 0.0)
+        ),
+        min_breakout_for_entry=float(config_snapshot.get("min_breakout_for_entry", 0.0)),
+        max_realized_volatility_for_entry=config_snapshot.get(
+            "max_realized_volatility_for_entry"
+        ),
+    )
+
+
+def build_manual_selection_scope(
+    champions: list[dict[str, Any]],
+    *,
+    config_name: str | None,
+    run_id: str | None,
+    run_ids: list[str] | None,
+    champion_type: str | None,
+) -> dict[str, Any]:
+    return {
+        "origin": "manual",
+        "run_id": run_id,
+        "run_ids": sorted({champion["run_id"] for champion in champions})
+        if champions
+        else (run_ids or ([] if run_id is None else [run_id])),
+        "config_name": config_name,
+        "champion_type": champion_type,
+        "champion_ids": [int(champion["id"]) for champion in champions],
+    }
+
+
+def build_dataset_set_signature(
+    *,
+    source_type: str | None,
+    dataset_catalog_id: str | None,
+    dataset_root: Path | None,
+    dataset_set_name: str | None,
+    dataset_paths: list[Path],
+    evaluation_type: str,
+) -> str:
+    return sha256_hex(
+        serialize_json(
+            {
+                "evaluation_type": evaluation_type,
+                "source_type": source_type,
+                "dataset_catalog_id": dataset_catalog_id,
+                "dataset_root": str(dataset_root) if dataset_root is not None else None,
+                "dataset_set_name": dataset_set_name,
+                "dataset_names": [str(path) for path in dataset_paths],
+            }
+        )
+    )
+
+
+def build_evaluation_summary(rows: list[dict[str, Any]], prefix: str) -> dict[str, Any]:
+    selection_values = [
+        float(row[f"{prefix}_selection"])
+        for row in rows
+        if row.get(f"{prefix}_selection") is not None
+    ]
+    profit_values = [
+        float(row[f"{prefix}_profit"])
+        for row in rows
+        if row.get(f"{prefix}_profit") is not None
+    ]
+    return {
+        "rows_generated": len(rows),
+        "mean_validation_selection": mean(
+            float(row["validation_selection"])
+            for row in rows
+            if row.get("validation_selection") is not None
+        )
+        if any(row.get("validation_selection") is not None for row in rows)
+        else None,
+        "mean_validation_profit": mean(
+            float(row["validation_profit"])
+            for row in rows
+            if row.get("validation_profit") is not None
+        )
+        if any(row.get("validation_profit") is not None for row in rows)
+        else None,
+        "mean_post_selection": mean(selection_values) if selection_values else None,
+        "mean_post_profit": mean(profit_values) if profit_values else None,
+        "positive_profit_count": sum(
+            1 for value in profit_values if value > 0.0
+        ),
+        "valid_count": sum(1 for row in rows if bool(row.get(f"{prefix}_is_valid"))),
+    }
 
 
 def build_evaluation_metrics(
@@ -301,7 +480,7 @@ def build_report_lines(
         "",
         "Filters used",
         f"  db_path={filters['db_path']}",
-        f"  config_path={filters['config_path']}",
+        f"  config_path_fallback={filters.get('config_path_fallback') or 'none'}",
         f"  dataset_root={filters['dataset_root'] or 'none'}",
         f"  config_name={filters['config_name'] or 'none'}",
         f"  run_id={filters['run_id'] or 'none'}",
@@ -406,26 +585,16 @@ def build_reevaluation_rows(
             "No datasets available for reevaluation. Provide direct dataset directories and/or external/audit dataset catalog ids."
         )
 
-    config_cache: dict[Path, Any] = {}
     rows: list[dict[str, Any]] = []
     skipped_champions: list[dict[str, Any]] = []
 
     for champion in champions:
         try:
-            config_path = None
-            if config_paths_by_run_id is not None:
-                config_path = config_paths_by_run_id.get(champion["run_id"])
-            if config_path is None and config_paths_by_name is not None:
-                config_path = config_paths_by_name.get(champion["config_name"])
-            if config_path is None:
-                raise ValueError(
-                    "Config path not available for persisted champion."
-                )
-
-            if config_path not in config_cache:
-                config_cache[config_path] = load_run_config(str(config_path))
-            config = config_cache[config_path]
-
+            config_snapshot = resolve_champion_config_snapshot(
+                champion,
+                config_paths_by_name=config_paths_by_name,
+                config_paths_by_run_id=config_paths_by_run_id,
+            )
             metrics = champion.get("metrics", {})
             genome = Genome.from_dict(champion["genome"])
             agent = Agent.create(genome)
@@ -479,16 +648,10 @@ def build_reevaluation_rows(
             }
 
             if external_dataset_paths:
-                external_evaluation = run_external_validation(
+                external_evaluation = evaluate_with_config_snapshot(
                     agent=agent,
-                    external_dataset_paths=external_dataset_paths,
-                    cost_penalty_weight=config.cost_penalty_weight,
-                    trade_cost_rate=config.trade_cost_rate,
-                    trade_count_penalty_weight=config.trade_count_penalty_weight,
-                    regime_filter_enabled=config.regime_filter_enabled,
-                    min_trend_long_for_entry=config.min_trend_long_for_entry,
-                    min_breakout_for_entry=config.min_breakout_for_entry,
-                    max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                    dataset_paths=external_dataset_paths,
+                    config_snapshot=config_snapshot,
                 )
                 row.update(
                     build_evaluation_metrics(
@@ -500,16 +663,10 @@ def build_reevaluation_rows(
                 )
 
             if audit_dataset_paths:
-                audit_evaluation = run_external_validation(
+                audit_evaluation = evaluate_with_config_snapshot(
                     agent=agent,
-                    external_dataset_paths=audit_dataset_paths,
-                    cost_penalty_weight=config.cost_penalty_weight,
-                    trade_cost_rate=config.trade_cost_rate,
-                    trade_count_penalty_weight=config.trade_count_penalty_weight,
-                    regime_filter_enabled=config.regime_filter_enabled,
-                    min_trend_long_for_entry=config.min_trend_long_for_entry,
-                    min_breakout_for_entry=config.min_breakout_for_entry,
-                    max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                    dataset_paths=audit_dataset_paths,
+                    config_snapshot=config_snapshot,
                 )
                 row.update(
                     build_evaluation_metrics(
@@ -584,7 +741,83 @@ def write_reevaluation_outputs(
         "external_evaluations_run": external_evaluations_run,
         "audit_evaluations_run": audit_evaluations_run,
         "rows_generated": len(rows),
+        "status": "completed",
     }
+
+
+def persist_manual_evaluation_result(
+    *,
+    db_path: Path,
+    champions: list[dict[str, Any]],
+    result: dict[str, Any],
+    filters: dict[str, Any],
+    evaluation_type: str,
+    source: dict[str, Any],
+) -> int | None:
+    if result.get("status") != "completed":
+        return None
+
+    dataset_paths = source.get("dataset_paths", [])
+    if not dataset_paths:
+        return None
+
+    prefix = "external_validation" if evaluation_type == "external" else "audit"
+    rows = [
+        row
+        for row in result["rows"]
+        if row.get(f"{prefix}_selection") is not None
+    ]
+    if not rows:
+        return None
+
+    store = PersistenceStore(db_path)
+    store.initialize()
+    evaluation_id = store.save_champion_evaluation(
+        champion_evaluation_uid=str(uuid.uuid4()),
+        evaluation_type=evaluation_type,
+        evaluation_origin="manual",
+        champion_count=len(champions),
+        dataset_source_type=source.get("source_type") or "unknown",
+        dataset_set_name=rows[0].get(
+            "external_dataset_set_name" if evaluation_type == "external" else "audit_dataset_set_name"
+        )
+        or evaluation_type,
+        dataset_catalog_id=source.get("dataset_catalog_id"),
+        dataset_root=source.get("dataset_root"),
+        dataset_signature=build_dataset_set_signature(
+            source_type=source.get("source_type"),
+            dataset_catalog_id=source.get("dataset_catalog_id"),
+            dataset_root=source.get("dataset_root"),
+            dataset_set_name=rows[0].get(
+                "external_dataset_set_name" if evaluation_type == "external" else "audit_dataset_set_name"
+            ),
+            dataset_paths=dataset_paths,
+            evaluation_type=evaluation_type,
+        ),
+        selection_scope_json=build_manual_selection_scope(
+            champions,
+            config_name=filters.get("config_name"),
+            run_id=filters.get("run_id"),
+            run_ids=filters.get("run_ids"),
+            champion_type=filters.get("champion_type"),
+        ),
+        evaluation_summary_json={
+            "rows_generated": result.get("rows_generated", len(rows)),
+            "skipped_champions": filters.get("skipped_champions", []),
+            "summary": build_evaluation_summary(rows, prefix),
+        },
+        logic_version=CURRENT_LOGIC_VERSION,
+        output_dir_artifact_path=result["output_dir"],
+        flat_csv_artifact_path=result["csv_path"],
+        json_artifact_path=result["json_path"],
+        report_artifact_path=result["report_path"],
+        per_champion_dir_artifact_path=result["per_champion_dir"],
+    )
+    store.add_champion_evaluation_members(
+        evaluation_id,
+        [int(row["champion_id"]) for row in rows],
+    )
+    return evaluation_id
 
 
 def reevaluate_persisted_champions(
@@ -604,19 +837,17 @@ def reevaluate_persisted_champions(
     limit: int | None = None,
     fail_on_missing_datasets: bool = False,
 ) -> dict[str, Any]:
-    store = SQLiteStore(str(db_path))
+    store = PersistenceStore(db_path)
     store.initialize()
 
-    if run_ids is not None and config_paths_by_run_id is None:
-        raise ValueError(
-            "run_ids requires config_paths_by_run_id so each champion can use the correct config."
-        )
-    if run_ids is None and config_path is None:
-        raise ValueError(
-            "config_path is required unless reevaluation is using config_paths_by_run_id."
-        )
+    resolved_run_ids = list(run_ids or [])
+    if run_id is not None:
+        resolved_run_ids.append(run_id)
 
-    champions = store.load_champions(run_id=run_id)
+    champions = [
+        normalize_persisted_champion(champion_row)
+        for champion_row in store.load_champions(run_ids=resolved_run_ids or None)
+    ]
     matched_champions = filter_champions(
         champions,
         config_name=config_name,
@@ -650,33 +881,50 @@ def reevaluate_persisted_champions(
         fail_on_missing_datasets=fail_on_missing_datasets,
     )
     output_path = ensure_output_dir(output_dir)
+    filters = {
+        "db_path": db_path,
+        "config_path_fallback": config_path,
+        "dataset_root": dataset_root,
+        "config_name": config_name,
+        "run_id": run_id,
+        "run_ids": run_ids,
+        "reevaluation_run_ids": sorted(
+            {champion["run_id"] for champion in matched_champions}
+        ),
+        "champion_type": champion_type,
+        "limit": limit,
+        "external_validation_dir": external_validation_dir,
+        "external_dataset_catalog_id": external_dataset_catalog_id,
+        "external_dataset_root": external_source["dataset_root"],
+        "audit_dir": audit_dir,
+        "audit_dataset_catalog_id": audit_dataset_catalog_id,
+        "audit_dataset_root": audit_source["dataset_root"],
+        "matched_champion_count": len(matched_champions),
+        "rows_generated": len(rows),
+        "skipped_champions": skipped_champions,
+    }
     result = write_reevaluation_outputs(
         rows,
         output_path=output_path,
-        filters={
-            "db_path": db_path,
-            "config_path": config_path or "multiple",
-            "dataset_root": dataset_root,
-            "config_name": config_name,
-            "run_id": run_id,
-            "run_ids": run_ids,
-            "reevaluation_run_ids": sorted(
-                {champion["run_id"] for champion in matched_champions}
-            ),
-            "champion_type": champion_type,
-            "limit": limit,
-            "external_validation_dir": external_validation_dir,
-            "external_dataset_catalog_id": external_dataset_catalog_id,
-            "external_dataset_root": external_source["dataset_root"],
-            "audit_dir": audit_dir,
-            "audit_dataset_catalog_id": audit_dataset_catalog_id,
-            "audit_dataset_root": audit_source["dataset_root"],
-            "matched_champion_count": len(matched_champions),
-            "rows_generated": len(rows),
-            "skipped_champions": skipped_champions,
-        },
+        filters=filters,
         external_evaluations_run=external_evaluations_run,
         audit_evaluations_run=audit_evaluations_run,
     )
     result["matched_count"] = len(rows)
+    result["external_champion_evaluation_id"] = persist_manual_evaluation_result(
+        db_path=db_path,
+        champions=matched_champions,
+        result=result,
+        filters=filters,
+        evaluation_type="external",
+        source=external_source,
+    )
+    result["audit_champion_evaluation_id"] = persist_manual_evaluation_result(
+        db_path=db_path,
+        champions=matched_champions,
+        result=result,
+        filters=filters,
+        evaluation_type="audit",
+        source=audit_source,
+    )
     return result

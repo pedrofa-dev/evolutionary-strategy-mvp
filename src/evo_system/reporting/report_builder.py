@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,9 +24,14 @@ from evo_system.reporting.champion_stats import (
     summarize_bool_fields,
     summarize_numeric_fields,
 )
+from evo_system.storage import (
+    CURRENT_LOGIC_VERSION,
+    DEFAULT_PERSISTENCE_DB_PATH,
+    PersistenceStore,
+)
 
 
-DEFAULT_DB_PATH = Path("data/evolution.db")
+DEFAULT_DB_PATH = DEFAULT_PERSISTENCE_DB_PATH
 DEFAULT_OUTPUT_ROOT = Path("artifacts/analysis")
 
 GENOME_NUMERIC_FIELDS = [
@@ -361,8 +367,9 @@ def format_top_examples_block(examples: dict[str, dict[str, Any]]) -> list[str]:
 def write_report(
     report_path: Path,
     rows: list[dict[str, Any]],
-    run_id: str | None,
+    run_filter_label: str,
     config_name: str | None,
+    champion_type: str | None,
 ) -> dict[str, Any]:
     genome_numeric_summary = summarize_numeric_fields(rows, GENOME_NUMERIC_FIELDS)
     genome_bool_summary = summarize_bool_fields(rows, GENOME_BOOL_FIELDS)
@@ -383,8 +390,9 @@ def write_report(
         "Champion analysis report",
         f"Generated at: {datetime.now().isoformat(timespec='seconds')}",
         f"Champion count: {len(rows)}",
-        f"Run filter: {run_id or 'none'}",
+        f"Run filter: {run_filter_label}",
         f"Config filter: {config_name or 'none'}",
+        f"Champion type filter: {champion_type or 'none'}",
         "",
     ]
     lines.extend(format_context_warning_block(context_warnings))
@@ -433,12 +441,22 @@ def analyze_champions(
     run_id: str | None = None,
     config_name: str | None = None,
     run_ids: list[str] | None = None,
+    champion_type: str | None = None,
+    persist_analysis: bool = True,
 ) -> dict[str, Any] | None:
     final_output_dir = ensure_output_dir(output_dir)
+    requested_run_ids = list(run_ids or [])
+    if run_id is not None:
+        requested_run_ids.append(run_id)
     champions = filter_champions(
-        load_champions(db_path=db_path, run_id=run_id),
+        load_champions(
+            db_path=db_path,
+            run_id=run_id if not requested_run_ids else None,
+            run_ids=requested_run_ids or None,
+        ),
         config_name,
-        set(run_ids) if run_ids is not None else None,
+        set(requested_run_ids) if requested_run_ids else None,
+        champion_type=champion_type,
     )
 
     if not champions:
@@ -451,11 +469,13 @@ def analyze_champions(
     champion_card_path = final_output_dir / "champion_card.json"
 
     export_flat_csv(flat_rows, csv_path)
+    run_filter_label = ", ".join(sorted(requested_run_ids)) if requested_run_ids else "none"
     report_data = write_report(
         report_path=report_path,
         rows=flat_rows,
-        run_id=run_id,
+        run_filter_label=run_filter_label,
         config_name=config_name,
+        champion_type=champion_type,
     )
     primary_row = select_primary_champion_row(flat_rows)
     champion_card = build_champion_card(primary_row) if primary_row is not None else {}
@@ -469,7 +489,7 @@ def analyze_champions(
         encoding="utf-8",
     )
 
-    return {
+    result = {
         "champion_count": len(champions),
         "output_dir": final_output_dir,
         "csv_path": csv_path,
@@ -479,3 +499,39 @@ def analyze_champions(
         "report_data": report_data,
         "champion_card": champion_card,
     }
+
+    if persist_analysis:
+        selection_scope_json = {
+            "origin": "manual",
+            "run_ids": sorted({champion.run_id for champion in champions}),
+            "config_name": config_name,
+            "champion_type": champion_type,
+            "champion_ids": [champion.id for champion in champions],
+        }
+        analysis_type = "manual_cross_config" if config_name is not None else "manual_cross_run"
+        store = PersistenceStore(db_path)
+        store.initialize()
+        champion_analysis_id = store.save_champion_analysis(
+            champion_analysis_uid=str(uuid.uuid4()),
+            analysis_type=analysis_type,
+            champion_count=len(champions),
+            selection_scope_json=selection_scope_json,
+            analysis_summary_json={
+                "champion_count": len(champions),
+                "report_data": report_data,
+                "champion_card": champion_card,
+            },
+            logic_version=CURRENT_LOGIC_VERSION,
+            output_dir_artifact_path=final_output_dir,
+            flat_csv_artifact_path=csv_path,
+            report_artifact_path=report_path,
+            patterns_artifact_path=patterns_path,
+            champion_card_artifact_path=champion_card_path,
+        )
+        store.add_champion_analysis_members(
+            champion_analysis_id,
+            [champion.id for champion in champions],
+        )
+        result["champion_analysis_id"] = champion_analysis_id
+
+    return result
