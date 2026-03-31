@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--champion-id",
         type=int,
         default=None,
-        help="Champion id from SQLite.",
+        help="Champion id from the persistence database.",
     )
     source_group.add_argument(
         "--genome-json",
@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--db-path",
         type=Path,
         default=DEFAULT_DB_PATH,
-        help="Path to SQLite database when loading a champion by id.",
+        help="Path to the persistence database when loading a champion by id.",
     )
     parser.add_argument(
         "--trade-cost-rate",

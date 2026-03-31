@@ -18,3 +18,4 @@ class HistoricalRunSummary:
     train_validation_selection_gap: float
     train_validation_profit_gap: float
     config_path: Path | None = None
+    execution_status: str = "executed"

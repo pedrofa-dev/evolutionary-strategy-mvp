@@ -84,6 +84,7 @@ def build_summary(config_path: Path, *, seed: int, run_id: str):
             "train_validation_selection_gap": 0.1,
             "train_validation_profit_gap": 0.01,
             "config_path": config_path,
+            "execution_status": "executed",
         },
     )()
 
@@ -219,6 +220,7 @@ def test_execute_historical_run_persists_champion_in_new_store(
         dataset_root=str(tmp_path / "datasets"),
         runs_planned=1,
         runs_completed=0,
+        runs_reused=0,
         runs_failed=0,
         champions_found=False,
         champion_analysis_status="pending",
@@ -588,14 +590,15 @@ def test_run_multiseed_experiment_reports_effective_manifest_dataset_root(
         "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
         tmp_path / "evolution_v2.db",
     )
-    monkeypatch.setattr(
-        "evo_system.experimentation.multiseed_run.DEFAULT_DB_PATH",
-        tmp_path / "evolution.db",
-    )
 
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.execute_multiseed_runs_with_failures",
-        lambda **kwargs: MultiseedExecutionOutcome(run_summaries=[], failures=[]),
+        lambda **kwargs: MultiseedExecutionOutcome(
+            run_summaries=[],
+            failures=[],
+            executed_count=0,
+            reused_count=0,
+        ),
     )
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.create_multiseed_dir",
@@ -650,16 +653,14 @@ def test_run_multiseed_experiment_generates_post_multiseed_artifacts(
         "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
         tmp_path / "evolution_v2.db",
     )
-    monkeypatch.setattr(
-        "evo_system.experimentation.multiseed_run.DEFAULT_DB_PATH",
-        tmp_path / "evolution.db",
-    )
 
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.execute_multiseed_runs_with_failures",
         lambda **kwargs: MultiseedExecutionOutcome(
             run_summaries=[build_summary(config_path, seed=42, run_id="run-001")],
             failures=[],
+            executed_count=1,
+            reused_count=0,
         ),
     )
     monkeypatch.setattr(
@@ -719,14 +720,9 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
     write_config(config_path, extra_fields={"seeds": [101]})
 
     persistence_db_path = tmp_path / "evolution_v2.db"
-    old_db_path = tmp_path / "evolution.db"
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
         persistence_db_path,
-    )
-    monkeypatch.setattr(
-        "evo_system.experimentation.multiseed_run.DEFAULT_DB_PATH",
-        old_db_path,
     )
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.create_multiseed_dir",
@@ -775,6 +771,7 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
                 status,
                 runs_planned,
                 runs_completed,
+                runs_reused,
                 runs_failed,
                 champions_found,
                 champion_analysis_status,
@@ -809,6 +806,7 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
         1,
         1,
         0,
+        0,
         1,
         "completed",
         "completed",
@@ -842,16 +840,11 @@ def test_run_multiseed_experiment_marks_failed_run_execution_and_uses_fingerprin
     write_dataset_catalog(dataset_root)
 
     persistence_db_path = tmp_path / "evolution_v2.db"
-    old_db_path = tmp_path / "evolution.db"
     fingerprint_calls: list[str] = []
 
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
         persistence_db_path,
-    )
-    monkeypatch.setattr(
-        "evo_system.experimentation.multiseed_run.DEFAULT_DB_PATH",
-        old_db_path,
     )
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.create_multiseed_dir",
@@ -883,7 +876,7 @@ def test_run_multiseed_experiment_marks_failed_run_execution_and_uses_fingerprin
     with sqlite3.connect(persistence_db_path) as connection:
         multiseed_row = connection.execute(
             """
-            SELECT status, runs_planned, runs_completed, runs_failed
+            SELECT status, runs_planned, runs_completed, runs_reused, runs_failed
             FROM multiseed_runs
             """
         ).fetchone()
@@ -894,7 +887,7 @@ def test_run_multiseed_experiment_marks_failed_run_execution_and_uses_fingerprin
             """
         ).fetchone()
 
-    assert multiseed_row == ("completed_with_failures", 1, 0, 1)
+    assert multiseed_row == ("completed_with_failures", 1, 0, 0, 1)
     assert execution_row is not None
     assert execution_row[0] == "failed"
     assert execution_row[1] == "boom"
@@ -912,16 +905,14 @@ def test_run_multiseed_experiment_skip_post_analysis_keeps_real_summaries(
         "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
         tmp_path / "evolution_v2.db",
     )
-    monkeypatch.setattr(
-        "evo_system.experimentation.multiseed_run.DEFAULT_DB_PATH",
-        tmp_path / "evolution.db",
-    )
 
     monkeypatch.setattr(
         "evo_system.experimentation.multiseed_run.execute_multiseed_runs_with_failures",
         lambda **kwargs: MultiseedExecutionOutcome(
             run_summaries=[build_summary(config_path, seed=42, run_id="run-001")],
             failures=["run_a.json seed 103: boom"],
+            executed_count=1,
+            reused_count=0,
         ),
     )
     monkeypatch.setattr(
@@ -943,8 +934,257 @@ def test_run_multiseed_experiment_skip_post_analysis_keeps_real_summaries(
     assert "Ranking by champion rate and mean validation selection score" in summary_text
     assert "Seeds planned: 6" in quick_text
     assert "Seeds completed: 1" in quick_text
+    assert "Seeds executed: 1" in quick_text
+    assert "Seeds reused: 0" in quick_text
     assert "Seeds failed: 1" in quick_text
     assert not (multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME).exists()
+
+
+def test_run_multiseed_experiment_reuses_completed_matching_execution(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "run_a.json"
+    write_config(config_path, extra_fields={"seeds": [101]})
+    dataset_root = tmp_path / "datasets"
+    write_dataset_catalog(dataset_root)
+    persistence_db_path = tmp_path / "evolution_v2.db"
+
+    store = PersistenceStore(persistence_db_path)
+    store.initialize()
+    prepared_job = build_multiseed_jobs(
+        seed_map={config_path: [101]},
+        output_dir=tmp_path / "out",
+        dataset_root=dataset_root,
+        context_name=None,
+        preset_name=None,
+    )[0]
+    existing_multiseed_run_id = store.save_multiseed_run(
+        multiseed_run_uid="existing-multiseed",
+        configs_dir_snapshot={"configs": [config_path.name]},
+        requested_parallel_workers=1,
+        effective_parallel_workers=1,
+        dataset_root=dataset_root,
+        runs_planned=1,
+        runs_completed=1,
+        runs_reused=0,
+        runs_failed=0,
+        champions_found=False,
+        champion_analysis_status="skipped_no_champions",
+        external_evaluation_status="skipped_no_champions",
+        audit_evaluation_status="skipped_no_champions",
+        status="completed",
+    )
+    store.save_run_execution(
+        run_execution_uid="execution-existing",
+        multiseed_run_id=existing_multiseed_run_id,
+        run_id="run-101",
+        config_name=config_path.name,
+        config_json_snapshot=prepared_job.effective_config_snapshot,
+        effective_seed=101,
+        dataset_catalog_id="core_1h_spot",
+        dataset_signature=prepared_job.dataset_signature,
+        dataset_context_json=prepared_job.dataset_context_json,
+        status="completed",
+        requested_dataset_root=dataset_root,
+        resolved_dataset_root=dataset_root,
+        log_artifact_path=tmp_path / "run_a.txt",
+        summary_json={
+            "run_id": "run-101",
+            "config_name": config_path.name,
+            "mutation_seed": 101,
+            "best_train_selection_score": 1.1,
+            "final_validation_selection_score": 0.9,
+            "final_validation_profit": 0.02,
+            "final_validation_drawdown": 0.01,
+            "final_validation_trades": 15.0,
+            "best_genome_repr": "genome",
+            "generation_of_best": 5,
+            "train_validation_selection_gap": 0.1,
+            "train_validation_profit_gap": 0.01,
+            "log_file_path": str(tmp_path / "run_a.txt"),
+            "config_path": str(config_path),
+            "execution_status": "executed",
+        },
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
+        persistence_db_path,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.create_multiseed_dir",
+        lambda: tmp_path / "multiseed_20260331_150000",
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.execute_historical_run",
+        lambda **kwargs: pytest.fail("historical execution should have been reused"),
+    )
+
+    def fake_run_post_multiseed_analysis(**kwargs):
+        multiseed_dir = kwargs["multiseed_dir"]
+        (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).write_text(
+            "Seeds executed: 0\nSeeds reused: 1\n",
+            encoding="utf-8",
+        )
+        (multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).write_text(
+            "no champions",
+            encoding="utf-8",
+        )
+        return type(
+            "Result",
+            (),
+            {
+                "summary_path": kwargs["summary_path"],
+                "quick_summary_path": multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME,
+                "champions_summary_path": multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "champions_analysis_dir": multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champion_count": 0,
+                "champion_analysis_status": "skipped_no_champions",
+                "external_evaluation_status": "skipped_no_champions",
+                "audit_evaluation_status": "skipped_no_champions",
+            },
+        )()
+
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.run_post_multiseed_analysis",
+        fake_run_post_multiseed_analysis,
+    )
+
+    run_multiseed_experiment(
+        configs_dir=tmp_path,
+        dataset_root=dataset_root,
+        parallel_workers=1,
+    )
+
+    with sqlite3.connect(persistence_db_path) as connection:
+        execution_count = connection.execute(
+            "SELECT COUNT(*) FROM run_executions"
+        ).fetchone()[0]
+        latest_multiseed_row = connection.execute(
+            """
+            SELECT runs_planned, runs_completed, runs_reused, runs_failed
+            FROM multiseed_runs
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+    assert execution_count == 1
+    assert latest_multiseed_row == (1, 1, 1, 0)
+
+    quick_text = (
+        (tmp_path / "multiseed_20260331_150000" / MULTISEED_QUICK_SUMMARY_NAME)
+        .read_text(encoding="utf-8")
+    )
+    assert "Seeds executed: 0" in quick_text
+    assert "Seeds reused: 1" in quick_text
+
+
+def test_failed_execution_is_not_reused_and_creates_fresh_attempt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "run_a.json"
+    write_config(config_path, extra_fields={"seeds": [101]})
+    dataset_root = tmp_path / "datasets"
+    write_dataset_catalog(dataset_root)
+    persistence_db_path = tmp_path / "evolution_v2.db"
+
+    store = PersistenceStore(persistence_db_path)
+    store.initialize()
+    prepared_job = build_multiseed_jobs(
+        seed_map={config_path: [101]},
+        output_dir=tmp_path / "out",
+        dataset_root=dataset_root,
+        context_name=None,
+        preset_name=None,
+    )[0]
+    existing_multiseed_run_id = store.save_multiseed_run(
+        multiseed_run_uid="existing-multiseed",
+        configs_dir_snapshot={"configs": [config_path.name]},
+        requested_parallel_workers=1,
+        effective_parallel_workers=1,
+        dataset_root=dataset_root,
+        runs_planned=1,
+        runs_completed=0,
+        runs_reused=0,
+        runs_failed=1,
+        champions_found=False,
+        champion_analysis_status="failed",
+        external_evaluation_status="failed",
+        audit_evaluation_status="failed",
+        status="completed_with_failures",
+    )
+    store.save_run_execution(
+        run_execution_uid="execution-failed",
+        multiseed_run_id=existing_multiseed_run_id,
+        run_id="run-failed",
+        config_name=config_path.name,
+        config_json_snapshot=prepared_job.effective_config_snapshot,
+        effective_seed=101,
+        dataset_catalog_id="core_1h_spot",
+        dataset_signature=prepared_job.dataset_signature,
+        dataset_context_json=prepared_job.dataset_context_json,
+        status="failed",
+        failure_reason="boom",
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
+        persistence_db_path,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.create_multiseed_dir",
+        lambda: tmp_path / "multiseed_20260331_160000",
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.run_post_multiseed_analysis",
+        lambda **kwargs: type(
+            "Result",
+            (),
+            {
+                "summary_path": kwargs["summary_path"],
+                "quick_summary_path": kwargs["multiseed_dir"] / MULTISEED_QUICK_SUMMARY_NAME,
+                "champions_summary_path": kwargs["multiseed_dir"] / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "champions_analysis_dir": kwargs["multiseed_dir"] / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champion_count": 0,
+                "champion_analysis_status": "skipped_no_champions",
+                "external_evaluation_status": "skipped_no_champions",
+                "audit_evaluation_status": "skipped_no_champions",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.execute_historical_run",
+        lambda **kwargs: build_summary(config_path, seed=101, run_id="run-new"),
+    )
+
+    run_multiseed_experiment(
+        configs_dir=tmp_path,
+        dataset_root=dataset_root,
+        parallel_workers=1,
+    )
+
+    with sqlite3.connect(persistence_db_path) as connection:
+        status_rows = connection.execute(
+            "SELECT status FROM run_executions ORDER BY id ASC"
+        ).fetchall()
+        latest_multiseed_row = connection.execute(
+            """
+            SELECT runs_planned, runs_completed, runs_reused, runs_failed
+            FROM multiseed_runs
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+    assert [row[0] for row in status_rows] == ["failed", "completed"]
+    assert latest_multiseed_row == (1, 1, 0, 0)
 
 
 def test_format_effective_dataset_roots_uses_single_resolved_value() -> None:

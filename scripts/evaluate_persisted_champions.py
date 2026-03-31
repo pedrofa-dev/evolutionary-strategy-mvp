@@ -12,7 +12,7 @@ from evo_system.experimentation.persisted_champion_reevaluation import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Reevaluate persisted champions from SQLite on external validation "
+            "Reevaluate persisted champions from the canonical persistence database on external validation "
             "and optional audit datasets without rerunning evolution."
         )
     )
@@ -41,15 +41,6 @@ def parse_args() -> argparse.Namespace:
         choices=["robust", "specialist"],
         default=None,
         help="Optional champion type filter.",
-    )
-    parser.add_argument(
-        "--config-path",
-        type=Path,
-        default=None,
-        help=(
-            "Optional compatibility fallback for older champions that do not "
-            "have a persisted config snapshot."
-        ),
     )
     parser.add_argument(
         "--dataset-root",
@@ -108,7 +99,6 @@ def main() -> None:
     args = parse_args()
     result = reevaluate_persisted_champions(
         db_path=args.db_path,
-        config_path=args.config_path,
         dataset_root=args.dataset_root,
         config_name=args.config_name,
         run_id=args.run_id[0] if args.run_id and len(args.run_id) == 1 else None,

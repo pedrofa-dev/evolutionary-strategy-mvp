@@ -23,6 +23,7 @@ Implemented now:
 
 - Modular architecture split across `domain`, `environment`, `evaluation`, `champions`, `experimentation`, `storage`, and `reporting`.
 - Historical multiseed experiment execution through `scripts/run_experiment.py`.
+- Automatic reuse of previously completed equivalent executions through strict execution fingerprints.
 - Optional process-based parallelism for `multiseed`.
 - Champion classification and persistence policy extracted into `src/evo_system/champions`.
 - Train/validation separation during experiment runs.
@@ -33,7 +34,7 @@ Implemented now:
 - Post-run external validation for the persisted champion.
 - Manifest/catalog datasets as the canonical workflow for curated `train` / `validation` datasets.
 - Reevaluation of persisted champions on external and audit datasets without rerunning evolution.
-- Champion reporting and flat exports from SQLite.
+- Champion reporting and flat exports from the canonical persistence database.
 
 Partially implemented or limited on purpose:
 
@@ -135,6 +136,8 @@ Notes:
 
 - `multiseed` is the canonical execution workflow.
 - It can run sequentially or with optional process-based parallelism through `--parallel-workers`.
+- It automatically reuses previously completed equivalent executions instead of rerunning them.
+- Reuse is governed by `execution_fingerprint`, which includes config snapshot, effective seed, dataset signature, and `logic_version`.
 - If parallelism is requested but not useful, the system falls back explicitly to sequential execution.
 - Sequential mode keeps detailed generation-level output.
 - Parallel mode can show job-level progress and active-run progress snapshots.

@@ -149,6 +149,7 @@ class PersistenceStore:
                     logic_version TEXT NOT NULL,
                     runs_planned INTEGER NOT NULL,
                     runs_completed INTEGER NOT NULL,
+                    runs_reused INTEGER NOT NULL,
                     runs_failed INTEGER NOT NULL,
                     champions_found INTEGER NOT NULL,
                     champion_analysis_status TEXT NOT NULL,
@@ -316,6 +317,14 @@ class PersistenceStore:
                 ON champion_evaluation_members(champion_id);
                 """
             )
+            existing_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(multiseed_runs)")
+            }
+            if "runs_reused" not in existing_columns:
+                connection.execute(
+                    "ALTER TABLE multiseed_runs ADD COLUMN runs_reused INTEGER NOT NULL DEFAULT 0"
+                )
 
     def save_multiseed_run(
         self,
@@ -327,6 +336,7 @@ class PersistenceStore:
         dataset_root: str | Path,
         runs_planned: int,
         runs_completed: int,
+        runs_reused: int,
         runs_failed: int,
         champions_found: bool,
         champion_analysis_status: str,
@@ -362,6 +372,7 @@ class PersistenceStore:
                     logic_version,
                     runs_planned,
                     runs_completed,
+                    runs_reused,
                     runs_failed,
                     champions_found,
                     champion_analysis_status,
@@ -375,7 +386,7 @@ class PersistenceStore:
                     quick_summary_artifact_path,
                     champions_summary_artifact_path,
                     artifacts_root_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     multiseed_run_uid,
@@ -390,6 +401,7 @@ class PersistenceStore:
                     logic_version,
                     runs_planned,
                     runs_completed,
+                    runs_reused,
                     runs_failed,
                     int(champions_found),
                     champion_analysis_status,
@@ -414,6 +426,7 @@ class PersistenceStore:
         status: str,
         completed_at: str | None = None,
         runs_completed: int | None = None,
+        runs_reused: int | None = None,
         runs_failed: int | None = None,
         champions_found: bool | None = None,
         champion_analysis_status: str | None = None,
@@ -430,6 +443,7 @@ class PersistenceStore:
 
         optional_updates = {
             "runs_completed": runs_completed,
+            "runs_reused": runs_reused,
             "runs_failed": runs_failed,
             "champions_found": int(champions_found) if champions_found is not None else None,
             "champion_analysis_status": champion_analysis_status,
@@ -605,7 +619,9 @@ class PersistenceStore:
                 SELECT *
                 FROM run_executions
                 WHERE execution_fingerprint = ?
-                ORDER BY id ASC
+                ORDER BY
+                    CASE WHEN status = 'completed' THEN 0 ELSE 1 END,
+                    id DESC
                 LIMIT 1
                 """,
                 (execution_fingerprint,),

@@ -18,7 +18,6 @@ from evo_system.champions.metrics import (
 from evo_system.domain.agent import Agent
 from evo_system.domain.agent_evaluation import AgentEvaluation
 from evo_system.domain.genome import Genome
-from evo_system.domain.run_record import RunRecord
 from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.environment.csv_loader import load_historical_candles
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
@@ -52,7 +51,6 @@ from evo_system.storage import (
     DEFAULT_PERSISTENCE_DB_PATH,
     PersistenceStore,
 )
-from evo_system.storage.sqlite_store import SQLiteStore
 DEFAULT_EXTERNAL_VALIDATION_DIR = DEFAULT_DATASET_ROOT / "external_validation"
 TRAIN_SAMPLE_SIZE = 4
 RUN_LOG_DIR = Path("artifacts/runs")
@@ -420,21 +418,7 @@ def execute_historical_run(
         mutation_profile=config.mutation_profile,
     )
 
-    store = SQLiteStore()
-    store.initialize()
-
     population = build_initial_population(config.population_size)
-
-    run_record = RunRecord(
-        run_id=run_id,
-        mutation_seed=config.mutation_seed,
-        population_size=config.population_size,
-        target_population_size=config.target_population_size,
-        survivors_count=config.survivors_count,
-        generations_planned=config.generations_planned,
-    )
-
-    store.save_run_record(run_record)
 
     if output_dir is None:
         output_dir = RUN_LOG_DIR
@@ -595,11 +579,10 @@ def execute_historical_run(
 
         eval_duration = time.perf_counter() - eval_start_time
 
-        summary = runner.summarize_generation(
+        runner.summarize_generation(
             generation_number=generation_number,
             evaluated_agents=evaluated_agents,
         )
-        store.save_generation_result(run_id, summary)
 
         best_agent, best_evolution_score = max(
             evaluated_agents,
@@ -944,14 +927,6 @@ def execute_historical_run(
                     f"drawdown={external_validation_evaluation.median_drawdown:.4f}"
                 )
 
-        store.save_champion(
-            run_id=run_id,
-            generation_number=best_persistable_champion.generation_number,
-            mutation_seed=best_persistable_champion.mutation_seed,
-            config_name=best_persistable_champion.config_name,
-            genome=best_persistable_champion.genome,
-            metrics=champion_metrics,
-        )
         if run_execution_id is not None:
             persistence_store = PersistenceStore(persistence_db_path)
             persistence_store.initialize()

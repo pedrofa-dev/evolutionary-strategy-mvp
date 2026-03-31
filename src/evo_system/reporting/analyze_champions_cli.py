@@ -8,7 +8,9 @@ from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Analyze persisted champions from SQLite.")
+    parser = argparse.ArgumentParser(
+        description="Analyze persisted champions from the canonical persistence database."
+    )
     parser.add_argument(
         "--db-path",
         type=Path,

@@ -247,24 +247,11 @@ def normalize_persisted_champion(champion_row: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def resolve_champion_config_snapshot(
-    champion: dict[str, Any],
-    config_paths_by_name: dict[str, Path] | None = None,
-    config_paths_by_run_id: dict[str, Path] | None = None,
-) -> dict[str, Any]:
+def resolve_champion_config_snapshot(champion: dict[str, Any]) -> dict[str, Any]:
     config_snapshot = champion.get("config_snapshot") or champion.get("config_json_snapshot")
     if isinstance(config_snapshot, dict) and config_snapshot:
         return config_snapshot
-
-    config_path = None
-    if config_paths_by_run_id is not None:
-        config_path = config_paths_by_run_id.get(champion["run_id"])
-    if config_path is None and config_paths_by_name is not None:
-        config_path = config_paths_by_name.get(champion["config_name"])
-    if config_path is None:
-        raise ValueError("Config snapshot not available for persisted champion.")
-
-    return json.loads(Path(config_path).read_text(encoding="utf-8"))
+    raise ValueError("Config snapshot not available for persisted champion.")
 
 
 def evaluate_with_config_snapshot(
@@ -480,7 +467,6 @@ def build_report_lines(
         "",
         "Filters used",
         f"  db_path={filters['db_path']}",
-        f"  config_path_fallback={filters.get('config_path_fallback') or 'none'}",
         f"  dataset_root={filters['dataset_root'] or 'none'}",
         f"  config_name={filters['config_name'] or 'none'}",
         f"  run_id={filters['run_id'] or 'none'}",
@@ -559,8 +545,6 @@ def build_report_lines(
 
 def build_reevaluation_rows(
     champions: list[dict[str, Any]],
-    config_paths_by_name: dict[str, Path] | None = None,
-    config_paths_by_run_id: dict[str, Path] | None = None,
     dataset_root: Path | None = None,
     external_validation_dir: Path | None = None,
     external_dataset_catalog_id: str | None = None,
@@ -590,11 +574,7 @@ def build_reevaluation_rows(
 
     for champion in champions:
         try:
-            config_snapshot = resolve_champion_config_snapshot(
-                champion,
-                config_paths_by_name=config_paths_by_name,
-                config_paths_by_run_id=config_paths_by_run_id,
-            )
+            config_snapshot = resolve_champion_config_snapshot(champion)
             metrics = champion.get("metrics", {})
             genome = Genome.from_dict(champion["genome"])
             agent = Agent.create(genome)
@@ -822,8 +802,6 @@ def persist_manual_evaluation_result(
 
 def reevaluate_persisted_champions(
     db_path: Path,
-    config_path: Path | None = None,
-    config_paths_by_run_id: dict[str, Path] | None = None,
     dataset_root: Path | None = None,
     config_name: str | None = None,
     run_id: str | None = None,
@@ -868,11 +846,6 @@ def reevaluate_persisted_champions(
 
     rows, external_evaluations_run, audit_evaluations_run, skipped_champions = build_reevaluation_rows(
         champions=matched_champions,
-        config_paths_by_name=None if run_ids is not None else {
-            champion["config_name"]: config_path
-            for champion in matched_champions
-        } if config_path is not None else None,
-        config_paths_by_run_id=config_paths_by_run_id,
         dataset_root=dataset_root,
         external_validation_dir=external_validation_dir,
         external_dataset_catalog_id=external_dataset_catalog_id,
@@ -883,7 +856,6 @@ def reevaluate_persisted_champions(
     output_path = ensure_output_dir(output_dir)
     filters = {
         "db_path": db_path,
-        "config_path_fallback": config_path,
         "dataset_root": dataset_root,
         "config_name": config_name,
         "run_id": run_id,

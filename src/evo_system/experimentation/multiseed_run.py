@@ -67,8 +67,6 @@ from evo_system.storage import (
 
 CONFIGS_DIR = Path("configs/runs")
 MULTISEED_ROOT_DIR = Path("artifacts/multiseed")
-LEGACY_REPORTING_DB_PATH = Path("data/evolution.db")
-DEFAULT_DB_PATH = LEGACY_REPORTING_DB_PATH
 DEFAULT_SEED_START = 101
 DEFAULT_SEED_COUNT = 6
 DEFAULT_CONTEXT_NAME: str | None = None
@@ -100,6 +98,8 @@ class MultiseedJob:
 class MultiseedExecutionOutcome:
     run_summaries: list[HistoricalRunSummary]
     failures: list[str]
+    executed_count: int
+    reused_count: int
 
 
 @dataclass(frozen=True)
@@ -510,6 +510,7 @@ def build_run_summary_payload(summary: HistoricalRunSummary) -> dict:
         "train_validation_profit_gap": summary.train_validation_profit_gap,
         "log_file_path": str(summary.log_file_path),
         "config_path": str(summary.config_path) if summary.config_path is not None else None,
+        "execution_status": summary.execution_status,
     }
 
 
@@ -538,6 +539,7 @@ def create_multiseed_run_record(
         dataset_root=dataset_root,
         runs_planned=runs_planned,
         runs_completed=0,
+        runs_reused=0,
         runs_failed=0,
         champions_found=False,
         champion_analysis_status="pending",
@@ -552,6 +554,58 @@ def create_multiseed_run_record(
     return multiseed_run_id, multiseed_run_uid
 
 
+def build_summary_from_reused_execution(
+    row: dict,
+    *,
+    original_config_path: Path | None = None,
+) -> HistoricalRunSummary:
+    summary_json = row.get("summary_json") or {}
+    if not summary_json:
+        raise ValueError(
+            f"Reused execution {row.get('id')} is missing summary_json and cannot be reused."
+        )
+
+    config_path = original_config_path
+    if config_path is None and summary_json.get("config_path"):
+        config_path = Path(summary_json["config_path"])
+
+    log_file_path = Path(
+        summary_json.get("log_file_path")
+        or row.get("log_artifact_path")
+        or f"artifacts/multiseed/{row['run_id']}.txt"
+    )
+
+    return HistoricalRunSummary(
+        config_name=str(summary_json.get("config_name") or row["config_name"]),
+        run_id=str(summary_json.get("run_id") or row["run_id"]),
+        log_file_path=log_file_path,
+        mutation_seed=int(summary_json.get("mutation_seed") or row["effective_seed"]),
+        best_train_selection_score=float(summary_json["best_train_selection_score"]),
+        final_validation_selection_score=float(summary_json["final_validation_selection_score"]),
+        final_validation_profit=float(summary_json["final_validation_profit"]),
+        final_validation_drawdown=float(summary_json["final_validation_drawdown"]),
+        final_validation_trades=float(summary_json["final_validation_trades"]),
+        best_genome_repr=str(summary_json["best_genome_repr"]),
+        generation_of_best=int(summary_json["generation_of_best"]),
+        train_validation_selection_gap=float(summary_json["train_validation_selection_gap"]),
+        train_validation_profit_gap=float(summary_json["train_validation_profit_gap"]),
+        config_path=config_path,
+        execution_status="reused",
+    )
+
+
+def find_reusable_run_execution(
+    store: PersistenceStore,
+    execution_fingerprint: str,
+) -> dict | None:
+    row = store.find_run_execution_by_fingerprint(execution_fingerprint)
+    if row is None:
+        return None
+    if row.get("status") != "completed":
+        return None
+    return row
+
+
 def persist_run_execution_start(
     *,
     store: PersistenceStore,
@@ -559,7 +613,6 @@ def persist_run_execution_start(
     job: MultiseedJob,
     context_name: str | None,
 ) -> int:
-    store.find_run_execution_by_fingerprint(job.execution_fingerprint)
     return store.save_run_execution(
         run_execution_uid=job.run_execution_uid,
         multiseed_run_id=multiseed_run_id,
@@ -647,7 +700,33 @@ def execute_multiseed_runs_with_failures(
     if effective_parallel_workers <= 1:
         summaries: list[HistoricalRunSummary] = []
         failures: list[str] = []
+        executed_count = 0
+        reused_count = 0
         for index, job in enumerate(jobs, start=1):
+            reusable_execution = None
+            if persistence_store is not None:
+                reusable_execution = find_reusable_run_execution(
+                    persistence_store,
+                    job.execution_fingerprint,
+                )
+            if reusable_execution is not None:
+                summary = build_summary_from_reused_execution(
+                    reusable_execution,
+                    original_config_path=job.config_path,
+                )
+                summaries.append(summary)
+                reused_count += 1
+                print()
+                print(
+                    f"[{index}/{total_jobs}] reused | "
+                    f"mode=sequential | job={job.config_path.name} seed={job.seed}"
+                )
+                print(
+                    f"Reused existing execution {summary.run_id} for "
+                    f"{job.config_path.name} seed {job.seed}"
+                )
+                job.progress_snapshot_path.unlink(missing_ok=True)
+                continue
             run_execution_id: int | None = None
             execution_job = job
             if persistence_store is not None and multiseed_run_id is not None:
@@ -675,6 +754,7 @@ def execute_multiseed_runs_with_failures(
             try:
                 summary = execute_multiseed_job_sequential(execution_job)
                 summaries.append(summary)
+                executed_count += 1
                 if persistence_store is not None and run_execution_id is not None:
                     persist_run_execution_success(
                         store=persistence_store,
@@ -693,7 +773,12 @@ def execute_multiseed_runs_with_failures(
                     )
                 print(f"FAILED {job.config_path.name} seed {job.seed}: {exc}")
                 job.progress_snapshot_path.unlink(missing_ok=True)
-        return MultiseedExecutionOutcome(run_summaries=summaries, failures=failures)
+        return MultiseedExecutionOutcome(
+            run_summaries=summaries,
+            failures=failures,
+            executed_count=executed_count,
+            reused_count=reused_count,
+        )
 
     print(
         f"Running multiseed jobs in parallel with {effective_parallel_workers} workers."
@@ -703,6 +788,8 @@ def execute_multiseed_runs_with_failures(
     completed_jobs = 0
     success_count = 0
     failure_count = 0
+    executed_count = 0
+    reused_count = 0
 
     with ProcessPoolExecutor(
         max_workers=effective_parallel_workers,
@@ -713,6 +800,34 @@ def execute_multiseed_runs_with_failures(
         if persistence_store is not None and multiseed_run_id is not None:
             execution_jobs = []
             for job in jobs:
+                reusable_execution = find_reusable_run_execution(
+                    persistence_store,
+                    job.execution_fingerprint,
+                )
+                if reusable_execution is not None:
+                    summary = build_summary_from_reused_execution(
+                        reusable_execution,
+                        original_config_path=job.config_path,
+                    )
+                    summaries.append(summary)
+                    reused_count += 1
+                    completed_jobs += 1
+                    success_count += 1
+                    print(
+                        format_parallel_progress(
+                            completed_jobs=completed_jobs,
+                            total_jobs=total_jobs,
+                            success_count=success_count,
+                            failure_count=failure_count,
+                            last_label=f"{job.config_path.name} seed={job.seed} reused",
+                        )
+                    )
+                    print(
+                        f"Reused existing execution {summary.run_id} for "
+                        f"{job.config_path.name} seed {job.seed}"
+                    )
+                    job.progress_snapshot_path.unlink(missing_ok=True)
+                    continue
                 run_execution_id = persist_run_execution_start(
                     store=persistence_store,
                     multiseed_run_id=multiseed_run_id,
@@ -784,6 +899,7 @@ def execute_multiseed_runs_with_failures(
 
                 summaries.append(summary)
                 success_count += 1
+                executed_count += 1
                 run_execution_id = run_execution_ids_by_job_key.get(
                     (str(job.config_path), job.seed)
                 )
@@ -825,7 +941,12 @@ def execute_multiseed_runs_with_failures(
                 )
                 last_progress_report_time = current_time
 
-    return MultiseedExecutionOutcome(run_summaries=summaries, failures=failures)
+    return MultiseedExecutionOutcome(
+        run_summaries=summaries,
+        failures=failures,
+        executed_count=executed_count,
+        reused_count=reused_count,
+    )
 
 
 def execute_multiseed_runs(
@@ -958,6 +1079,7 @@ def build_grouped_summary_lines(
                 f"drawdown={run.final_validation_drawdown:.4f} | "
                 f"trades={run.final_validation_trades:.1f} | "
                 f"selection_gap={run.train_validation_selection_gap:.4f} | "
+                f"execution={run.execution_status} | "
                 f"log={run.log_file_path.name}"
             )
 
@@ -974,6 +1096,9 @@ def write_multiseed_summary(
     context_name: str | None,
     preset_name: str | None,
     effective_generations: int | None,
+    runs_executed: int,
+    runs_reused: int,
+    runs_failed: int,
 ) -> Path:
     summary_path = output_dir / MULTISEED_RUN_SUMMARY_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -993,7 +1118,10 @@ def write_multiseed_summary(
         f"Configs executed: {len(set(summary.config_name for summary in summaries))}",
         f"Seeds per config: {seed_count_label}",
         f"Seeds used: {format_seed_plan(seed_map)}",
-        f"Total runs: {len(summaries)}",
+        f"Total runs completed: {len(summaries)}",
+        f"Runs executed: {runs_executed}",
+        f"Runs reused: {runs_reused}",
+        f"Runs failed: {runs_failed}",
         "",
         "Champion criteria:",
         " robust -> validation_selection >= 1.5 | validation_profit >= 0.02 | validation_drawdown <= 0.03 | validation_trades >= 10.0 | abs(selection_gap) <= 1.5",
@@ -1108,6 +1236,9 @@ def run_multiseed_experiment(
             context_name=context_name,
             preset_name=preset_name,
             effective_generations=effective_generations,
+            runs_executed=outcome.executed_count,
+            runs_reused=outcome.reused_count,
+            runs_failed=len(outcome.failures),
         )
 
         if skip_post_multiseed_analysis:
@@ -1117,6 +1248,8 @@ def run_multiseed_experiment(
                 dataset_root_label=dataset_root_label,
                 failures=outcome.failures,
                 seeds_planned=job_count,
+                seeds_executed=outcome.executed_count,
+                seeds_reused=outcome.reused_count,
             )
             print(
                 "Post-multiseed analysis skipped -> champions/external/audit summaries not generated"
@@ -1127,13 +1260,14 @@ def run_multiseed_experiment(
                 summary_path=summary_path,
                 run_summaries=outcome.run_summaries,
                 dataset_root_label=dataset_root_label,
-                db_path=LEGACY_REPORTING_DB_PATH,
                 persistence_db_path=DEFAULT_PERSISTENCE_DB_PATH,
                 multiseed_run_id=multiseed_run_id,
                 external_validation_dir=external_validation_dir,
                 audit_dir=audit_dir,
                 failures=outcome.failures,
                 seeds_planned=job_count,
+                seeds_executed=outcome.executed_count,
+                seeds_reused=outcome.reused_count,
             )
             print(
                 f"Multiseed champions summary saved to {post_analysis_result.champions_summary_path}"
@@ -1165,6 +1299,7 @@ def run_multiseed_experiment(
             multiseed_run_id,
             status="completed_with_failures" if outcome.failures else "completed",
             runs_completed=len(outcome.run_summaries),
+            runs_reused=outcome.reused_count,
             runs_failed=len(outcome.failures),
             champions_found=champions_found,
             champion_analysis_status=champion_analysis_status,
@@ -1189,6 +1324,7 @@ def run_multiseed_experiment(
             multiseed_run_id,
             status="failed",
             runs_completed=len(outcome.run_summaries) if outcome is not None else 0,
+            runs_reused=outcome.reused_count if outcome is not None else 0,
             runs_failed=len(outcome.failures) if outcome is not None else job_count,
             champions_found=False,
             champion_analysis_status="failed",

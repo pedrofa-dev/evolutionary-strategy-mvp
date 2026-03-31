@@ -117,7 +117,7 @@ Current runtime usage:
 
 ## 4. Analyze Champions
 
-Analyze persisted champions from SQLite:
+Analyze persisted champions from the canonical persistence database:
 
 ```bash
 python scripts/analyze_champions.py --db-path data/evolution_v2.db

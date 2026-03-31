@@ -57,6 +57,7 @@ def seed_champion(database_path: Path, *, run_id: str, config_name: str) -> int:
         dataset_root="data/datasets",
         runs_planned=1,
         runs_completed=1,
+        runs_reused=0,
         runs_failed=0,
         champions_found=True,
         champion_analysis_status="pending",

@@ -12,7 +12,7 @@ from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.historical_run import DEFAULT_EXTERNAL_VALIDATION_DIR
 from evo_system.experimentation.persisted_champion_reevaluation import (
     build_reevaluation_rows,
-    filter_champions,
+    normalize_persisted_champion,
     write_reevaluation_outputs,
 )
 from evo_system.reporting.report_builder import analyze_champions
@@ -22,7 +22,6 @@ from evo_system.storage import (
     PersistenceStore,
 )
 from evo_system.storage.persistence_store import serialize_json, sha256_hex
-from evo_system.storage.sqlite_store import SQLiteStore
 
 
 DEFAULT_AUDIT_DIR = DEFAULT_DATASET_ROOT / "audit"
@@ -46,22 +45,14 @@ class PostMultiseedAnalysisResult:
     audit_evaluation_status: str
 
 
-def build_config_paths_by_run_id(
-    run_summaries: list[HistoricalRunSummary],
-) -> dict[str, Path]:
-    return {
-        summary.run_id: summary.config_path
-        for summary in run_summaries
-        if summary.config_path is not None
-    }
-
-
 def build_multiseed_quick_summary_lines(
     multiseed_dir: Path,
     run_summaries: list[HistoricalRunSummary],
     dataset_root_label: str,
     failures: list[str],
     seeds_planned: int,
+    seeds_executed: int,
+    seeds_reused: int,
 ) -> list[str]:
     config_names = sorted({summary.config_name for summary in run_summaries})
     if not config_names:
@@ -78,6 +69,8 @@ def build_multiseed_quick_summary_lines(
         f"Dataset root: {dataset_root_label}",
         f"Seeds planned: {seeds_planned}",
         f"Seeds completed: {len(run_summaries)}",
+        f"Seeds executed: {seeds_executed}",
+        f"Seeds reused: {seeds_reused}",
         f"Seeds failed: {len(failures)}",
     ]
 
@@ -128,6 +121,8 @@ def write_multiseed_quick_summary(
     dataset_root_label: str,
     failures: list[str],
     seeds_planned: int,
+    seeds_executed: int,
+    seeds_reused: int,
 ) -> Path:
     multiseed_dir.mkdir(parents=True, exist_ok=True)
     quick_summary_path = multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME
@@ -139,17 +134,13 @@ def write_multiseed_quick_summary(
                 dataset_root_label=dataset_root_label,
                 failures=failures,
                 seeds_planned=seeds_planned,
+                seeds_executed=seeds_executed,
+                seeds_reused=seeds_reused,
             )
         ),
         encoding="utf-8",
     )
     return quick_summary_path
-
-
-def load_multiseed_champions(db_path: Path, run_ids: list[str]) -> list[dict[str, Any]]:
-    store = SQLiteStore(str(db_path))
-    store.initialize()
-    return filter_champions(store.load_champions(), run_ids=run_ids)
 
 
 def load_persisted_multiseed_champions(
@@ -158,7 +149,10 @@ def load_persisted_multiseed_champions(
 ) -> list[dict[str, Any]]:
     store = PersistenceStore(persistence_db_path)
     store.initialize()
-    return store.load_champions(run_ids=run_ids)
+    return [
+        normalize_persisted_champion(row)
+        for row in store.load_champions(run_ids=run_ids)
+    ]
 
 
 def build_champion_selection_scope(
@@ -468,7 +462,6 @@ def run_post_execution_validation(
     *,
     champions: list[dict[str, Any]],
     run_summaries: list[HistoricalRunSummary],
-    db_path: Path,
     external_validation_dir: Path,
     audit_dir: Path,
     external_output_dir: Path,
@@ -489,21 +482,17 @@ def run_post_execution_validation(
         )
         return external_result, audit_result
 
-    config_paths_by_run_id = build_config_paths_by_run_id(run_summaries)
-
     if external_validation_dir.exists():
         try:
             external_rows, external_count, _, external_skipped = build_reevaluation_rows(
                 champions=champions,
-                config_paths_by_run_id=config_paths_by_run_id,
                 external_validation_dir=external_validation_dir,
             )
             external_result = write_reevaluation_outputs(
                 rows=external_rows,
                 output_path=external_output_dir,
                 filters={
-                    "db_path": db_path,
-                    "config_path": "multiple",
+                    "db_path": "automatic_post_multiseed",
                     "dataset_root": None,
                     "config_name": "multiple",
                     "run_id": "multiple",
@@ -548,15 +537,13 @@ def run_post_execution_validation(
         try:
             audit_rows, _, audit_count, audit_skipped = build_reevaluation_rows(
                 champions=champions,
-                config_paths_by_run_id=config_paths_by_run_id,
                 audit_dir=audit_dir,
             )
             audit_result = write_reevaluation_outputs(
                 rows=audit_rows,
                 output_path=audit_output_dir,
                 filters={
-                    "db_path": db_path,
-                    "config_path": "multiple",
+                    "db_path": "automatic_post_multiseed",
                     "dataset_root": None,
                     "config_name": "multiple",
                     "run_id": "multiple",
@@ -692,13 +679,14 @@ def run_post_multiseed_analysis(
     summary_path: Path,
     run_summaries: list[HistoricalRunSummary],
     dataset_root_label: str,
-    db_path: Path,
     persistence_db_path: Path = DEFAULT_PERSISTENCE_DB_PATH,
     multiseed_run_id: int | None = None,
     external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
     audit_dir: Path = DEFAULT_AUDIT_DIR,
     failures: list[str] | None = None,
     seeds_planned: int,
+    seeds_executed: int,
+    seeds_reused: int,
 ) -> PostMultiseedAnalysisResult:
     failures = failures or []
 
@@ -708,17 +696,18 @@ def run_post_multiseed_analysis(
         dataset_root_label=dataset_root_label,
         failures=failures,
         seeds_planned=seeds_planned,
+        seeds_executed=seeds_executed,
+        seeds_reused=seeds_reused,
     )
 
     run_ids = [summary.run_id for summary in run_summaries]
-    champions = load_multiseed_champions(db_path, run_ids)
     persisted_champions = load_persisted_multiseed_champions(
         persistence_db_path,
         run_ids,
     )
     champions_analysis_dir = multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME
     champion_analysis_result = None
-    if champions:
+    if persisted_champions:
         champion_analysis_result = analyze_champions(
             db_path=persistence_db_path,
             output_dir=champions_analysis_dir,
@@ -730,9 +719,8 @@ def run_post_multiseed_analysis(
     external_output_dir = post_multiseed_validation_dir / "external"
     audit_output_dir = post_multiseed_validation_dir / "audit"
     external_result, audit_result = run_post_execution_validation(
-        champions=champions,
+        champions=persisted_champions,
         run_summaries=run_summaries,
-        db_path=db_path,
         external_validation_dir=external_validation_dir,
         audit_dir=audit_dir,
         external_output_dir=external_output_dir,
@@ -776,7 +764,7 @@ def run_post_multiseed_analysis(
 
     champions_summary_path = write_multiseed_champions_summary(
         multiseed_dir=multiseed_dir,
-        champion_count=len(champions),
+        champion_count=len(persisted_champions),
         champion_analysis_result=champion_analysis_result,
         external_result=external_result,
         audit_result=audit_result,

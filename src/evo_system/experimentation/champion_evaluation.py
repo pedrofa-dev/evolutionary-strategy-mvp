@@ -11,9 +11,10 @@ from evo_system.experimentation.external_validation import (
     run_external_validation,
 )
 from evo_system.reporting.champion_loader import ChampionRow, load_champions
+from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH
 
 
-DEFAULT_DB_PATH = Path("data/evolution.db")
+DEFAULT_DB_PATH = DEFAULT_PERSISTENCE_DB_PATH
 DEFAULT_DATASET_ROOT = Path("data/datasets")
 SUPPORTED_DATASET_LAYERS = {"external", "audit"}
 
