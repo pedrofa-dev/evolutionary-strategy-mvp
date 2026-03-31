@@ -26,6 +26,7 @@ from evo_system.champions.rules import (
     SPECIALIST_MIN_VALIDATION_TRADES,
 )
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.reporting.decision_support import build_multiseed_decision_payload
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.experimentation.dataset_roots import (
     DEFAULT_DATASET_ROOT,
@@ -39,7 +40,8 @@ from evo_system.experimentation.parallel_progress import (
     read_progress_snapshot,
 )
 from evo_system.experimentation.post_multiseed_analysis import (
-    DEFAULT_AUDIT_DIR,
+    ANALYSIS_DIRNAME,
+    DEBUG_DIRNAME,
     MULTISEED_CHAMPIONS_SUMMARY_NAME,
     MULTISEED_QUICK_SUMMARY_NAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
@@ -52,7 +54,6 @@ from evo_system.experimentation.presets import (
     get_preset_by_name,
 )
 from evo_system.experimentation.historical_run import (
-    DEFAULT_EXTERNAL_VALIDATION_DIR,
     TRAIN_SAMPLE_SIZE,
     execute_historical_run,
 )
@@ -67,6 +68,7 @@ from evo_system.storage import (
 
 CONFIGS_DIR = Path("configs/runs")
 MULTISEED_ROOT_DIR = Path("artifacts/multiseed")
+RUN_LOGS_DEBUG_DIRNAME = "run_logs"
 DEFAULT_SEED_START = 101
 DEFAULT_SEED_COUNT = 6
 DEFAULT_CONTEXT_NAME: str | None = None
@@ -353,6 +355,40 @@ def create_multiseed_dir() -> Path:
     multiseed_dir = MULTISEED_ROOT_DIR / f"multiseed_{timestamp}"
     multiseed_dir.mkdir(parents=True, exist_ok=True)
     return multiseed_dir
+
+
+def relocate_multiseed_debug_logs(
+    output_dir: Path,
+    run_summaries: list[HistoricalRunSummary],
+    persistence_store: PersistenceStore | None,
+) -> list[HistoricalRunSummary]:
+    debug_logs_dir = output_dir / DEBUG_DIRNAME / RUN_LOGS_DEBUG_DIRNAME
+    debug_logs_dir.mkdir(parents=True, exist_ok=True)
+    relocated_summaries: list[HistoricalRunSummary] = []
+
+    for summary in run_summaries:
+        source_path = summary.log_file_path
+        if (
+            source_path.exists()
+            and source_path.parent == output_dir
+            and source_path.name.startswith("run_")
+        ):
+            destination_path = debug_logs_dir / source_path.name
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.replace(destination_path)
+            relocated_summary = replace(summary, log_file_path=destination_path)
+            if persistence_store is not None:
+                persistence_store.update_run_execution_artifacts(
+                    summary.run_id,
+                    log_artifact_path=destination_path,
+                    summary_json=build_run_summary_payload(relocated_summary),
+                )
+            relocated_summaries.append(relocated_summary)
+            continue
+
+        relocated_summaries.append(summary)
+
+    return relocated_summaries
 
 
 def build_multiseed_jobs(
@@ -1100,8 +1136,8 @@ def write_multiseed_summary(
     runs_reused: int,
     runs_failed: int,
 ) -> Path:
-    summary_path = output_dir / MULTISEED_RUN_SUMMARY_NAME
-    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = output_dir / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     unique_seed_lists = {tuple(seeds) for seeds in seed_map.values()}
     seed_count_label = (
         str(len(next(iter(unique_seed_lists))))
@@ -1151,8 +1187,8 @@ def run_multiseed_experiment(
     preset_name: str | None = None,
     context_name: str | None = DEFAULT_CONTEXT_NAME,
     parallel_workers: int = 1,
-    external_validation_dir: Path = DEFAULT_EXTERNAL_VALIDATION_DIR,
-    audit_dir: Path = DEFAULT_AUDIT_DIR,
+    external_validation_dir: Path | None = None,
+    audit_dir: Path | None = None,
     skip_post_multiseed_analysis: bool = False,
 ) -> Path | None:
     if parallel_workers <= 0:
@@ -1227,6 +1263,16 @@ def run_multiseed_experiment(
             persistence_store=persistence_store,
             multiseed_run_id=multiseed_run_id,
         )
+        outcome = MultiseedExecutionOutcome(
+            run_summaries=relocate_multiseed_debug_logs(
+                output_dir,
+                outcome.run_summaries,
+                persistence_store,
+            ),
+            failures=outcome.failures,
+            executed_count=outcome.executed_count,
+            reused_count=outcome.reused_count,
+        )
 
         summary_path = write_multiseed_summary(
             summaries=outcome.run_summaries,
@@ -1242,14 +1288,25 @@ def run_multiseed_experiment(
         )
 
         if skip_post_multiseed_analysis:
-            write_multiseed_quick_summary(
-                multiseed_dir=output_dir,
+            champion_count = count_persisted_multiseed_champions(
+                persistence_store,
+                outcome.run_summaries,
+            )
+            decision_payload = build_multiseed_decision_payload(
                 run_summaries=outcome.run_summaries,
-                dataset_root_label=dataset_root_label,
+                champion_count=champion_count,
+                champion_analysis_result=None,
+                external_result={"rows": []},
+                audit_result={"rows": []},
                 failures=outcome.failures,
                 seeds_planned=job_count,
                 seeds_executed=outcome.executed_count,
                 seeds_reused=outcome.reused_count,
+            )
+            write_multiseed_quick_summary(
+                multiseed_dir=output_dir,
+                dataset_root_label=dataset_root_label,
+                decision_payload=decision_payload,
             )
             print(
                 "Post-multiseed analysis skipped -> champions/external/audit summaries not generated"
@@ -1274,13 +1331,11 @@ def run_multiseed_experiment(
             )
             print(
                 "Multiseed post-validation directory saved to "
-                f"{output_dir / POST_MULTISEED_VALIDATION_DIRNAME}"
+                f"{output_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME}"
             )
+            print(f"Final verdict: {post_analysis_result.verdict}")
+            print(f"Next action: {post_analysis_result.recommended_next_action}")
         if skip_post_multiseed_analysis:
-            champion_count = count_persisted_multiseed_champions(
-                persistence_store,
-                outcome.run_summaries,
-            )
             champions_found = champion_count > 0
             if champions_found:
                 champion_analysis_status = "skipped_by_flag"
@@ -1313,8 +1368,8 @@ def run_multiseed_experiment(
             summary_artifact_path=summary_path,
             quick_summary_artifact_path=output_dir / MULTISEED_QUICK_SUMMARY_NAME,
             champions_summary_artifact_path=(
-                output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
-                if (output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
+                output_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME
+                if (output_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
                 else None
             ),
             artifacts_root_path=output_dir,
@@ -1338,8 +1393,8 @@ def run_multiseed_experiment(
                 else None
             ),
             champions_summary_artifact_path=(
-                output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
-                if (output_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
+                output_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME
+                if (output_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
                 else None
             ),
             artifacts_root_path=output_dir,

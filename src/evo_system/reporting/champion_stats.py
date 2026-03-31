@@ -295,6 +295,10 @@ def detect_recurrent_patterns(
         "weight_dist_ma",
         "weight_range_pos",
         "weight_vol_ratio",
+        "weight_trend_strength",
+        "weight_realized_volatility",
+        "weight_trend_long",
+        "weight_breakout",
         "validation_selection",
         "validation_profit",
         "validation_drawdown",
@@ -331,6 +335,10 @@ def detect_recurrent_patterns(
         "weight_dist_ma",
         "weight_range_pos",
         "weight_vol_ratio",
+        "weight_trend_strength",
+        "weight_realized_volatility",
+        "weight_trend_long",
+        "weight_breakout",
     ]
     for field in weight_fields:
         values = [

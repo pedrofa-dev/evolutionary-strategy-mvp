@@ -35,7 +35,9 @@ from evo_system.storage.persistence_store import hash_config_snapshot
 from evo_system.storage.persistence_store import PersistenceStore
 from evo_system.experimentation.parallel_progress import format_active_job_progress
 from evo_system.experimentation.post_multiseed_analysis import (
+    ANALYSIS_DIRNAME,
     CHAMPIONS_ANALYSIS_DIRNAME,
+    DEBUG_DIRNAME,
     MULTISEED_CHAMPIONS_SUMMARY_NAME,
     MULTISEED_QUICK_SUMMARY_NAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
@@ -127,6 +129,15 @@ def test_cli_parses_multiseed_post_analysis_arguments() -> None:
     assert str(args.external_validation_dir).endswith("external_validation")
     assert str(args.audit_dir).endswith("audit")
     assert args.skip_post_multiseed_analysis is True
+
+
+def test_cli_defaults_to_catalog_scoped_automatic_post_analysis_resolution() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(["--configs-dir", "configs/runs"])
+
+    assert args.external_validation_dir is None
+    assert args.audit_dir is None
 
 
 def test_experiment_presets_include_standard_extended_and_full() -> None:
@@ -621,6 +632,8 @@ def test_run_multiseed_experiment_reports_effective_manifest_dataset_root(
                 "summary_path": tmp_path / "summary.txt",
                 "quick_summary_path": tmp_path / "quick.txt",
                 "champions_summary_path": tmp_path / "champions.txt",
+                "analysis_dir": tmp_path / ANALYSIS_DIRNAME,
+                "debug_dir": tmp_path / DEBUG_DIRNAME,
                 "champions_analysis_dir": tmp_path / "analysis",
                 "external_output_dir": tmp_path / "external",
                 "audit_output_dir": tmp_path / "audit",
@@ -628,6 +641,8 @@ def test_run_multiseed_experiment_reports_effective_manifest_dataset_root(
                 "champion_analysis_status": "skipped_no_champions",
                 "external_evaluation_status": "skipped_no_champions",
                 "audit_evaluation_status": "skipped_no_champions",
+                "verdict": "NO_EDGE_DETECTED",
+                "recommended_next_action": "Add or change signals/features before spending more time on reevaluation.",
             },
         )(),
     )
@@ -670,25 +685,30 @@ def test_run_multiseed_experiment_generates_post_multiseed_artifacts(
 
     def fake_run_post_multiseed_analysis(**kwargs):
         multiseed_dir = kwargs["multiseed_dir"]
-        (multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME).mkdir(parents=True, exist_ok=True)
-        (multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "external").mkdir(parents=True, exist_ok=True)
-        (multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "audit").mkdir(parents=True, exist_ok=True)
+        (multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME).mkdir(parents=True, exist_ok=True)
+        (multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external").mkdir(parents=True, exist_ok=True)
+        (multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit").mkdir(parents=True, exist_ok=True)
+        (multiseed_dir / ANALYSIS_DIRNAME).mkdir(parents=True, exist_ok=True)
         (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).write_text("quick", encoding="utf-8")
-        (multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).write_text("champions", encoding="utf-8")
+        (multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME).write_text("champions", encoding="utf-8")
         return type(
             "Result",
             (),
             {
                 "summary_path": kwargs["summary_path"],
                 "quick_summary_path": multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME,
-                "champions_summary_path": multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME,
-                "champions_analysis_dir": multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME,
-                "external_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "external",
-                "audit_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champions_summary_path": multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "analysis_dir": multiseed_dir / ANALYSIS_DIRNAME,
+                "debug_dir": multiseed_dir / DEBUG_DIRNAME,
+                "champions_analysis_dir": multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
                 "champion_count": 0,
                 "champion_analysis_status": "completed",
                 "external_evaluation_status": "completed",
                 "audit_evaluation_status": "completed",
+                "verdict": "WEAK_PROMISING",
+                "recommended_next_action": "Keep the promising patterns, then run broader external and audit batteries before scaling up.",
             },
         )()
 
@@ -704,12 +724,12 @@ def test_run_multiseed_experiment_generates_post_multiseed_artifacts(
     )
 
     multiseed_dir = tmp_path / "multiseed_20260330_120000"
-    assert summary_path == multiseed_dir / MULTISEED_RUN_SUMMARY_NAME
+    assert summary_path == multiseed_dir / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME
     assert (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).exists()
-    assert (multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
-    assert (multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME).exists()
-    assert (multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "external").exists()
-    assert (multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "audit").exists()
+    assert (multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME).exists()
+    assert (multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME).exists()
+    assert (multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external").exists()
+    assert (multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit").exists()
 
 
 def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
@@ -736,14 +756,18 @@ def test_run_multiseed_experiment_persists_multiseed_and_run_executions(
             {
                 "summary_path": kwargs["summary_path"],
                 "quick_summary_path": kwargs["multiseed_dir"] / MULTISEED_QUICK_SUMMARY_NAME,
-                "champions_summary_path": kwargs["multiseed_dir"] / MULTISEED_CHAMPIONS_SUMMARY_NAME,
-                "champions_analysis_dir": kwargs["multiseed_dir"] / CHAMPIONS_ANALYSIS_DIRNAME,
-                "external_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "external",
-                "audit_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champions_summary_path": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "analysis_dir": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME,
+                "debug_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME,
+                "champions_analysis_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
                 "champion_count": 1,
                 "champion_analysis_status": "completed",
                 "external_evaluation_status": "completed",
                 "audit_evaluation_status": "completed",
+                "verdict": "ROBUST_CANDIDATE",
+                "recommended_next_action": "Promote the candidate set to a stricter friction and coverage follow-up experiment.",
             },
         )(),
     )
@@ -929,15 +953,14 @@ def test_run_multiseed_experiment_skip_post_analysis_keeps_real_summaries(
         )
 
     multiseed_dir = tmp_path / "multiseed_20260330_130000"
-    summary_text = (multiseed_dir / MULTISEED_RUN_SUMMARY_NAME).read_text(encoding="utf-8")
+    summary_text = (multiseed_dir / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME).read_text(encoding="utf-8")
     quick_text = (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).read_text(encoding="utf-8")
     assert "Ranking by champion rate and mean validation selection score" in summary_text
-    assert "Seeds planned: 6" in quick_text
-    assert "Seeds completed: 1" in quick_text
-    assert "Seeds executed: 1" in quick_text
-    assert "Seeds reused: 0" in quick_text
-    assert "Seeds failed: 1" in quick_text
-    assert not (multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME).exists()
+    assert "Runs: planned=6 | completed=1 | executed=1 | reused=0 | failed=1" in quick_text
+    assert "Champions found:" in quick_text
+    assert "Final verdict:" in quick_text
+    assert "Next action:" in quick_text
+    assert not (multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME).exists()
 
 
 def test_run_multiseed_experiment_reuses_completed_matching_execution(
@@ -1024,10 +1047,11 @@ def test_run_multiseed_experiment_reuses_completed_matching_execution(
     def fake_run_post_multiseed_analysis(**kwargs):
         multiseed_dir = kwargs["multiseed_dir"]
         (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).write_text(
-            "Seeds executed: 0\nSeeds reused: 1\n",
+            "Final verdict: WEAK_PROMISING\nNext action: Run broader external and audit batteries.\n",
             encoding="utf-8",
         )
-        (multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME).write_text(
+        (multiseed_dir / ANALYSIS_DIRNAME).mkdir(parents=True, exist_ok=True)
+        (multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME).write_text(
             "no champions",
             encoding="utf-8",
         )
@@ -1037,14 +1061,18 @@ def test_run_multiseed_experiment_reuses_completed_matching_execution(
             {
                 "summary_path": kwargs["summary_path"],
                 "quick_summary_path": multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME,
-                "champions_summary_path": multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME,
-                "champions_analysis_dir": multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME,
-                "external_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "external",
-                "audit_output_dir": multiseed_dir / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champions_summary_path": multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "analysis_dir": multiseed_dir / ANALYSIS_DIRNAME,
+                "debug_dir": multiseed_dir / DEBUG_DIRNAME,
+                "champions_analysis_dir": multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
                 "champion_count": 0,
                 "champion_analysis_status": "skipped_no_champions",
                 "external_evaluation_status": "skipped_no_champions",
                 "audit_evaluation_status": "skipped_no_champions",
+                "verdict": "WEAK_PROMISING",
+                "recommended_next_action": "Run broader external and audit batteries.",
             },
         )()
 
@@ -1079,8 +1107,8 @@ def test_run_multiseed_experiment_reuses_completed_matching_execution(
         (tmp_path / "multiseed_20260331_150000" / MULTISEED_QUICK_SUMMARY_NAME)
         .read_text(encoding="utf-8")
     )
-    assert "Seeds executed: 0" in quick_text
-    assert "Seeds reused: 1" in quick_text
+    assert "Final verdict: WEAK_PROMISING" in quick_text
+    assert "Next action:" in quick_text
 
 
 def test_failed_execution_is_not_reused_and_creates_fresh_attempt(
@@ -1148,14 +1176,18 @@ def test_failed_execution_is_not_reused_and_creates_fresh_attempt(
             {
                 "summary_path": kwargs["summary_path"],
                 "quick_summary_path": kwargs["multiseed_dir"] / MULTISEED_QUICK_SUMMARY_NAME,
-                "champions_summary_path": kwargs["multiseed_dir"] / MULTISEED_CHAMPIONS_SUMMARY_NAME,
-                "champions_analysis_dir": kwargs["multiseed_dir"] / CHAMPIONS_ANALYSIS_DIRNAME,
-                "external_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "external",
-                "audit_output_dir": kwargs["multiseed_dir"] / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champions_summary_path": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "analysis_dir": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME,
+                "debug_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME,
+                "champions_analysis_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
                 "champion_count": 0,
                 "champion_analysis_status": "skipped_no_champions",
                 "external_evaluation_status": "skipped_no_champions",
                 "audit_evaluation_status": "skipped_no_champions",
+                "verdict": "NO_EDGE_DETECTED",
+                "recommended_next_action": "Add or change signals/features before spending more time on reevaluation.",
             },
         )(),
     )

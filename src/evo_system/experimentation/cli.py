@@ -3,9 +3,7 @@ from pathlib import Path
 
 from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.multiseed_run import CONFIGS_DIR, run_multiseed_experiment
-from evo_system.experimentation.post_multiseed_analysis import DEFAULT_AUDIT_DIR
 from evo_system.experimentation.presets import get_available_preset_names
-from evo_system.experimentation.historical_run import DEFAULT_EXTERNAL_VALIDATION_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,14 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--external-validation-dir",
         type=Path,
-        default=DEFAULT_EXTERNAL_VALIDATION_DIR,
-        help="Direct directory containing post-multiseed external validation CSV datasets.",
+        default=None,
+        help="Optional direct directory overriding automatic catalog-scoped external validation datasets.",
     )
     parser.add_argument(
         "--audit-dir",
         type=Path,
-        default=DEFAULT_AUDIT_DIR,
-        help="Direct directory containing post-multiseed audit CSV datasets.",
+        default=None,
+        help="Optional direct directory overriding automatic catalog-scoped audit datasets.",
     )
     parser.add_argument(
         "--skip-post-multiseed-analysis",

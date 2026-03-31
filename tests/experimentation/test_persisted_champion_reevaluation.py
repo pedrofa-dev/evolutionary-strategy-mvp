@@ -218,9 +218,33 @@ def test_reevaluate_persisted_champions_exports_direct_external_and_audit_output
     assert row["external_source_type"] == "directory"
     assert row["external_dataset_catalog_id"] is None
     assert row["external_dataset_count"] == 1
+
+
+def test_reevaluation_report_hides_empty_external_ranking_for_audit_only(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "test_evolution_v2.db"
+    audit_dir = tmp_path / "audit"
+    output_dir = tmp_path / "out"
+
+    write_dataset_csv(audit_dir / "set_b" / "candles.csv")
+    seed_persistence_database(database_path)
+
+    result = reevaluate_persisted_champions(
+        db_path=database_path,
+        dataset_root=tmp_path,
+        config_name="config_a.json",
+        audit_dir=audit_dir,
+        output_dir=output_dir,
+    )
+
+    report_text = result["report_path"].read_text(encoding="utf-8")
+    row = result["rows"][0]
+    assert "Top 10 champions by external_validation_selection" not in report_text
+    assert "Top 10 champions by audit_selection" in report_text
     assert row["audit_source_type"] == "directory"
     assert row["audit_dataset_count"] == 1
-    assert row["external_validation_selection"] is not None
+    assert "external_validation_selection" not in row
     assert row["audit_selection"] is not None
 
     with sqlite3.connect(database_path) as connection:
@@ -237,9 +261,8 @@ def test_reevaluate_persisted_champions_exports_direct_external_and_audit_output
 
     assert evaluation_rows == [
         ("audit", "manual"),
-        ("external", "manual"),
     ]
-    assert member_count == 2
+    assert member_count == 1
 
 
 def test_reevaluate_persisted_champions_supports_manifest_external(

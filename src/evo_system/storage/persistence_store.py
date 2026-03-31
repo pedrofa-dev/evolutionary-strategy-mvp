@@ -612,6 +612,45 @@ class PersistenceStore:
                 tuple(parameters),
             )
 
+    def update_run_execution_artifacts(
+        self,
+        run_id: str,
+        *,
+        log_artifact_path: str | Path | None = None,
+        progress_snapshot_artifact_path: str | Path | None = None,
+        per_run_summary_artifact_path: str | Path | None = None,
+        summary_json: dict[str, Any] | None = None,
+    ) -> None:
+        assignments: list[str] = []
+        parameters: list[Any] = []
+
+        optional_updates = {
+            "log_artifact_path": to_repo_relative_path(log_artifact_path),
+            "progress_snapshot_artifact_path": to_repo_relative_path(progress_snapshot_artifact_path),
+            "per_run_summary_artifact_path": to_repo_relative_path(per_run_summary_artifact_path),
+            "summary_json": serialize_json(summary_json) if summary_json is not None else None,
+        }
+
+        for column_name, value in optional_updates.items():
+            if value is not None:
+                assignments.append(f"{column_name} = ?")
+                parameters.append(value)
+
+        if not assignments:
+            return
+
+        parameters.append(run_id)
+
+        with self.connect() as connection:
+            connection.execute(
+                f"""
+                UPDATE run_executions
+                SET {", ".join(assignments)}
+                WHERE run_id = ?
+                """,
+                tuple(parameters),
+            )
+
     def find_run_execution_by_fingerprint(self, execution_fingerprint: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             cursor = connection.execute(
@@ -656,6 +695,30 @@ class PersistenceStore:
             rows = cursor.fetchall()
 
         return [_row_to_dict(row, CHAMPIONS_JSON_COLUMNS) for row in rows]
+
+    def load_run_executions(
+        self,
+        *,
+        run_ids: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        query = """
+            SELECT *
+            FROM run_executions
+        """
+        parameters: list[Any] = []
+
+        if run_ids:
+            placeholders = ", ".join("?" for _ in run_ids)
+            query += f" WHERE run_id IN ({placeholders})"
+            parameters.extend(run_ids)
+
+        query += " ORDER BY id ASC"
+
+        with self.connect() as connection:
+            cursor = connection.execute(query, tuple(parameters))
+            rows = cursor.fetchall()
+
+        return [_row_to_dict(row, RUN_EXECUTIONS_JSON_COLUMNS) for row in rows]
 
     def save_champion(
         self,

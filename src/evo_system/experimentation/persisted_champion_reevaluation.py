@@ -497,6 +497,47 @@ def build_report_lines(
         "",
     ]
 
+    resolution_warnings = filters.get("resolution_warnings", [])
+    if resolution_warnings:
+        lines.extend(["Resolution warnings"])
+        for warning in resolution_warnings:
+            lines.append(f"  {warning}")
+        lines.append("")
+
+    for summary_key, label in (
+        ("external_scope_summary", "External scope"),
+        ("audit_scope_summary", "Audit scope"),
+    ):
+        scope_summary = filters.get(summary_key)
+        if not scope_summary:
+            continue
+        lines.extend(
+            [
+                label,
+                f"  catalog_scope_mode={scope_summary['catalog_scope_mode']}",
+                f"  dataset_root_scope_mode={scope_summary['dataset_root_scope_mode']}",
+                f"  catalog_ids={scope_summary['catalog_ids'] or 'none'}",
+                f"  dataset_roots={scope_summary['dataset_roots'] or 'none'}",
+            ]
+        )
+        if scope_summary.get("run_mappings"):
+            lines.append("  run mappings:")
+            for mapping in scope_summary["run_mappings"]:
+                lines.append(
+                    f"    run_id={mapping['run_id']} -> "
+                    f"catalog_id={mapping['dataset_catalog_id'] or 'none'} -> "
+                    f"dataset_root={mapping['dataset_root'] or 'none'}"
+                )
+        if scope_summary.get("fallbacks"):
+            lines.append("  dataset resolution fallbacks:")
+            for fallback in scope_summary["fallbacks"]:
+                lines.append(
+                    f"    run_id={fallback['run_id']} | "
+                    f"dataset_resolution_fallback_used=true | "
+                    f"reason={fallback['reason']}"
+                )
+        lines.append("")
+
     skipped_champions = filters.get("skipped_champions", [])
     if skipped_champions:
         lines.extend(["Skipped champions"])
@@ -523,13 +564,14 @@ def build_report_lines(
             ]
         )
 
-    lines.extend(
-        format_top_rows(
-            rows,
-            "external_validation_selection",
-            "Top 10 champions by external_validation_selection",
+    if external_evaluations_run > 0:
+        lines.extend(
+            format_top_rows(
+                rows,
+                "external_validation_selection",
+                "Top 10 champions by external_validation_selection",
+            )
         )
-    )
 
     if audit_evaluations_run > 0:
         lines.extend(
@@ -550,6 +592,8 @@ def build_reevaluation_rows(
     external_dataset_catalog_id: str | None = None,
     audit_dir: Path | None = None,
     audit_dataset_catalog_id: str | None = None,
+    external_sources_by_run_id: dict[str, dict[str, Any]] | None = None,
+    audit_sources_by_run_id: dict[str, dict[str, Any]] | None = None,
     fail_on_missing_datasets: bool = False,
 ) -> tuple[list[dict[str, Any]], int, int, list[dict[str, Any]]]:
     external_source, audit_source = resolve_reevaluation_sources(
@@ -564,13 +608,31 @@ def build_reevaluation_rows(
     external_dataset_paths = external_source["dataset_paths"]
     audit_dataset_paths = audit_source["dataset_paths"]
 
-    if not external_dataset_paths and not audit_dataset_paths:
+    automatic_external_paths = [
+        source_path
+        for source in (external_sources_by_run_id or {}).values()
+        for source_path in source.get("dataset_paths", [])
+    ]
+    automatic_audit_paths = [
+        source_path
+        for source in (audit_sources_by_run_id or {}).values()
+        for source_path in source.get("dataset_paths", [])
+    ]
+
+    if (
+        not external_dataset_paths
+        and not audit_dataset_paths
+        and not automatic_external_paths
+        and not automatic_audit_paths
+    ):
         raise ValueError(
             "No datasets available for reevaluation. Provide direct dataset directories and/or external/audit dataset catalog ids."
         )
 
     rows: list[dict[str, Any]] = []
     skipped_champions: list[dict[str, Any]] = []
+    external_rows_count = 0
+    audit_rows_count = 0
 
     for champion in champions:
         try:
@@ -578,10 +640,39 @@ def build_reevaluation_rows(
             metrics = champion.get("metrics", {})
             genome = Genome.from_dict(champion["genome"])
             agent = Agent.create(genome)
+            champion_run_id = champion["run_id"]
+            champion_external_source = (
+                external_source
+                if external_source["dataset_paths"]
+                else (external_sources_by_run_id or {}).get(
+                    champion_run_id,
+                    {
+                        "source_type": None,
+                        "dataset_catalog_id": None,
+                        "dataset_root": None,
+                        "dataset_paths": [],
+                    },
+                )
+            )
+            champion_audit_source = (
+                audit_source
+                if audit_source["dataset_paths"]
+                else (audit_sources_by_run_id or {}).get(
+                    champion_run_id,
+                    {
+                        "source_type": None,
+                        "dataset_catalog_id": None,
+                        "dataset_root": None,
+                        "dataset_paths": [],
+                    },
+                )
+            )
+            champion_external_dataset_paths = champion_external_source["dataset_paths"]
+            champion_audit_dataset_paths = champion_audit_source["dataset_paths"]
 
             row: dict[str, Any] = {
                 "champion_id": champion["id"],
-                "run_id": champion["run_id"],
+                "run_id": champion_run_id,
                 "generation_number": champion["generation_number"],
                 "mutation_seed": champion["mutation_seed"],
                 "config_name": champion["config_name"],
@@ -591,71 +682,85 @@ def build_reevaluation_rows(
                 "validation_drawdown": metrics.get("validation_drawdown"),
                 "validation_trades": metrics.get("validation_trades"),
                 "selection_gap": metrics.get("selection_gap"),
-                "external_source_type": external_source["source_type"],
-                "external_dataset_catalog_id": external_source["dataset_catalog_id"],
-                "external_dataset_count": len(external_dataset_paths),
+                "external_source_type": champion_external_source["source_type"],
+                "external_dataset_catalog_id": champion_external_source["dataset_catalog_id"],
+                "external_dataset_count": len(champion_external_dataset_paths),
                 "external_dataset_root": (
-                    str(external_source["dataset_root"])
-                    if external_source["dataset_root"] is not None
+                    str(champion_external_source["dataset_root"])
+                    if champion_external_source["dataset_root"] is not None
                     else None
                 ),
                 "external_dataset_set_name": (
-                    external_source["dataset_catalog_id"]
+                    champion_external_source["dataset_catalog_id"]
                     or (
-                        external_source["dataset_root"].name
-                        if external_source["dataset_root"] is not None
+                        champion_external_source["dataset_root"].name
+                        if champion_external_source["dataset_root"] is not None
                         else None
                     )
                 ),
+                "external_dataset_resolution_fallback_used": bool(
+                    champion_external_source.get("dataset_resolution_fallback_used")
+                ),
+                "external_dataset_resolution_fallback_reason": champion_external_source.get(
+                    "dataset_resolution_fallback_reason"
+                ),
                 "external_evaluation_type": "external",
-                "audit_source_type": audit_source["source_type"],
-                "audit_dataset_catalog_id": audit_source["dataset_catalog_id"],
-                "audit_dataset_count": len(audit_dataset_paths),
+                "audit_source_type": champion_audit_source["source_type"],
+                "audit_dataset_catalog_id": champion_audit_source["dataset_catalog_id"],
+                "audit_dataset_count": len(champion_audit_dataset_paths),
                 "audit_dataset_root": (
-                    str(audit_source["dataset_root"])
-                    if audit_source["dataset_root"] is not None
+                    str(champion_audit_source["dataset_root"])
+                    if champion_audit_source["dataset_root"] is not None
                     else None
                 ),
                 "audit_dataset_set_name": (
-                    audit_source["dataset_catalog_id"]
+                    champion_audit_source["dataset_catalog_id"]
                     or (
-                        audit_source["dataset_root"].name
-                        if audit_source["dataset_root"] is not None
+                        champion_audit_source["dataset_root"].name
+                        if champion_audit_source["dataset_root"] is not None
                         else None
                     )
+                ),
+                "audit_dataset_resolution_fallback_used": bool(
+                    champion_audit_source.get("dataset_resolution_fallback_used")
+                ),
+                "audit_dataset_resolution_fallback_reason": champion_audit_source.get(
+                    "dataset_resolution_fallback_reason"
                 ),
                 "audit_evaluation_type": "audit",
             }
 
-            if external_dataset_paths:
+            if champion_external_dataset_paths:
                 external_evaluation = evaluate_with_config_snapshot(
                     agent=agent,
-                    dataset_paths=external_dataset_paths,
+                    dataset_paths=champion_external_dataset_paths,
                     config_snapshot=config_snapshot,
                 )
                 row.update(
                     build_evaluation_metrics(
                         "external_validation",
                         external_evaluation,
-                        external_dataset_paths,
-                        external_source["dataset_root"] or Path("."),
+                        champion_external_dataset_paths,
+                        champion_external_source["dataset_root"] or Path("."),
                     )
                 )
+                external_rows_count += 1
 
-            if audit_dataset_paths:
+            if champion_audit_dataset_paths:
                 audit_evaluation = evaluate_with_config_snapshot(
                     agent=agent,
-                    dataset_paths=audit_dataset_paths,
+                    dataset_paths=champion_audit_dataset_paths,
                     config_snapshot=config_snapshot,
                 )
                 row.update(
                     build_evaluation_metrics(
                         "audit",
                         audit_evaluation,
-                        audit_dataset_paths,
-                        audit_source["dataset_root"] or Path("."),
+                        champion_audit_dataset_paths,
+                        champion_audit_source["dataset_root"] or Path("."),
                     )
                 )
+                audit_rows_count += 1
 
             rows.append(row)
         except Exception as exc:
@@ -670,8 +775,8 @@ def build_reevaluation_rows(
 
     return (
         rows,
-        len(rows) if external_dataset_paths else 0,
-        len(rows) if audit_dataset_paths else 0,
+        external_rows_count,
+        audit_rows_count,
         skipped_champions,
     )
 
@@ -682,14 +787,20 @@ def write_reevaluation_outputs(
     filters: dict[str, Any],
     external_evaluations_run: int,
     audit_evaluations_run: int,
+    *,
+    report_name: str = "reevaluation_report.txt",
+    json_name: str = "reevaluated_champions.json",
+    csv_name: str = "reevaluated_champions.csv",
+    include_csv: bool = True,
 ) -> dict[str, Any]:
     output_path.mkdir(parents=True, exist_ok=True)
-    csv_path = output_path / "reevaluated_champions.csv"
-    json_path = output_path / "reevaluated_champions.json"
-    report_path = output_path / "reevaluation_report.txt"
+    csv_path = output_path / csv_name if include_csv else None
+    json_path = output_path / json_name
+    report_path = output_path / report_name
     per_champion_dir = output_path / "champions"
 
-    export_flat_csv(rows, csv_path)
+    if csv_path is not None:
+        export_flat_csv(rows, csv_path)
     json_path.write_text(
         json.dumps(rows, indent=2, ensure_ascii=False),
         encoding="utf-8",

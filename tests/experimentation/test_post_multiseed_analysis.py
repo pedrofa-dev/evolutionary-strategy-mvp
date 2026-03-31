@@ -2,10 +2,14 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
 from evo_system.domain.genome import Genome
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.post_multiseed_analysis import (
+    ANALYSIS_DIRNAME,
     CHAMPIONS_ANALYSIS_DIRNAME,
+    DEBUG_DIRNAME,
     MULTISEED_CHAMPIONS_SUMMARY_NAME,
     MULTISEED_QUICK_SUMMARY_NAME,
     POST_MULTISEED_VALIDATION_DIRNAME,
@@ -82,15 +86,18 @@ def seed_new_persistence_context(
     multiseed_run_uid: str,
     run_id: str,
     config_name: str,
+    dataset_root: Path | None = None,
+    include_dataset_root_context: bool = True,
 ) -> int:
     store = PersistenceStore(database_path)
     store.initialize()
+    resolved_dataset_root = dataset_root or Path("data/datasets")
     multiseed_run_id = store.save_multiseed_run(
         multiseed_run_uid=multiseed_run_uid,
         configs_dir_snapshot={"configs": [config_name]},
         requested_parallel_workers=1,
         effective_parallel_workers=1,
-        dataset_root="data/datasets",
+        dataset_root=resolved_dataset_root,
         runs_planned=1,
         runs_completed=1,
         runs_reused=0,
@@ -121,8 +128,18 @@ def seed_new_persistence_context(
         effective_seed=42,
         dataset_catalog_id="core_1h_spot",
         dataset_signature="sig-001",
-        dataset_context_json={"train_count": 1, "validation_count": 1},
+        dataset_context_json={
+            "train_count": 1,
+            "validation_count": 1,
+            **(
+                {"resolved_dataset_root": str(resolved_dataset_root)}
+                if include_dataset_root_context
+                else {}
+            ),
+        },
         status="completed",
+        requested_dataset_root=resolved_dataset_root if include_dataset_root_context else None,
+        resolved_dataset_root=resolved_dataset_root if include_dataset_root_context else None,
     )
     store.save_champion(
         champion_uid=f"champion-{run_id}",
@@ -162,8 +179,9 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
     persistence_db_path = tmp_path / "evolution_v2.db"
     config_path = tmp_path / "run_a.json"
     summary_path = multiseed_dir / "multiseed_run_summary.txt"
-    external_dir = tmp_path / "external_validation"
-    audit_dir = tmp_path / "audit"
+    dataset_root = tmp_path / "data" / "datasets"
+    external_dir = dataset_root / "core_1h_spot" / "external"
+    audit_dir = dataset_root / "core_1h_spot" / "audit"
 
     write_config(config_path)
     summary_path.write_text("summary", encoding="utf-8")
@@ -172,6 +190,7 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
         multiseed_run_uid=multiseed_dir.name,
         run_id="run-001",
         config_name="run_a.json",
+        dataset_root=dataset_root,
     )
     write_dataset(external_dir / "set_a" / "candles.csv")
     write_dataset(audit_dir / "set_b" / "candles.csv")
@@ -191,8 +210,6 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
         dataset_root_label="data\\datasets",
         persistence_db_path=persistence_db_path,
         multiseed_run_id=multiseed_run_id,
-        external_validation_dir=external_dir,
-        audit_dir=audit_dir,
         failures=[],
         seeds_planned=1,
         seeds_executed=1,
@@ -201,22 +218,34 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
 
     assert result.summary_path == summary_path
     assert result.quick_summary_path == multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME
-    assert result.champions_summary_path == multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
-    assert (multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv").exists()
+    assert result.champions_summary_path == multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME
+    assert result.analysis_dir == multiseed_dir / ANALYSIS_DIRNAME
+    assert result.debug_dir == multiseed_dir / DEBUG_DIRNAME
+    assert (multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv").exists()
     assert (
         multiseed_dir
+        / DEBUG_DIRNAME
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "external"
+        / "external_reevaluation_report.txt"
+    ).exists()
+    assert (
+        multiseed_dir
+        / DEBUG_DIRNAME
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "audit"
+        / "audit_reevaluation_report.txt"
+    ).exists()
+    assert not (
+        multiseed_dir
+        / DEBUG_DIRNAME
         / POST_MULTISEED_VALIDATION_DIRNAME
         / "external"
         / "reevaluated_champions.csv"
     ).exists()
     assert (
         multiseed_dir
-        / POST_MULTISEED_VALIDATION_DIRNAME
-        / "audit"
-        / "reevaluated_champions.csv"
-    ).exists()
-    assert (
-        multiseed_dir
+        / DEBUG_DIRNAME
         / POST_MULTISEED_VALIDATION_DIRNAME
         / "external"
         / "champions"
@@ -228,17 +257,25 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
     ).read_text(encoding="utf-8")
     external_json = (
         multiseed_dir
+        / DEBUG_DIRNAME
         / POST_MULTISEED_VALIDATION_DIRNAME
         / "external"
-        / "reevaluated_champions.json"
+        / "external_reevaluated_champions.json"
     ).read_text(encoding="utf-8")
-    assert "Seeds planned: 1" in quick_summary
-    assert "Seeds completed: 1" in quick_summary
-    assert "Seeds executed: 1" in quick_summary
-    assert "Seeds reused: 0" in quick_summary
-    assert "Seeds failed: 0" in quick_summary
+    combined_summary = (
+        multiseed_dir
+        / DEBUG_DIRNAME
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "post_multiseed_reevaluation_summary.txt"
+    ).read_text(encoding="utf-8")
+    assert "Runs: planned=1 | completed=1 | executed=1 | reused=0 | failed=0" in quick_summary
+    assert "Champions found: 1" in quick_summary
+    assert "Final verdict:" in quick_summary
+    assert "Next action:" in quick_summary
     assert '"external_dataset_root"' in external_json
     assert '"external_evaluation_type": "external"' in external_json
+    assert '"external_dataset_catalog_id": "core_1h_spot"' in external_json
+    assert "catalog_scope_mode=single_catalog" in combined_summary
     assert result.champion_count == 1
     assert result.champion_analysis_status == "completed"
     assert result.external_evaluation_status == "completed"
@@ -327,22 +364,21 @@ def test_run_post_multiseed_analysis_handles_no_champions_and_missing_datasets(t
         multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME
     ).read_text(encoding="utf-8")
     champions_summary = (
-        multiseed_dir / MULTISEED_CHAMPIONS_SUMMARY_NAME
+        multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME
     ).read_text(encoding="utf-8")
     external_report = (
         multiseed_dir
+        / DEBUG_DIRNAME
         / POST_MULTISEED_VALIDATION_DIRNAME
         / "external"
-        / "reevaluation_report.txt"
+        / "external_reevaluation_report.txt"
     ).read_text(encoding="utf-8")
 
     assert "seed 102: boom" in quick_summary
-    assert "Seeds planned: 2" in quick_summary
-    assert "Seeds completed: 1" in quick_summary
-    assert "Seeds executed: 1" in quick_summary
-    assert "Seeds reused: 0" in quick_summary
-    assert "Seeds failed: 1" in quick_summary
-    assert "No persisted champions were produced by this multiseed execution." in champions_summary
+    assert "Runs: planned=2 | completed=1 | executed=1 | reused=0 | failed=1" in quick_summary
+    assert "Champions found: 0" in quick_summary
+    assert "Final verdict: NO_EDGE_DETECTED" in quick_summary
+    assert "Verdict: NO_EDGE_DETECTED" in champions_summary
     assert "No persisted champions were found for this multiseed execution." in external_report
     assert result.champion_count == 0
     assert result.champion_analysis_status == "skipped_no_champions"
@@ -370,17 +406,20 @@ def test_run_post_multiseed_analysis_filters_only_multiseed_run_ids(tmp_path: Pa
 
     write_config(config_path)
     summary_path.write_text("summary", encoding="utf-8")
+    dataset_root = tmp_path / "data" / "datasets"
     seed_new_persistence_context(
         persistence_db_path,
         multiseed_run_uid="multiseed-run-001",
         run_id="run-001",
         config_name="run_a.json",
+        dataset_root=dataset_root,
     )
     seed_new_persistence_context(
         persistence_db_path,
         multiseed_run_uid="multiseed-run-999",
         run_id="run-999",
         config_name="run_a.json",
+        dataset_root=dataset_root,
     )
 
     run_post_multiseed_analysis(
@@ -397,8 +436,6 @@ def test_run_post_multiseed_analysis_filters_only_multiseed_run_ids(tmp_path: Pa
         ],
         dataset_root_label="data\\datasets",
         persistence_db_path=persistence_db_path,
-        external_validation_dir=tmp_path / "missing_external",
-        audit_dir=tmp_path / "missing_audit",
         failures=[],
         seeds_planned=1,
         seeds_executed=1,
@@ -406,7 +443,7 @@ def test_run_post_multiseed_analysis_filters_only_multiseed_run_ids(tmp_path: Pa
     )
 
     champions_csv = (
-        multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv"
+        multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv"
     ).read_text(encoding="utf-8")
     assert "run-001" in champions_csv
     assert "run-999" not in champions_csv
@@ -420,7 +457,8 @@ def test_run_post_multiseed_analysis_includes_champions_from_reused_summaries(
     persistence_db_path = tmp_path / "evolution_v2.db"
     config_path = tmp_path / "run_a.json"
     summary_path = multiseed_dir / "multiseed_run_summary.txt"
-    external_dir = tmp_path / "external_validation"
+    dataset_root = tmp_path / "data" / "datasets"
+    external_dir = dataset_root / "core_1h_spot" / "external"
 
     write_config(config_path)
     summary_path.write_text("summary", encoding="utf-8")
@@ -430,6 +468,7 @@ def test_run_post_multiseed_analysis_includes_champions_from_reused_summaries(
         multiseed_run_uid="multiseed-run-001",
         run_id="run-001",
         config_name="run_a.json",
+        dataset_root=dataset_root,
     )
 
     reused_summary = build_summary(
@@ -449,8 +488,6 @@ def test_run_post_multiseed_analysis_includes_champions_from_reused_summaries(
         run_summaries=[reused_summary],
         dataset_root_label="data\\datasets",
         persistence_db_path=persistence_db_path,
-        external_validation_dir=external_dir,
-        audit_dir=tmp_path / "missing_audit",
         failures=[],
         seeds_planned=1,
         seeds_executed=0,
@@ -459,6 +496,191 @@ def test_run_post_multiseed_analysis_includes_champions_from_reused_summaries(
 
     assert result.champion_count == 1
     champions_csv = (
-        multiseed_dir / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv"
+        multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME / "champions_flat.csv"
     ).read_text(encoding="utf-8")
     assert "run-001" in champions_csv
+
+
+def test_run_post_multiseed_analysis_reports_not_run_when_catalog_scoped_datasets_are_missing(
+    tmp_path: Path,
+) -> None:
+    multiseed_dir = tmp_path / "multiseed_20260330_140000"
+    multiseed_dir.mkdir(parents=True, exist_ok=True)
+    persistence_db_path = tmp_path / "evolution_v2.db"
+    config_path = tmp_path / "run_a.json"
+    summary_path = multiseed_dir / "multiseed_run_summary.txt"
+    dataset_root = tmp_path / "data" / "datasets"
+
+    write_config(config_path)
+    summary_path.write_text("summary", encoding="utf-8")
+    seed_new_persistence_context(
+        persistence_db_path,
+        multiseed_run_uid="multiseed-run-002",
+        run_id="run-002",
+        config_name="run_a.json",
+        dataset_root=dataset_root,
+    )
+
+    result = run_post_multiseed_analysis(
+        multiseed_dir=multiseed_dir,
+        summary_path=summary_path,
+        run_summaries=[
+            build_summary(
+                tmp_path,
+                config_name="run_a.json",
+                run_id="run-002",
+                selection=1.2,
+                profit=0.03,
+            )
+        ],
+        dataset_root_label="data\\datasets",
+        persistence_db_path=persistence_db_path,
+        failures=[],
+        seeds_planned=1,
+        seeds_executed=1,
+        seeds_reused=0,
+    )
+
+    quick_summary = (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).read_text(encoding="utf-8")
+    external_report = (
+        multiseed_dir
+        / DEBUG_DIRNAME
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "external"
+        / "external_reevaluation_report.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "External: NOT_RUN" in quick_summary
+    assert "Audit: NOT_RUN" in quick_summary
+    assert "Final verdict: WEAK_PROMISING" in quick_summary
+    assert "No automatic catalog-scoped external datasets were found" in external_report
+    assert result.external_evaluation_status == "not_run"
+    assert result.audit_evaluation_status == "not_run"
+
+
+def test_run_post_multiseed_analysis_reports_mixed_catalog_scope(
+    tmp_path: Path,
+) -> None:
+    multiseed_dir = tmp_path / "multiseed_20260330_150000"
+    multiseed_dir.mkdir(parents=True, exist_ok=True)
+    persistence_db_path = tmp_path / "evolution_v2.db"
+    summary_path = multiseed_dir / "multiseed_run_summary.txt"
+    dataset_root_a = tmp_path / "data" / "datasets_a"
+    dataset_root_b = tmp_path / "data" / "datasets_b"
+
+    summary_path.write_text("summary", encoding="utf-8")
+    write_dataset(dataset_root_a / "core_1h_spot" / "external" / "set_a" / "candles.csv")
+    write_dataset(dataset_root_b / "alt_1h_spot" / "external" / "set_b" / "candles.csv")
+    seed_new_persistence_context(
+        persistence_db_path,
+        multiseed_run_uid="multiseed-run-a",
+        run_id="run-101",
+        config_name="run_a.json",
+        dataset_root=dataset_root_a,
+    )
+    seed_new_persistence_context(
+        persistence_db_path,
+        multiseed_run_uid="multiseed-run-b",
+        run_id="run-202",
+        config_name="run_b.json",
+        dataset_root=dataset_root_b,
+    )
+
+    store = PersistenceStore(persistence_db_path)
+    store.initialize()
+    with store.connect() as connection:
+        connection.execute(
+            "UPDATE run_executions SET dataset_catalog_id = ? WHERE run_id = ?",
+            ("alt_1h_spot", "run-202"),
+        )
+        connection.execute(
+            "UPDATE champions SET dataset_catalog_id = ? WHERE run_id = ?",
+            ("alt_1h_spot", "run-202"),
+        )
+
+    run_post_multiseed_analysis(
+        multiseed_dir=multiseed_dir,
+        summary_path=summary_path,
+        run_summaries=[
+            build_summary(tmp_path, config_name="run_a.json", run_id="run-101", selection=1.2, profit=0.03),
+            build_summary(tmp_path, config_name="run_b.json", run_id="run-202", selection=1.1, profit=0.02),
+        ],
+        dataset_root_label="data\\datasets",
+        persistence_db_path=persistence_db_path,
+        failures=[],
+        seeds_planned=2,
+        seeds_executed=2,
+        seeds_reused=0,
+    )
+
+    external_report = (
+        multiseed_dir
+        / DEBUG_DIRNAME
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "external"
+        / "external_reevaluation_report.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "catalog_scope_mode=mixed_catalogs" in external_report
+    assert "dataset_root_scope_mode=mixed_roots" in external_report
+    assert "run_id=run-101 -> catalog_id=core_1h_spot" in external_report
+    assert "run_id=run-202 -> catalog_id=alt_1h_spot" in external_report
+
+
+def test_run_post_multiseed_analysis_warns_when_default_dataset_root_fallback_is_used(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    multiseed_dir = tmp_path / "multiseed_20260330_160000"
+    multiseed_dir.mkdir(parents=True, exist_ok=True)
+    persistence_db_path = tmp_path / "evolution_v2.db"
+    summary_path = multiseed_dir / "multiseed_run_summary.txt"
+    external_dir = DEFAULT_DATASET_ROOT / "core_1h_spot" / "external"
+
+    summary_path.write_text("summary", encoding="utf-8")
+    write_dataset(external_dir / "set_a" / "candles.csv")
+    seed_new_persistence_context(
+        persistence_db_path,
+        multiseed_run_uid="multiseed-run-fallback",
+        run_id="run-303",
+        config_name="run_fallback.json",
+        include_dataset_root_context=False,
+    )
+
+    try:
+        run_post_multiseed_analysis(
+            multiseed_dir=multiseed_dir,
+            summary_path=summary_path,
+            run_summaries=[
+                build_summary(tmp_path, config_name="run_fallback.json", run_id="run-303", selection=1.0, profit=0.02)
+            ],
+            dataset_root_label="data\\datasets",
+            persistence_db_path=persistence_db_path,
+            failures=[],
+            seeds_planned=1,
+            seeds_executed=1,
+            seeds_reused=0,
+        )
+    finally:
+        if external_dir.exists():
+            for path in sorted((DEFAULT_DATASET_ROOT / "core_1h_spot").rglob("*"), reverse=True):
+                if path.is_file():
+                    path.unlink(missing_ok=True)
+                else:
+                    path.rmdir()
+            catalog_root = DEFAULT_DATASET_ROOT / "core_1h_spot"
+            if catalog_root.exists():
+                catalog_root.rmdir()
+
+    captured = capsys.readouterr()
+    external_report = (
+        multiseed_dir
+        / DEBUG_DIRNAME
+        / POST_MULTISEED_VALIDATION_DIRNAME
+        / "external"
+        / "external_reevaluation_report.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "fell back to data\\datasets" in captured.out
+    assert "dataset_resolution_fallback_used=true" in external_report
+    assert "missing_persisted_dataset_root_context" in external_report

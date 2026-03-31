@@ -1,3 +1,5 @@
 Canonical project overview now lives in `README.md`.
 
-This file is kept only for compatibility with local workflows that still open `README.txt`.
+Canonical internal guidance now lives under `docs/`.
+
+This file is only a compatibility pointer for local workflows that still open `README.txt`.
