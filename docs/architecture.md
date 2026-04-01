@@ -22,6 +22,8 @@ The codebase is intentionally split into a small set of responsibilities:
 
 - `src/evo_system/domain`
   - Core entities such as `Genome`, `Agent`, `AgentEvaluation`, and run summaries.
+  - The active genome layout is policy v2.1, organized around `EntryContextGene`, `EntryTriggerGene`, `ExitPolicyGene`, and `TradeControlGene`.
+  - New campaigns use policy v2.1 semantics only. Legacy threshold-based fields remain only for historical compatibility and persisted old snapshots.
 - `src/evo_system/environment`
   - Dataset loading and historical environment construction.
 - `src/evo_system/evaluation`
@@ -98,6 +100,51 @@ These architectural rules are intentional:
 - external and audit validation must not influence training optimization
 - missing evidence is different from negative evidence
 - reporting should reduce ambiguity rather than create it
+
+## Active And Legacy Policy Lanes
+
+Policy v2.1 is now the active research lane.
+
+Its genome blocks are:
+
+- `EntryContextGene`
+  - entry-context gate before any trigger is considered
+- `EntryTriggerGene`
+  - weighted entry conviction and structural trigger rules
+- `ExitPolicyGene`
+  - exit thresholds and holding-policy rules
+- `TradeControlGene`
+  - cooldown and holding constraints
+
+The current policy v2.1 signal set is intentionally small and portable. It is organized around reusable market families rather than platform-specific indicators:
+
+- Trend
+  - `trend_strength_medium`
+  - `trend_strength_long`
+- Momentum
+  - `momentum_short`
+  - `momentum_persistence`
+- Breakout
+  - `breakout_strength_medium`
+- Range
+  - `range_position_medium`
+- Volatility
+  - `realized_volatility_medium`
+  - `volatility_ratio_short_long`
+
+These features are chosen to keep the runtime understandable and portable to future real environments. They are not meant to mirror a specific indicator catalog from a trading platform.
+
+The current active config family varies only trigger conviction:
+
+- conservative
+- baseline
+- permissive
+
+That family changes only `entry_score_threshold` and `min_positive_families`. It does not change signals, scoring, datasets, or architecture.
+
+Legacy flat policy fields remain in the runtime for compatibility with historical configs, persisted champions, and reevaluation workflows.
+
+Legacy should not be removed yet. Removal should wait until policy v2.1 has shown stable usefulness across multiple campaigns and legacy is no longer needed for reproducibility.
 
 ## Artifact Philosophy
 

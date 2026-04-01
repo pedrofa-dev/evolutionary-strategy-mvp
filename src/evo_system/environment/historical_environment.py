@@ -61,6 +61,9 @@ class HistoricalEnvironment:
     def get_episode_diagnostics(self, agent: Agent) -> dict[str, float | int]:
         in_position = False
         entry_price = 0.0
+        entry_index: int | None = None
+        last_closed_index: int | None = None
+        consecutive_entry_signal_bars = 0
         profit = 0.0
         trades = 0
         total_cost = 0.0
@@ -90,9 +93,10 @@ class HistoricalEnvironment:
         for index, candle in enumerate(self.candles):
             normalized_momentum = self._normalized_momentum_series[index]
             normalized_trend = trend_series[index]
-            trigger_score = self._get_trigger_score(
-                agent=agent,
+            signal_features = self._get_policy_v21_signal_features(
                 index=index,
+                normalized_momentum=normalized_momentum,
+                normalized_trend=normalized_trend,
                 ret_short_series=ret_short_series,
                 ret_mid_series=ret_mid_series,
                 ma_distance_series=ma_distance_series,
@@ -103,37 +107,130 @@ class HistoricalEnvironment:
                 trend_long_series=trend_long_series,
                 breakout_series=breakout_series,
             )
-            setup_ok = self._is_setup_ok(
-                agent=agent,
-                index=index,
-                normalized_momentum=normalized_momentum,
-                normalized_trend=normalized_trend,
-                trend_long_series=trend_long_series,
-                breakout_series=breakout_series,
-                realized_volatility_series=realized_volatility_series,
+            signal_families = self._get_signal_families(
+                signal_features=signal_features,
             )
+            regime_filter_ok = (
+                not self.regime_filter_enabled
+                or self._passes_regime_filter(
+                    trend_long=signal_features["trend_strength_long"],
+                    breakout=signal_features["breakout_strength_medium"],
+                    realized_volatility=signal_features["realized_volatility_medium"],
+                )
+            )
+            if genome.policy_v2_enabled:
+                trigger_score = self._get_entry_trigger_score(agent.genome, signal_families)
+                context_ok = self._passes_entry_context(agent.genome, signal_families)
+                trigger_ok = self._passes_entry_trigger(
+                    agent.genome,
+                    signal_families,
+                    trigger_score,
+                )
+                entry_signal_ok = regime_filter_ok and context_ok and trigger_ok
+                required_confirmation_bars = 1
+            else:
+                setup_ok = self._is_legacy_setup_ok(
+                    agent=agent,
+                    index=index,
+                    normalized_momentum=normalized_momentum,
+                    normalized_trend=normalized_trend,
+                    trend_long_series=trend_long_series,
+                    breakout_series=breakout_series,
+                    realized_volatility_series=realized_volatility_series,
+                )
+                trigger_score = self._get_legacy_trigger_score(
+                    agent=agent,
+                    index=index,
+                    ret_short_series=ret_short_series,
+                    ret_mid_series=ret_mid_series,
+                    ma_distance_series=ma_distance_series,
+                    range_position_series=range_position_series,
+                    vol_ratio_series=vol_ratio_series,
+                    trend_strength_series=trend_strength_series,
+                    realized_volatility_series=realized_volatility_series,
+                    trend_long_series=trend_long_series,
+                    breakout_series=breakout_series,
+                )
+                context_ok = True
+                trigger_ok = (
+                    trigger_score
+                    >= genome.threshold_open + genome.entry_score_margin
+                )
+                entry_signal_ok = setup_ok and trigger_ok
+                required_confirmation_bars = genome.entry_confirmation_bars
 
             if not in_position:
-                should_open = setup_ok and trigger_score >= genome.threshold_open
+                if entry_signal_ok:
+                    consecutive_entry_signal_bars += 1
+                else:
+                    consecutive_entry_signal_bars = 0
+
+                cooldown_ok = self._passes_entry_cooldown(
+                    current_index=index,
+                    last_closed_index=last_closed_index,
+                    cooldown_bars=genome.trade_control.cooldown_bars,
+                    reentry_block_bars=genome.trade_control.reentry_block_bars,
+                )
+                should_open = (
+                    entry_signal_ok
+                    and consecutive_entry_signal_bars >= required_confirmation_bars
+                    and cooldown_ok
+                )
 
                 if should_open:
                     in_position = True
                     entry_price = candle.close
+                    entry_index = index
                     trades += 1
+                    consecutive_entry_signal_bars = 0
 
             else:
+                consecutive_entry_signal_bars = 0
                 trade_return = self._get_trade_return(entry_price, candle.close)
+                holding_bars = 0 if entry_index is None else index - entry_index
 
-                hit_stop_loss = trade_return <= -genome.stop_loss
-                hit_take_profit = trade_return >= genome.take_profit
+                if genome.policy_v2_enabled:
+                    hit_stop_loss = trade_return <= -genome.exit_policy.stop_loss_pct
+                    hit_take_profit = trade_return >= genome.exit_policy.take_profit_pct
 
-                should_close_by_score = trigger_score <= genome.threshold_close
-                should_close = should_close_by_score
-
-                if genome.use_exit_momentum:
-                    should_close = should_close or (
-                        normalized_momentum <= genome.exit_momentum_threshold
+                    min_holding_ok = holding_bars >= genome.trade_control.min_holding_bars
+                    should_close_by_score = (
+                        min_holding_ok
+                        and trigger_score <= genome.exit_policy.exit_score_threshold
                     )
+                    should_close_on_reversal = (
+                        min_holding_ok
+                        and genome.exit_policy.exit_on_signal_reversal
+                        and (
+                            signal_families["trend"] < 0.0
+                            or signal_families["momentum"] < 0.0
+                            or trigger_score < 0.0
+                        )
+                    )
+                    should_close_on_holding_limit = (
+                        genome.exit_policy.max_holding_bars > 0
+                        and holding_bars >= genome.exit_policy.max_holding_bars
+                    )
+                    should_close = (
+                        should_close_by_score
+                        or should_close_on_reversal
+                        or should_close_on_holding_limit
+                    )
+
+                    if genome.use_exit_momentum:
+                        should_close = should_close or (
+                            min_holding_ok
+                            and normalized_momentum <= genome.exit_momentum_threshold
+                        )
+                else:
+                    hit_stop_loss = trade_return <= -genome.stop_loss
+                    hit_take_profit = trade_return >= genome.take_profit
+                    should_close = trigger_score <= genome.threshold_close
+
+                    if genome.use_exit_momentum:
+                        should_close = should_close or (
+                            normalized_momentum <= genome.exit_momentum_threshold
+                        )
 
                 if hit_stop_loss or hit_take_profit or should_close:
                     net_trade_profit, trade_cost = self._close_trade(
@@ -144,6 +241,8 @@ class HistoricalEnvironment:
                     total_cost += trade_cost
                     in_position = False
                     entry_price = 0.0
+                    entry_index = None
+                    last_closed_index = index
 
             unrealized = 0.0
             if in_position:
@@ -179,6 +278,21 @@ class HistoricalEnvironment:
         net_profit = gross_profit - trade_cost
         return net_profit, trade_cost
 
+    @staticmethod
+    def _passes_entry_cooldown(
+        *,
+        current_index: int,
+        last_closed_index: int | None,
+        cooldown_bars: int,
+        reentry_block_bars: int,
+    ) -> bool:
+        required_bars = max(cooldown_bars, reentry_block_bars)
+        if required_bars <= 0 or last_closed_index is None:
+            return True
+
+        bars_since_close = current_index - last_closed_index - 1
+        return bars_since_close >= required_bars
+
     def _passes_regime_filter(
         self,
         trend_long: float,
@@ -197,7 +311,7 @@ class HistoricalEnvironment:
 
         return True
 
-    def _is_setup_ok(
+    def _is_legacy_setup_ok(
         self,
         agent: Agent,
         index: int,
@@ -227,7 +341,232 @@ class HistoricalEnvironment:
 
         return setup_ok
 
-    def _get_trigger_score(
+    def _passes_entry_context(
+        self,
+        genome,
+        signal_families: dict[str, float],
+    ) -> bool:
+        # Entry context is a hard gate. It exists to reject markets that are
+        # structurally wrong for the policy before trigger conviction is even
+        # considered.
+        context = genome.entry_context
+
+        return (
+            signal_families["trend"] >= context.min_trend_strength
+            and signal_families["breakout"] >= context.min_breakout_strength
+            and signal_families["realized_volatility"] >= context.min_realized_volatility
+            and signal_families["realized_volatility"] <= context.max_realized_volatility
+            and signal_families["range"] >= context.allowed_range_position_min
+            and signal_families["range"] <= context.allowed_range_position_max
+        )
+
+    def _passes_entry_trigger(
+        self,
+        genome,
+        signal_families: dict[str, float],
+        trigger_score: float,
+    ) -> bool:
+        # Entry trigger expresses conviction after the context gate passes. It
+        # combines weighted family scores with simple structural rules to avoid
+        # one-dimensional spike entries.
+        if not self._has_trigger_weights(genome):
+            return genome.entry_trigger.entry_score_threshold <= 0.0
+
+        positive_family_count = sum(
+            1
+            for key in ("trend", "momentum", "breakout", "range", "volatility")
+            if signal_families[key] > 0.0
+        )
+        trend_or_breakout_ok = (
+            not genome.entry_trigger.require_trend_or_breakout
+            or signal_families["trend"] > 0.0
+            or signal_families["breakout"] > 0.0
+        )
+
+        return (
+            trigger_score >= genome.entry_trigger.entry_score_threshold
+            and positive_family_count >= genome.entry_trigger.min_positive_families
+            and trend_or_breakout_ok
+        )
+
+    def _get_policy_v21_signal_features(
+        self,
+        *,
+        index: int,
+        normalized_momentum: float,
+        normalized_trend: float,
+        ret_short_series: list[float],
+        ret_mid_series: list[float],
+        ma_distance_series: list[float],
+        range_position_series: list[float],
+        vol_ratio_series: list[float],
+        trend_strength_series: list[float],
+        realized_volatility_series: list[float],
+        trend_long_series: list[float],
+        breakout_series: list[float],
+    ) -> dict[str, float]:
+        # Measures medium-term directional strength across moving-average
+        # structure.
+        # Trading meaning: trend-following feature.
+        # Interpretation: higher values suggest a more sustained directional move.
+        # Limitation: can lag during sharp reversals.
+        trend_strength_medium = self._clamp(
+            (
+                ma_distance_series[index]
+                + trend_strength_series[index]
+                + self._clamp(normalized_trend * 10.0, -1.0, 1.0)
+            )
+            / 3.0,
+            -1.0,
+            1.0,
+        )
+
+        # Measures longer-horizon directional structure.
+        # Trading meaning: broad trend-alignment feature.
+        # Interpretation: higher values suggest the move persists beyond the local burst.
+        # Limitation: reacts slowly and can understate fresh reversals.
+        trend_strength_long = trend_long_series[index]
+
+        # Measures short-horizon directional impulse.
+        # Trading meaning: fast momentum feature.
+        # Interpretation: higher values suggest recent price acceleration.
+        # Limitation: noisy and sensitive to single-bar spikes.
+        momentum_short = self._clamp(
+            (
+                ret_short_series[index]
+                + self._clamp(normalized_momentum * 10.0, -1.0, 1.0)
+            )
+            / 2.0,
+            -1.0,
+            1.0,
+        )
+
+        # Measures whether momentum is persisting beyond the shortest lookback.
+        # Trading meaning: persistence feature for directional follow-through.
+        # Interpretation: higher values suggest the move is not just a one-bar shock.
+        # Limitation: still weak in choppy regimes with alternating bursts.
+        momentum_persistence = ret_mid_series[index]
+
+        # Measures distance beyond the recent trading range.
+        # Trading meaning: breakout feature.
+        # Interpretation: higher values suggest expansion beyond the medium horizon range.
+        # Limitation: false breakouts can still score strongly.
+        breakout_strength_medium = breakout_series[index]
+
+        # Measures where price sits inside the recent range.
+        # Trading meaning: contextual range feature.
+        # Interpretation: higher values suggest price is closer to the upper edge of the medium range.
+        # Limitation: weak as a standalone signal during strong trends.
+        range_position_medium = range_position_series[index]
+
+        # Measures realized volatility over the medium horizon.
+        # Trading meaning: market speed and noise feature.
+        # Interpretation: higher values suggest faster and less stable price movement.
+        # Limitation: does not distinguish favorable expansion from hostile noise.
+        realized_volatility_medium = realized_volatility_series[index]
+
+        # Measures the ratio between short and long realized volatility.
+        # Trading meaning: volatility regime-shift feature.
+        # Interpretation: higher values suggest short-term volatility is elevated versus the longer baseline.
+        # Limitation: can stay elevated after the best expansion window has already passed.
+        volatility_ratio_short_long = vol_ratio_series[index]
+
+        return {
+            "trend_strength_medium": trend_strength_medium,
+            "trend_strength_long": trend_strength_long,
+            "momentum_short": momentum_short,
+            "momentum_persistence": momentum_persistence,
+            "breakout_strength_medium": breakout_strength_medium,
+            "range_position_medium": range_position_medium,
+            "realized_volatility_medium": realized_volatility_medium,
+            "volatility_ratio_short_long": volatility_ratio_short_long,
+        }
+
+    def _get_signal_families(
+        self,
+        *,
+        signal_features: dict[str, float],
+    ) -> dict[str, float]:
+        # Trend strength measures directional structure across moving-average
+        # relationships. It is useful for avoiding flat tape, but it lags.
+        trend_score = self._clamp(
+            (
+                signal_features["trend_strength_medium"]
+                + signal_features["trend_strength_long"]
+            )
+            / 2.0,
+            -1.0,
+            1.0,
+        )
+
+        # Momentum measures recent directional impulse. It reacts fast, but it
+        # is also the noisiest family and can overreact to single-bar spikes.
+        momentum_score = self._clamp(
+            (
+                signal_features["momentum_short"]
+                + signal_features["momentum_persistence"]
+            )
+            / 2.0,
+            -1.0,
+            1.0,
+        )
+
+        # Breakout measures distance beyond the recent range. It captures
+        # expansion, but can whipsaw badly in false breakouts.
+        breakout_score = signal_features["breakout_strength_medium"]
+
+        # Range position measures where price sits inside the recent range. It
+        # helps contextualize entries, but is weak by itself in strong trends.
+        range_score = signal_features["range_position_medium"]
+
+        # Volatility prefers calmer conditions by construction. It can reduce
+        # overtrading, but may filter out valid explosive continuation moves.
+        volatility_score = self._clamp(
+            (
+                -signal_features["realized_volatility_medium"]
+                - signal_features["volatility_ratio_short_long"]
+            )
+            / 2.0,
+            -1.0,
+            1.0,
+        )
+
+        return {
+            "trend": trend_score,
+            "momentum": momentum_score,
+            "breakout": breakout_score,
+            "range": range_score,
+            "volatility": volatility_score,
+            "realized_volatility": signal_features["realized_volatility_medium"],
+        }
+
+    @staticmethod
+    def _get_entry_trigger_score(genome, signal_families: dict[str, float]) -> float:
+        trigger = genome.entry_trigger
+        return (
+            trigger.trend_weight * signal_families["trend"]
+            + trigger.momentum_weight * signal_families["momentum"]
+            + trigger.breakout_weight * signal_families["breakout"]
+            + trigger.range_weight * signal_families["range"]
+            + trigger.volatility_weight * signal_families["volatility"]
+        )
+
+    @staticmethod
+    def _has_trigger_weights(genome) -> bool:
+        trigger = genome.entry_trigger
+
+        return any(
+            weight != 0.0
+            for weight in (
+                trigger.trend_weight,
+                trigger.momentum_weight,
+                trigger.breakout_weight,
+                trigger.range_weight,
+                trigger.volatility_weight,
+            )
+        )
+
+    def _get_legacy_trigger_score(
         self,
         agent: Agent,
         index: int,
@@ -243,10 +582,7 @@ class HistoricalEnvironment:
     ) -> float:
         genome = agent.genome
 
-        # Explicit compatibility fallback: a genome with no feature weights
-        # produces a neutral trigger score and therefore does not open trades
-        # unless threshold_open is also neutral and setup gates pass.
-        if not self._has_feature_weights(agent):
+        if not self._has_legacy_feature_weights(agent):
             return 0.0
 
         return (
@@ -261,7 +597,8 @@ class HistoricalEnvironment:
             + genome.weight_breakout * breakout_series[index]
         )
 
-    def _has_feature_weights(self, agent: Agent) -> bool:
+    @staticmethod
+    def _has_legacy_feature_weights(agent: Agent) -> bool:
         genome = agent.genome
 
         return any(

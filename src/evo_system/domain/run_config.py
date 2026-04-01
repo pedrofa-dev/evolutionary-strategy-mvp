@@ -1,4 +1,6 @@
+import math
 from dataclasses import dataclass, field
+from typing import Any
 
 from evo_system.mutation.mutator import MutationProfile
 
@@ -15,10 +17,14 @@ class RunConfig:
     trade_cost_rate: float = 0.0
     cost_penalty_weight: float = 0.25
     trade_count_penalty_weight: float = 0.0
+    entry_score_margin: float = 0.0
+    min_bars_between_entries: int = 0
+    entry_confirmation_bars: int = 1
     regime_filter_enabled: bool = False
     min_trend_long_for_entry: float = 0.0
     min_breakout_for_entry: float = 0.0
     max_realized_volatility_for_entry: float | None = None
+    entry_trigger_overrides: dict[str, Any] | None = None
     seeds: list[int] | None = None
     seed_start: int | None = None
     seed_count: int | None = None
@@ -48,6 +54,21 @@ class RunConfig:
         if self.trade_count_penalty_weight < 0.0:
             raise ValueError(
                 "trade_count_penalty_weight must be greater than or equal to 0.0"
+            )
+
+        if not math.isfinite(self.entry_score_margin) or self.entry_score_margin < 0.0:
+            raise ValueError(
+                "entry_score_margin must be a finite number greater than or equal to 0.0"
+            )
+
+        if type(self.min_bars_between_entries) is not int or self.min_bars_between_entries < 0:
+            raise ValueError(
+                "min_bars_between_entries must be an integer greater than or equal to 0"
+            )
+
+        if type(self.entry_confirmation_bars) is not int or self.entry_confirmation_bars < 1:
+            raise ValueError(
+                "entry_confirmation_bars must be an integer greater than or equal to 1"
             )
 
         if not -1.0 <= self.min_trend_long_for_entry <= 1.0:

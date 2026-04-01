@@ -14,6 +14,8 @@ from evo_system.experimentation.dataset_roots import (
     resolve_dataset_root,
 )
 from evo_system.experimentation.historical_run import execute_historical_run
+from evo_system.experimentation.historical_run import build_initial_population
+from evo_system.orchestration.config_loader import load_run_config
 from evo_system.experimentation.multiseed_run import (
     CURRENT_LOGIC_VERSION,
     MULTISEED_RUN_SUMMARY_NAME,
@@ -269,7 +271,13 @@ def test_execute_historical_run_persists_champion_in_new_store(
     def fake_build_environment(*args, **kwargs):
         return args[0]
 
-    def fake_build_initial_population(population_size: int):
+    def fake_build_initial_population(
+        population_size: int,
+        min_bars_between_entries: int = 0,
+        entry_confirmation_bars: int = 1,
+        entry_score_margin: float = 0.0,
+        entry_trigger_overrides=None,
+    ):
         return [agent]
 
     def fake_evaluate(self, agent, environments):
@@ -364,6 +372,66 @@ def test_execute_historical_run_persists_champion_in_new_store(
     assert row[5] == "core_1h_spot"
     assert row[6]
     assert '"dataset_catalog_id":"core_1h_spot"' in row[7]
+
+
+def test_build_initial_population_applies_entry_trigger_overrides() -> None:
+    population = build_initial_population(
+        1,
+        entry_trigger_overrides={
+            "entry_score_threshold": 0.55,
+            "min_positive_families": 3,
+            "require_trend_or_breakout": True,
+        },
+    )
+
+    genome = population[0].genome
+
+    assert genome.policy_v2_enabled is True
+    assert genome.entry_trigger.entry_score_threshold == 0.55
+    assert genome.entry_trigger.min_positive_families == 3
+    assert genome.entry_trigger.require_trend_or_breakout is True
+
+
+def test_active_policy_v21_configs_build_population_without_legacy_threshold_dependency() -> None:
+    config_names = [
+        "balanced_bnb fee_5bps_fees_policy_v21_conservative.json",
+        "balanced_bnb fee_5bps_fees_policy_v21_baseline.json",
+        "balanced_bnb fee_5bps_fees_policy_v21_permissive.json",
+    ]
+
+    for config_name in config_names:
+        config = load_run_config(str(Path("configs/runs") / config_name))
+        population = build_initial_population(
+            8,
+            entry_score_margin=config.entry_score_margin,
+            min_bars_between_entries=config.min_bars_between_entries,
+            entry_confirmation_bars=config.entry_confirmation_bars,
+            entry_trigger_overrides=config.entry_trigger_overrides,
+        )
+
+        assert population
+        assert all(
+            agent.genome.policy_v2_enabled and agent.genome.entry_trigger is not None
+            for agent in population
+        ), config_name
+        assert all(agent.genome.threshold_open == 0.0 for agent in population), config_name
+        assert all(agent.genome.threshold_close == 0.0 for agent in population), config_name
+
+
+def test_active_policy_v21_family_uses_expected_entry_trigger_values() -> None:
+    expected_values = {
+        "balanced_bnb fee_5bps_fees_policy_v21_conservative.json": (0.55, 3),
+        "balanced_bnb fee_5bps_fees_policy_v21_baseline.json": (0.45, 2),
+        "balanced_bnb fee_5bps_fees_policy_v21_permissive.json": (0.40, 1),
+    }
+
+    for config_name, (expected_threshold, expected_positive_families) in expected_values.items():
+        config = load_run_config(str(Path("configs/runs") / config_name))
+
+        assert config.entry_trigger_overrides is not None, config_name
+        assert config.entry_trigger_overrides["entry_score_threshold"] == expected_threshold, config_name
+        assert config.entry_trigger_overrides["min_positive_families"] == expected_positive_families, config_name
+        assert config.entry_trigger_overrides["require_trend_or_breakout"] is True, config_name
 
 
 def test_build_multiseed_jobs_expands_config_seed_pairs(tmp_path: Path) -> None:
@@ -1216,6 +1284,145 @@ def test_failed_execution_is_not_reused_and_creates_fresh_attempt(
         ).fetchone()
 
     assert [row[0] for row in status_rows] == ["failed", "completed"]
+    assert latest_multiseed_row == (1, 1, 0, 0)
+
+
+def test_multiseed_does_not_reuse_completed_execution_from_previous_logic_version(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "run_a.json"
+    write_config(config_path, extra_fields={"seeds": [101]})
+    dataset_root = tmp_path / "datasets"
+    write_dataset_catalog(dataset_root)
+    persistence_db_path = tmp_path / "evolution_v2.db"
+
+    store = PersistenceStore(persistence_db_path)
+    store.initialize()
+    prepared_job = build_multiseed_jobs(
+        seed_map={config_path: [101]},
+        output_dir=tmp_path / "out",
+        dataset_root=dataset_root,
+        context_name=None,
+        preset_name=None,
+    )[0]
+    existing_multiseed_run_id = store.save_multiseed_run(
+        multiseed_run_uid="existing-multiseed-v6",
+        configs_dir_snapshot={"configs": [config_path.name]},
+        requested_parallel_workers=1,
+        effective_parallel_workers=1,
+        dataset_root=dataset_root,
+        runs_planned=1,
+        runs_completed=1,
+        runs_reused=0,
+        runs_failed=0,
+        champions_found=False,
+        champion_analysis_status="skipped_no_champions",
+        external_evaluation_status="skipped_no_champions",
+        audit_evaluation_status="skipped_no_champions",
+        status="completed",
+        logic_version="v6",
+    )
+    store.save_run_execution(
+        run_execution_uid="execution-existing-v6",
+        multiseed_run_id=existing_multiseed_run_id,
+        run_id="run-v6",
+        config_name=config_path.name,
+        config_json_snapshot=prepared_job.effective_config_snapshot,
+        effective_seed=101,
+        dataset_catalog_id="core_1h_spot",
+        dataset_signature=prepared_job.dataset_signature,
+        dataset_context_json=prepared_job.dataset_context_json,
+        status="completed",
+        logic_version="v6",
+        requested_dataset_root=dataset_root,
+        resolved_dataset_root=dataset_root,
+        summary_json={
+            "run_id": "run-v6",
+            "config_name": config_path.name,
+            "mutation_seed": 101,
+            "best_train_selection_score": 1.1,
+            "final_validation_selection_score": 0.9,
+            "final_validation_profit": 0.02,
+            "final_validation_drawdown": 0.01,
+            "final_validation_trades": 15.0,
+            "best_genome_repr": "genome",
+            "generation_of_best": 5,
+            "train_validation_selection_gap": 0.1,
+            "train_validation_profit_gap": 0.01,
+            "log_file_path": str(tmp_path / "run_v6.txt"),
+            "config_path": str(config_path),
+            "execution_status": "executed",
+        },
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
+        persistence_db_path,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.create_multiseed_dir",
+        lambda: tmp_path / "multiseed_20260331_170000",
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.run_post_multiseed_analysis",
+        lambda **kwargs: type(
+            "Result",
+            (),
+            {
+                "summary_path": kwargs["summary_path"],
+                "quick_summary_path": kwargs["multiseed_dir"] / MULTISEED_QUICK_SUMMARY_NAME,
+                "champions_summary_path": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "analysis_dir": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME,
+                "debug_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME,
+                "champions_analysis_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champion_count": 0,
+                "champion_analysis_status": "skipped_no_champions",
+                "external_evaluation_status": "skipped_no_champions",
+                "audit_evaluation_status": "skipped_no_champions",
+                "verdict": "NO_EDGE_DETECTED",
+                "recommended_next_action": "Add or change signals/features before spending more time on reevaluation.",
+            },
+        )(),
+    )
+
+    execute_calls: list[str] = []
+
+    def fake_execute_historical_run(**kwargs):
+        execute_calls.append(kwargs["config_name_override"])
+        return build_summary(config_path, seed=101, run_id="run-v7")
+
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.execute_historical_run",
+        fake_execute_historical_run,
+    )
+
+    run_multiseed_experiment(
+        configs_dir=tmp_path,
+        dataset_root=dataset_root,
+        parallel_workers=1,
+    )
+
+    with sqlite3.connect(persistence_db_path) as connection:
+        execution_rows = connection.execute(
+            "SELECT run_id, logic_version, status FROM run_executions ORDER BY id ASC"
+        ).fetchall()
+        latest_multiseed_row = connection.execute(
+            """
+            SELECT runs_planned, runs_completed, runs_reused, runs_failed
+            FROM multiseed_runs
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+    assert execute_calls == [config_path.name]
+    assert [tuple(row) for row in execution_rows] == [
+        ("run-v6", "v6", "completed"),
+        ("run-v7", CURRENT_LOGIC_VERSION, "completed"),
+    ]
     assert latest_multiseed_row == (1, 1, 0, 0)
 
 

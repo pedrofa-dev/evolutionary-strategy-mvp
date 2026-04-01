@@ -77,6 +77,68 @@ Common current fields:
 - `min_breakout_for_entry`
 - `max_realized_volatility_for_entry`
 
+The current active research line uses the policy v2.1 genome layout:
+
+- `EntryContextGene`
+- `EntryTriggerGene`
+- `ExitPolicyGene`
+- `TradeControlGene`
+
+These blocks live inside the genome and are mutated as part of the policy search. New campaigns now execute only through these policy v2.1 blocks. Legacy flat fields remain only as a bounded historical compatibility lane for loading older snapshots and reevaluating older results.
+
+The current signal set for policy v2.1 is grouped into reusable market families:
+
+- Trend
+  - `trend_strength_medium`
+  - `trend_strength_long`
+- Momentum
+  - `momentum_short`
+  - `momentum_persistence`
+- Breakout
+  - `breakout_strength_medium`
+- Range
+  - `range_position_medium`
+- Volatility
+  - `realized_volatility_medium`
+  - `volatility_ratio_short_long`
+
+These features were chosen because they are portable across future environments and do not depend on a specific platform indicator catalog. The goal is to describe reusable market structure, not to optimize around named retail indicators.
+
+The active v2.1 family now compares three `EntryTriggerGene` variants:
+
+- conservative
+- baseline
+- permissive
+
+They differ only in:
+
+- `entry_score_threshold`
+- `min_positive_families`
+
+`require_trend_or_breakout` stays fixed at `true` across the active family.
+
+In this phase, only trigger conviction changes. Signals, scoring, datasets, and architecture remain fixed.
+
+Current active values:
+
+- conservative
+  - `entry_score_threshold = 0.55`
+  - `min_positive_families = 3`
+- baseline
+  - `entry_score_threshold = 0.45`
+  - `min_positive_families = 2`
+- permissive
+  - `entry_score_threshold = 0.40`
+  - `min_positive_families = 1`
+
+The previous `min_bars_between_entries`, `entry_confirmation_bars`, `entry_score_margin`, and earlier `policy_v2_*` configs are kept under `configs/runs/deprecated/` as historical runs. The code support remains available for compatibility, but the active run set has moved to policy v2.1.
+
+Legacy retirement criteria:
+
+- do not retire legacy until policy v2 has been validated across multiple campaigns
+- do not retire legacy while it is still needed for historical reevaluation or reproducibility
+- prefer explicit deprecation over early deletion
+
 ## Step 4: Run Multiseed
 
 Use the public experiment wrapper:
@@ -110,7 +172,7 @@ Reuse identity is strict and based on:
 - dataset signature
 - `logic_version`
 
-There is no force-rerun compatibility layer in the canonical workflow. If incompatible logic changes are introduced, `logic_version` should be bumped deliberately.
+There is no force-rerun compatibility layer in the canonical workflow. If incompatible logic changes are introduced, `logic_version` should be bumped deliberately. The current policy v2 genome rollout is one such compatibility change.
 
 ## Step 5: Read Outputs In Order
 

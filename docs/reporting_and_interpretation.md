@@ -10,6 +10,21 @@ What is the next experiment decision?
 
 It is not designed to maximize metric dumping.
 
+The active research line currently uses policy v2 genomes. For new campaigns, policy v2 is the only active runtime lane; any legacy-shaped snapshots should be interpreted as historical records. When interpreting campaigns, treat the following as the canonical signal-family vocabulary:
+
+- `trend`
+- `momentum`
+- `breakout`
+- `range`
+- `volatility`
+
+When documenting or reviewing these families and their rules, use trading terminology in English and make these points explicit:
+
+- what it measures
+- trading meaning
+- interpretation
+- limitation
+
 ## Three-Level Artifact Model
 
 Each multiseed campaign is organized into three levels.

@@ -23,6 +23,9 @@ def load_run_config(config_path: str) -> RunConfig:
         trade_cost_rate=float(data.get("trade_cost_rate", 0.0)),
         cost_penalty_weight=float(data.get("cost_penalty_weight", 0.25)),
         trade_count_penalty_weight=float(data.get("trade_count_penalty_weight", 0.0)),
+        entry_score_margin=float(data.get("entry_score_margin", 0.0)),
+        min_bars_between_entries=int(data.get("min_bars_between_entries", 0)),
+        entry_confirmation_bars=int(data.get("entry_confirmation_bars", 1)),
         regime_filter_enabled=bool(data.get("regime_filter_enabled", False)),
         min_trend_long_for_entry=float(data.get("min_trend_long_for_entry", 0.0)),
         min_breakout_for_entry=float(data.get("min_breakout_for_entry", 0.0)),
@@ -30,6 +33,11 @@ def load_run_config(config_path: str) -> RunConfig:
             float(data["max_realized_volatility_for_entry"])
             if "max_realized_volatility_for_entry" in data
             and data["max_realized_volatility_for_entry"] is not None
+            else None
+        ),
+        entry_trigger_overrides=(
+            dict(data["entry_trigger"])
+            if "entry_trigger" in data and data["entry_trigger"] is not None
             else None
         ),
         mutation_profile=mutation_profile,

@@ -3,7 +3,14 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from evo_system.domain.genome import Genome
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    Genome,
+    TradeControlGene,
+    build_policy_v2_genome,
+)
 
 
 @dataclass(frozen=True)
@@ -25,15 +32,20 @@ class Mutator:
         self.profile = profile or MutationProfile()
 
     def mutate(self, genome: Genome) -> Genome:
+        if genome.policy_v2_enabled:
+            if self.random.random() < self.profile.strong_mutation_probability:
+                return self._strong_mutate_policy_v2(genome)
+            return self._small_mutate_policy_v2(genome)
+
         if self.random.random() < self.profile.strong_mutation_probability:
-            return self._strong_mutate(genome)
-        return self._small_mutate(genome)
+            return self._strong_mutate_legacy(genome)
+        return self._small_mutate_legacy(genome)
 
     # =========================
     # SMALL MUTATION
     # =========================
 
-    def _small_mutate(self, genome: Genome) -> Genome:
+    def _small_mutate_legacy(self, genome: Genome) -> Genome:
         main_delta = 0.03 * self.profile.numeric_delta_scale
         stop_loss_delta = 0.01 * self.profile.numeric_delta_scale
         signal_delta = 0.001 * self.profile.numeric_delta_scale
@@ -126,6 +138,10 @@ class Mutator:
             position_size=position_size,
             stop_loss=stop_loss,
             take_profit=take_profit,
+            entry_score_margin=genome.entry_score_margin,
+            min_bars_between_entries=genome.min_bars_between_entries,
+            entry_confirmation_bars=genome.entry_confirmation_bars,
+            policy_v2_enabled=genome.policy_v2_enabled,
             use_momentum=use_momentum,
             momentum_threshold=momentum_threshold,
             use_trend=use_trend,
@@ -154,7 +170,7 @@ class Mutator:
     # STRONG MUTATION
     # =========================
 
-    def _strong_mutate(self, genome: Genome) -> Genome:
+    def _strong_mutate_legacy(self, genome: Genome) -> Genome:
         ret_short_window = self.random.randint(2, 10)
         ret_mid_window = self.random.randint(max(10, ret_short_window + 1), 50)
         vol_short_window = self.random.randint(2, 20)
@@ -166,6 +182,10 @@ class Mutator:
             position_size=self.random.uniform(0.05, 1.0),
             stop_loss=self.random.uniform(0.01, 1.0),
             take_profit=self.random.uniform(0.01, 2.0),
+            entry_score_margin=genome.entry_score_margin,
+            min_bars_between_entries=genome.min_bars_between_entries,
+            entry_confirmation_bars=genome.entry_confirmation_bars,
+            policy_v2_enabled=genome.policy_v2_enabled,
             use_momentum=self.random.choice([True, False]),
             momentum_threshold=self.random.uniform(-0.01, 0.01),
             use_trend=self.random.choice([True, False]),
@@ -188,6 +208,221 @@ class Mutator:
             weight_realized_volatility=self.random.uniform(-2, 2),
             weight_trend_long=self.random.uniform(-2, 2),
             weight_breakout=self.random.uniform(-2, 2),
+        )
+
+    def _small_mutate_policy_v2(self, genome: Genome) -> Genome:
+        main_delta = 0.03 * self.profile.numeric_delta_scale
+        stop_loss_delta = 0.01 * self.profile.numeric_delta_scale
+
+        ret_short_window = self._mutate_window(genome.ret_short_window, 2, 10)
+        ret_mid_window = self._mutate_window(genome.ret_mid_window, 5, 50)
+        ma_window = self._mutate_window(genome.ma_window, 5, 100)
+        range_window = self._mutate_window(genome.range_window, 5, 50)
+        vol_short_window = self._mutate_window(genome.vol_short_window, 2, 20)
+        vol_long_window = self._mutate_window(genome.vol_long_window, 10, 100)
+        trend_window = self._mutate_window(genome.trend_window, 2, 50)
+
+        if ret_short_window >= ret_mid_window:
+            ret_short_window = max(2, ret_mid_window - 1)
+
+        if vol_short_window >= vol_long_window:
+            vol_short_window = max(2, vol_long_window - 1)
+
+        exit_policy = genome.exit_policy or ExitPolicyGene()
+        entry_context = genome.entry_context or EntryContextGene()
+        entry_trigger = genome.entry_trigger or EntryTriggerGene()
+        trade_control = genome.trade_control or TradeControlGene()
+
+        min_realized_volatility = self._clamp(
+            entry_context.min_realized_volatility + self.random.uniform(-main_delta, main_delta),
+            -1.0,
+            1.0,
+        )
+        max_realized_volatility = self._clamp(
+            entry_context.max_realized_volatility + self.random.uniform(-main_delta, main_delta),
+            -1.0,
+            1.0,
+        )
+        if min_realized_volatility > max_realized_volatility:
+            min_realized_volatility, max_realized_volatility = (
+                max_realized_volatility,
+                min_realized_volatility,
+            )
+
+        allowed_range_position_min = self._clamp(
+            entry_context.allowed_range_position_min + self.random.uniform(-main_delta, main_delta),
+            -1.0,
+            1.0,
+        )
+        allowed_range_position_max = self._clamp(
+            entry_context.allowed_range_position_max + self.random.uniform(-main_delta, main_delta),
+            -1.0,
+            1.0,
+        )
+        if allowed_range_position_min > allowed_range_position_max:
+            allowed_range_position_min, allowed_range_position_max = (
+                allowed_range_position_max,
+                allowed_range_position_min,
+            )
+
+        exit_on_signal_reversal = exit_policy.exit_on_signal_reversal
+        require_trend_or_breakout = entry_trigger.require_trend_or_breakout
+
+        if self.random.random() < self.profile.flag_flip_probability:
+            exit_on_signal_reversal = not exit_on_signal_reversal
+
+        if self.random.random() < self.profile.flag_flip_probability:
+            require_trend_or_breakout = not require_trend_or_breakout
+
+        return build_policy_v2_genome(
+            position_size=self._clamp(
+                genome.position_size + self._scaled_delta(0.03),
+                0.05,
+                1.0,
+            ),
+            stop_loss_pct=self._clamp(
+                exit_policy.stop_loss_pct + self.random.uniform(-stop_loss_delta, stop_loss_delta),
+                0.01,
+                1.0,
+            ),
+            take_profit_pct=self._clamp(
+                exit_policy.take_profit_pct + self.random.uniform(-main_delta, main_delta),
+                0.01,
+                2.0,
+            ),
+            trend_window=trend_window,
+            ret_short_window=ret_short_window,
+            ret_mid_window=ret_mid_window,
+            ma_window=ma_window,
+            range_window=range_window,
+            vol_short_window=vol_short_window,
+            vol_long_window=vol_long_window,
+            entry_context=EntryContextGene(
+                min_trend_strength=self._clamp(
+                    entry_context.min_trend_strength + self.random.uniform(-main_delta, main_delta),
+                    -1.0,
+                    1.0,
+                ),
+                min_breakout_strength=self._clamp(
+                    entry_context.min_breakout_strength + self.random.uniform(-main_delta, main_delta),
+                    -1.0,
+                    1.0,
+                ),
+                min_realized_volatility=min_realized_volatility,
+                max_realized_volatility=max_realized_volatility,
+                allowed_range_position_min=allowed_range_position_min,
+                allowed_range_position_max=allowed_range_position_max,
+            ),
+            entry_trigger=EntryTriggerGene(
+                trend_weight=self._mutate_weight(entry_trigger.trend_weight),
+                momentum_weight=self._mutate_weight(entry_trigger.momentum_weight),
+                breakout_weight=self._mutate_weight(entry_trigger.breakout_weight),
+                range_weight=self._mutate_weight(entry_trigger.range_weight),
+                volatility_weight=self._mutate_weight(entry_trigger.volatility_weight),
+                entry_score_threshold=self._clamp(
+                    entry_trigger.entry_score_threshold + self.random.uniform(-main_delta, main_delta),
+                    -5.0,
+                    5.0,
+                ),
+                min_positive_families=max(
+                    0,
+                    min(
+                        5,
+                        entry_trigger.min_positive_families + self.random.choice([-1, 0, 1]),
+                    ),
+                ),
+                require_trend_or_breakout=require_trend_or_breakout,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=self._clamp(
+                    exit_policy.exit_score_threshold + self.random.uniform(-main_delta, main_delta),
+                    -5.0,
+                    5.0,
+                ),
+                exit_on_signal_reversal=exit_on_signal_reversal,
+                max_holding_bars=max(
+                    0,
+                    exit_policy.max_holding_bars + self.random.choice([-2, -1, 0, 1, 2]),
+                ),
+                stop_loss_pct=self._clamp(
+                    exit_policy.stop_loss_pct + self.random.uniform(-stop_loss_delta, stop_loss_delta),
+                    0.01,
+                    1.0,
+                ),
+                take_profit_pct=self._clamp(
+                    exit_policy.take_profit_pct + self.random.uniform(-main_delta, main_delta),
+                    0.01,
+                    2.0,
+                ),
+            ),
+            trade_control=TradeControlGene(
+                cooldown_bars=max(0, trade_control.cooldown_bars + self.random.choice([-1, 0, 1])),
+                min_holding_bars=max(0, trade_control.min_holding_bars + self.random.choice([-1, 0, 1])),
+                reentry_block_bars=max(0, trade_control.reentry_block_bars + self.random.choice([-1, 0, 1])),
+            ),
+        )
+
+    def _strong_mutate_policy_v2(self, genome: Genome) -> Genome:
+        ret_short_window = self.random.randint(2, 10)
+        ret_mid_window = self.random.randint(max(10, ret_short_window + 1), 50)
+        vol_short_window = self.random.randint(2, 20)
+        vol_long_window = self.random.randint(max(10, vol_short_window + 1), 100)
+        min_realized_volatility = self.random.uniform(-1.0, 1.0)
+        max_realized_volatility = self.random.uniform(-1.0, 1.0)
+        if min_realized_volatility > max_realized_volatility:
+            min_realized_volatility, max_realized_volatility = (
+                max_realized_volatility,
+                min_realized_volatility,
+            )
+        allowed_range_position_min = self.random.uniform(-1.0, 1.0)
+        allowed_range_position_max = self.random.uniform(-1.0, 1.0)
+        if allowed_range_position_min > allowed_range_position_max:
+            allowed_range_position_min, allowed_range_position_max = (
+                allowed_range_position_max,
+                allowed_range_position_min,
+            )
+
+        return build_policy_v2_genome(
+            position_size=self.random.uniform(0.05, 1.0),
+            stop_loss_pct=self.random.uniform(0.01, 1.0),
+            take_profit_pct=self.random.uniform(0.01, 2.0),
+            trend_window=self.random.randint(2, 50),
+            ret_short_window=ret_short_window,
+            ret_mid_window=ret_mid_window,
+            ma_window=self.random.randint(5, 100),
+            range_window=self.random.randint(5, 50),
+            vol_short_window=vol_short_window,
+            vol_long_window=vol_long_window,
+            entry_context=EntryContextGene(
+                min_trend_strength=self.random.uniform(-1.0, 1.0),
+                min_breakout_strength=self.random.uniform(-1.0, 1.0),
+                min_realized_volatility=min_realized_volatility,
+                max_realized_volatility=max_realized_volatility,
+                allowed_range_position_min=allowed_range_position_min,
+                allowed_range_position_max=allowed_range_position_max,
+            ),
+            entry_trigger=EntryTriggerGene(
+                trend_weight=self.random.uniform(-2, 2),
+                momentum_weight=self.random.uniform(-2, 2),
+                breakout_weight=self.random.uniform(-2, 2),
+                range_weight=self.random.uniform(-2, 2),
+                volatility_weight=self.random.uniform(-2, 2),
+                entry_score_threshold=self.random.uniform(-1.0, 2.0),
+                min_positive_families=self.random.randint(0, 5),
+                require_trend_or_breakout=self.random.choice([True, False]),
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=self.random.uniform(-1.0, 1.0),
+                exit_on_signal_reversal=self.random.choice([True, False]),
+                max_holding_bars=self.random.choice([0, 6, 12, 24, 36, 48]),
+                stop_loss_pct=self.random.uniform(0.01, 1.0),
+                take_profit_pct=self.random.uniform(0.01, 2.0),
+            ),
+            trade_control=TradeControlGene(
+                cooldown_bars=self.random.randint(0, 8),
+                min_holding_bars=self.random.randint(0, 8),
+                reentry_block_bars=self.random.randint(0, 8),
+            ),
         )
 
     # =========================

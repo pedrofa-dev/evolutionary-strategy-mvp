@@ -1,4 +1,11 @@
-from evo_system.domain.genome import Genome
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    Genome,
+    TradeControlGene,
+    build_policy_v2_genome,
+)
 from evo_system.mutation.mutator import MutationProfile, Mutator
 
 
@@ -152,3 +159,44 @@ def test_strong_mutate_sets_new_feature_weights_in_valid_range() -> None:
     assert -2.0 <= mutated.weight_realized_volatility <= 2.0
     assert -2.0 <= mutated.weight_trend_long <= 2.0
     assert -2.0 <= mutated.weight_breakout <= 2.0
+
+
+def test_mutate_policy_v2_preserves_v2_blocks_without_legacy_threshold_dependency() -> None:
+    genome = build_policy_v2_genome(
+        position_size=0.2,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.1,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=0.8,
+            momentum_weight=0.6,
+            breakout_weight=0.4,
+            range_weight=0.1,
+            volatility_weight=-0.2,
+            entry_score_threshold=0.45,
+            min_positive_families=2,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=0.05,
+            exit_on_signal_reversal=True,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+        ),
+        trade_control=TradeControlGene(
+            cooldown_bars=0,
+            min_holding_bars=1,
+            reentry_block_bars=0,
+        ),
+    )
+
+    mutator = Mutator(seed=42, profile=MutationProfile(strong_mutation_probability=0.0))
+
+    mutated = mutator.mutate(genome)
+
+    assert mutated.policy_v2_enabled is True
+    assert mutated.entry_trigger is not None
+    assert mutated.exit_policy is not None
+    assert mutated.trade_control is not None
+    assert mutated.threshold_open == 0.0
+    assert mutated.threshold_close == 0.0

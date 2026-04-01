@@ -2,7 +2,14 @@ import random
 
 from evo_system.domain.agent import Agent
 from evo_system.domain.generation_result import GenerationResult
-from evo_system.domain.genome import Genome
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    Genome,
+    TradeControlGene,
+    build_policy_v2_genome,
+)
 from evo_system.mutation.mutator import Mutator, MutationProfile
 from evo_system.selection.selector import Selector
 
@@ -76,58 +83,39 @@ class EvolutionRunner:
         return Agent.create(self._build_random_genome())
 
     def _build_random_genome(self) -> Genome:
-        threshold_open = self._random.uniform(0.2, 0.95)
-        threshold_close = self._random.uniform(0.0, threshold_open)
-
-        use_momentum = self._random.choice([True, False])
-        use_trend = self._random.choice([True, False])
-        use_exit_momentum = self._random.choice([True, False])
-
         ret_short_window = self._random.randint(1, 5)
         ret_mid_window = self._random.randint(max(2, ret_short_window + 1), 20)
-
         vol_short_window = self._random.randint(2, 8)
         vol_long_window = self._random.randint(max(3, vol_short_window + 1), 30)
 
-        genome = Genome(
-            threshold_open=threshold_open,
-            threshold_close=threshold_close,
+        return build_policy_v2_genome(
             position_size=self._random.uniform(0.05, 1.0),
-            stop_loss=self._random.uniform(0.01, 0.2),
-            take_profit=self._random.uniform(0.02, 0.3),
-            use_momentum=use_momentum,
-            momentum_threshold=0.0,
-            use_trend=use_trend,
-            trend_threshold=0.0,
+            stop_loss_pct=self._random.uniform(0.01, 0.2),
+            take_profit_pct=self._random.uniform(0.02, 0.3),
             trend_window=self._random.randint(2, 8),
-            use_exit_momentum=use_exit_momentum,
-            exit_momentum_threshold=0.0,
             ret_short_window=ret_short_window,
             ret_mid_window=ret_mid_window,
             ma_window=self._random.randint(3, 25),
             range_window=self._random.randint(3, 20),
             vol_short_window=vol_short_window,
             vol_long_window=vol_long_window,
-            weight_ret_short=self._random.uniform(-1.5, 1.5),
-            weight_ret_mid=self._random.uniform(-1.5, 1.5),
-            weight_dist_ma=self._random.uniform(-1.5, 1.5),
-            weight_range_pos=self._random.uniform(-1.5, 1.5),
-            weight_vol_ratio=self._random.uniform(-1.5, 1.5),
+            entry_context=EntryContextGene(),
+            entry_trigger=EntryTriggerGene(
+                trend_weight=self._random.uniform(-1.5, 1.5),
+                momentum_weight=self._random.uniform(-1.5, 1.5),
+                breakout_weight=self._random.uniform(-1.5, 1.5),
+                range_weight=self._random.uniform(-1.5, 1.5),
+                volatility_weight=self._random.uniform(-1.5, 1.5),
+                entry_score_threshold=self._random.uniform(0.2, 0.95),
+                min_positive_families=self._random.randint(1, 3),
+                require_trend_or_breakout=True,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=self._random.uniform(-0.10, 0.30),
+                exit_on_signal_reversal=self._random.choice([True, False]),
+                max_holding_bars=self._random.choice([0, 12, 24, 36]),
+                stop_loss_pct=self._random.uniform(0.01, 0.2),
+                take_profit_pct=self._random.uniform(0.02, 0.3),
+            ),
+            trade_control=TradeControlGene(),
         )
-
-        if use_momentum:
-            genome = genome.copy_with(
-                momentum_threshold=self._random.uniform(-0.002, 0.002)
-            )
-
-        if use_trend:
-            genome = genome.copy_with(
-                trend_threshold=self._random.uniform(-0.002, 0.002)
-            )
-
-        if use_exit_momentum:
-            genome = genome.copy_with(
-                exit_momentum_threshold=self._random.uniform(-0.002, 0.0)
-            )
-
-        return genome

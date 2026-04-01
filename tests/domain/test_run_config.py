@@ -174,6 +174,25 @@ def test_run_config_accepts_regime_filter_fields() -> None:
     assert config.max_realized_volatility_for_entry == 0.4
 
 
+def test_run_config_accepts_entry_trigger_overrides() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
+        entry_trigger_overrides={
+            "entry_score_threshold": 0.55,
+            "min_positive_families": 3,
+            "require_trend_or_breakout": True,
+        },
+    )
+
+    assert config.entry_trigger_overrides is not None
+    assert config.entry_trigger_overrides["entry_score_threshold"] == 0.55
+
+
 def test_run_config_requires_dataset_catalog_id() -> None:
     with pytest.raises(ValueError, match="dataset_catalog_id is required"):
         RunConfig(

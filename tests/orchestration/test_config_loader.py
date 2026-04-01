@@ -31,6 +31,9 @@ def test_load_run_config_reads_required_and_optional_fields(tmp_path) -> None:
     assert config.trade_cost_rate == 0.001
     assert config.cost_penalty_weight == 0.25
     assert config.trade_count_penalty_weight == 0.0
+    assert config.min_bars_between_entries == 0
+    assert config.entry_confirmation_bars == 1
+    assert config.entry_score_margin == 0.0
     assert config.regime_filter_enabled is False
     assert config.min_trend_long_for_entry == 0.0
     assert config.min_breakout_for_entry == 0.0
@@ -58,6 +61,9 @@ def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
     assert config.trade_cost_rate == 0.0
     assert config.cost_penalty_weight == 0.25
     assert config.trade_count_penalty_weight == 0.0
+    assert config.min_bars_between_entries == 0
+    assert config.entry_confirmation_bars == 1
+    assert config.entry_score_margin == 0.0
     assert config.regime_filter_enabled is False
     assert config.max_realized_volatility_for_entry is None
 
@@ -82,6 +88,72 @@ def test_load_run_config_reads_trade_count_penalty_weight(tmp_path) -> None:
     config = load_run_config(str(config_path))
 
     assert config.trade_count_penalty_weight == 0.001
+
+
+def test_load_run_config_reads_min_bars_between_entries(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "min_bars_between_entries": 6,
+                "dataset_catalog_id": "core_1h_spot",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.min_bars_between_entries == 6
+
+
+def test_load_run_config_reads_entry_confirmation_bars(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "entry_confirmation_bars": 3,
+                "dataset_catalog_id": "core_1h_spot",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.entry_confirmation_bars == 3
+
+
+def test_load_run_config_reads_entry_score_margin(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "entry_score_margin": 0.05,
+                "dataset_catalog_id": "core_1h_spot",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.entry_score_margin == 0.05
 
 
 def test_load_run_config_reads_regime_filter_fields(tmp_path) -> None:
@@ -110,6 +182,36 @@ def test_load_run_config_reads_regime_filter_fields(tmp_path) -> None:
     assert config.min_trend_long_for_entry == 0.2
     assert config.min_breakout_for_entry == 0.1
     assert config.max_realized_volatility_for_entry == 0.4
+
+
+def test_load_run_config_reads_entry_trigger_overrides(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "dataset_catalog_id": "core_1h_spot",
+                "entry_trigger": {
+                    "entry_score_threshold": 0.55,
+                    "min_positive_families": 3,
+                    "require_trend_or_breakout": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.entry_trigger_overrides == {
+        "entry_score_threshold": 0.55,
+        "min_positive_families": 3,
+        "require_trend_or_breakout": True,
+    }
 
 
 def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:

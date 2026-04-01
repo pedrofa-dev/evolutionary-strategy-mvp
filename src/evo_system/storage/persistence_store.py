@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-CURRENT_LOGIC_VERSION = "v1"
+CURRENT_LOGIC_VERSION = "v7"
 DEFAULT_PERSISTENCE_DB_PATH = Path("data/evolution_v2.db")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 

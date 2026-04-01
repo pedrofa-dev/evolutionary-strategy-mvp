@@ -1,5 +1,11 @@
 from evo_system.domain.agent import Agent
-from evo_system.domain.genome import Genome
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    Genome,
+    TradeControlGene,
+)
 from evo_system.domain.historical_candle import HistoricalCandle
 from evo_system.environment.historical_environment import HistoricalEnvironment
 
@@ -329,3 +335,363 @@ def test_historical_environment_applies_trade_cost_on_forced_final_close() -> No
     assert result.trades == 1
     assert result.profit == ((120 - 110) / 110) - 0.01
     assert result.cost == 0.01
+
+
+def test_historical_environment_cooldown_zero_keeps_existing_reentry_behavior() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 108, 108, 108),
+        HistoricalCandle("4", 108, 120, 108, 120),
+        HistoricalCandle("5", 120, 118, 118, 118),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-0.1,
+            min_bars_between_entries=0,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 2
+
+
+def test_historical_environment_entry_confirmation_one_matches_current_behavior() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-1.0,
+            entry_confirmation_bars=1,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 1
+
+
+def test_historical_environment_entry_score_margin_zero_matches_current_behavior() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-1.0,
+            entry_score_margin=0.0,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 1
+
+
+def test_historical_environment_entry_score_margin_blocks_when_margin_is_not_met() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 105, 100, 105),
+        HistoricalCandle("3", 105, 104, 104, 104),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.04,
+            threshold_close=-1.0,
+            entry_score_margin=0.5,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 0
+
+
+def test_historical_environment_entry_score_margin_allows_entry_when_margin_is_met() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 107, 100, 107),
+        HistoricalCandle("3", 107, 110, 107, 110),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.04,
+            threshold_close=-1.0,
+            entry_score_margin=0.02,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 1
+
+
+def test_historical_environment_requires_two_consecutive_bars_before_entry() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 108, 108, 108),
+        HistoricalCandle("4", 108, 107, 107, 107),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-1.0,
+            entry_confirmation_bars=2,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 0
+
+
+def test_historical_environment_requires_three_consecutive_bars_before_entry() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+        HistoricalCandle("4", 120, 130, 120, 130),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-1.0,
+            entry_confirmation_bars=3,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 1
+
+
+def test_historical_environment_blocks_immediate_reentry_when_cooldown_is_active() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 108, 108, 108),
+        HistoricalCandle("4", 108, 120, 108, 120),
+        HistoricalCandle("5", 120, 118, 118, 118),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-0.1,
+            min_bars_between_entries=1,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 1
+
+
+def test_historical_environment_allows_reentry_after_required_bars() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 108, 108, 108),
+        HistoricalCandle("4", 108, 107, 107, 107),
+        HistoricalCandle("5", 107, 120, 107, 120),
+        HistoricalCandle("6", 120, 118, 118, 118),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=0.1,
+            threshold_close=-0.1,
+            min_bars_between_entries=1,
+            weight_ret_short=1.0,
+        )
+    )
+
+    assert result.trades == 2
+
+
+def test_historical_environment_policy_v2_opens_when_context_and_trigger_pass() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            policy_v2_enabled=True,
+            entry_context=EntryContextGene(min_trend_strength=-1.0),
+            entry_trigger=EntryTriggerGene(
+                momentum_weight=1.0,
+                entry_score_threshold=0.2,
+                min_positive_families=1,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=-1.0,
+                stop_loss_pct=0.5,
+                take_profit_pct=1.0,
+            ),
+            trade_control=TradeControlGene(),
+        )
+    )
+
+    assert result.trades == 1
+
+
+def test_historical_environment_policy_v2_closes_on_max_holding_bars() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            policy_v2_enabled=True,
+            entry_context=EntryContextGene(),
+            entry_trigger=EntryTriggerGene(
+                momentum_weight=1.0,
+                entry_score_threshold=0.2,
+                min_positive_families=1,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=-1.0,
+                max_holding_bars=1,
+                stop_loss_pct=0.5,
+                take_profit_pct=1.0,
+            ),
+            trade_control=TradeControlGene(),
+        )
+    )
+
+    assert result.trades == 1
+    assert result.profit == (120 - 110) / 110
+
+
+def test_historical_environment_exposes_policy_v21_signal_features_consistently() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 104, 99, 103),
+        HistoricalCandle("3", 103, 108, 102, 107),
+        HistoricalCandle("4", 107, 111, 106, 110),
+        HistoricalCandle("5", 110, 115, 109, 114),
+        HistoricalCandle("6", 114, 118, 113, 117),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+    genome = _agent(
+        policy_v2_enabled=True,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=1.0,
+            momentum_weight=1.0,
+            breakout_weight=1.0,
+            range_weight=1.0,
+            volatility_weight=-1.0,
+            entry_score_threshold=0.2,
+            min_positive_families=1,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=-1.0,
+            stop_loss_pct=0.5,
+            take_profit_pct=1.0,
+        ),
+        trade_control=TradeControlGene(),
+    ).genome
+
+    trend_series = environment._get_trend_series(genome.trend_window)
+    features = environment._get_policy_v21_signal_features(
+        index=5,
+        normalized_momentum=environment._normalized_momentum_series[5],
+        normalized_trend=trend_series[5],
+        ret_short_series=environment._get_return_series(genome.ret_short_window),
+        ret_mid_series=environment._get_return_series(genome.ret_mid_window),
+        ma_distance_series=environment._get_ma_distance_series(genome.ma_window),
+        range_position_series=environment._get_range_position_series(genome.range_window),
+        vol_ratio_series=environment._get_vol_ratio_series(
+            genome.vol_short_window,
+            genome.vol_long_window,
+        ),
+        trend_strength_series=environment._get_trend_strength_series(genome.ma_window),
+        realized_volatility_series=environment._get_realized_volatility_series(
+            genome.vol_long_window
+        ),
+        trend_long_series=environment._get_trend_long_series(genome.ma_window),
+        breakout_series=environment._get_breakout_series(genome.range_window),
+    )
+
+    assert set(features) == {
+        "trend_strength_medium",
+        "trend_strength_long",
+        "momentum_short",
+        "momentum_persistence",
+        "breakout_strength_medium",
+        "range_position_medium",
+        "realized_volatility_medium",
+        "volatility_ratio_short_long",
+    }
+    assert features["trend_strength_medium"] > 0.0
+    assert features["trend_strength_long"] > 0.0
+    assert features["momentum_short"] > 0.0
+    assert features["momentum_persistence"] > 0.0
+
+
+def test_historical_environment_policy_v21_runtime_is_not_blocked_by_legacy_thresholds() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 110, 100, 110),
+        HistoricalCandle("3", 110, 120, 110, 120),
+    ]
+
+    environment = HistoricalEnvironment(candles)
+
+    result = environment.run_episode(
+        _agent(
+            threshold_open=5.0,
+            threshold_close=5.0,
+            policy_v2_enabled=True,
+            entry_context=EntryContextGene(),
+            entry_trigger=EntryTriggerGene(
+                momentum_weight=1.0,
+                entry_score_threshold=0.2,
+                min_positive_families=1,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=-1.0,
+                stop_loss_pct=0.5,
+                take_profit_pct=1.0,
+            ),
+            trade_control=TradeControlGene(),
+        )
+    )
+
+    assert result.trades == 1

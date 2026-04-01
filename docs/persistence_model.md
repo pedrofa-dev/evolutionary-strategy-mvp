@@ -42,6 +42,7 @@ Canonical tables:
 
 - one self-contained persisted champion
 - includes genome snapshot, config snapshot, dataset identity, and metric snapshots
+- may include either legacy-compatible fields or policy v2 block fields, depending on when the champion was produced
 
 `champion_analyses`
 
@@ -81,6 +82,12 @@ Equivalent completed executions are reused automatically by multiseed instead of
 It exists so incompatible logic changes can invalidate reuse cleanly without deleting historical data.
 
 Old rows may remain stored for history, but they should not be treated as reusable if `logic_version` changes.
+
+Current runtime value:
+
+- `CURRENT_LOGIC_VERSION = "v7"`
+
+This value was bumped deliberately when the active policy v2 runtime moved to the v2.1 family-based signal set. That changes the effective execution semantics of new runs, so reuse across the previous logic version would be misleading.
 
 ## Dataset Context Persistence
 

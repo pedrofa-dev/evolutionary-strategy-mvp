@@ -4,6 +4,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from evo_system.champions import (
     build_champion_metrics,
@@ -17,7 +18,14 @@ from evo_system.champions.metrics import (
 )
 from evo_system.domain.agent import Agent
 from evo_system.domain.agent_evaluation import AgentEvaluation
-from evo_system.domain.genome import Genome
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    Genome,
+    TradeControlGene,
+    build_policy_v2_genome,
+)
 from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.environment.csv_loader import load_historical_candles
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
@@ -72,211 +80,292 @@ class PersistableChampionCandidate:
     dataset_root: Path
 
 
-def build_random_genome(random_generator: random.Random) -> Genome:
-    threshold_open = random_generator.uniform(0.35, 0.90)
-    threshold_close = random_generator.uniform(0.05, min(0.45, threshold_open))
-
-    use_momentum = random_generator.choice([True, False])
-    use_trend = random_generator.choice([True, False])
-    use_exit_momentum = random_generator.choice([True, False])
-
+def build_random_genome(
+    random_generator: random.Random,
+    entry_score_margin: float = 0.0,
+    min_bars_between_entries: int = 0,
+    entry_confirmation_bars: int = 1,
+    entry_trigger_overrides: dict[str, Any] | None = None,
+) -> Genome:
     ret_short_window = random_generator.randint(1, 5)
     ret_mid_window = random_generator.randint(max(2, ret_short_window + 1), 20)
-
     vol_short_window = random_generator.randint(2, 8)
     vol_long_window = random_generator.randint(max(3, vol_short_window + 1), 30)
 
-    genome = Genome(
-        threshold_open=threshold_open,
-        threshold_close=threshold_close,
+    genome = build_policy_v2_genome(
         position_size=random_generator.uniform(0.05, 0.25),
-        stop_loss=random_generator.uniform(0.01, 0.06),
-        take_profit=random_generator.uniform(0.03, 0.18),
-        use_momentum=use_momentum,
-        momentum_threshold=0.0,
-        use_trend=use_trend,
-        trend_threshold=0.0,
+        stop_loss_pct=random_generator.uniform(0.01, 0.06),
+        take_profit_pct=random_generator.uniform(0.03, 0.18),
         trend_window=random_generator.randint(2, 8),
-        use_exit_momentum=use_exit_momentum,
-        exit_momentum_threshold=0.0,
         ret_short_window=ret_short_window,
         ret_mid_window=ret_mid_window,
         ma_window=random_generator.randint(3, 25),
         range_window=random_generator.randint(3, 20),
         vol_short_window=vol_short_window,
         vol_long_window=vol_long_window,
-        weight_ret_short=random_generator.uniform(-1.5, 1.5),
-        weight_ret_mid=random_generator.uniform(-1.5, 1.5),
-        weight_dist_ma=random_generator.uniform(-1.5, 1.5),
-        weight_range_pos=random_generator.uniform(-1.5, 1.5),
-        weight_vol_ratio=random_generator.uniform(-1.5, 1.5),
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=random_generator.uniform(-1.5, 1.5),
+            momentum_weight=random_generator.uniform(-1.5, 1.5),
+            breakout_weight=random_generator.uniform(-1.5, 1.5),
+            range_weight=random_generator.uniform(-1.5, 1.5),
+            volatility_weight=random_generator.uniform(-1.5, 1.5),
+            entry_score_threshold=random_generator.uniform(0.35, 0.90),
+            min_positive_families=random_generator.randint(1, 3),
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=random_generator.uniform(-0.10, 0.20),
+            exit_on_signal_reversal=random_generator.choice([True, False]),
+            max_holding_bars=random_generator.choice([0, 12, 24, 36]),
+            stop_loss_pct=random_generator.uniform(0.01, 0.06),
+            take_profit_pct=random_generator.uniform(0.03, 0.18),
+        ),
+        trade_control=TradeControlGene(),
     )
 
-    if use_momentum:
-        genome = genome.copy_with(
-            momentum_threshold=random_generator.uniform(-0.002, 0.002)
-        )
-
-    if use_trend:
-        genome = genome.copy_with(
-            trend_threshold=random_generator.uniform(-0.002, 0.002)
-        )
-
-    if use_exit_momentum:
-        genome = genome.copy_with(
-            exit_momentum_threshold=random_generator.uniform(-0.002, 0.0)
-        )
-
-    return genome
+    return _apply_entry_trigger_overrides(genome, entry_trigger_overrides)
 
 
-def build_initial_population(population_size: int) -> list[Agent]:
+def build_initial_population(
+    population_size: int,
+    entry_score_margin: float = 0.0,
+    min_bars_between_entries: int = 0,
+    entry_confirmation_bars: int = 1,
+    entry_trigger_overrides: dict[str, Any] | None = None,
+) -> list[Agent]:
     if population_size <= 0:
         raise ValueError("population_size must be greater than 0")
 
     random_generator = random.Random(12345)
 
     base_genomes = [
-        Genome(
-            threshold_open=0.80,
-            threshold_close=0.40,
+        build_policy_v2_genome(
             position_size=0.20,
-            stop_loss=0.05,
-            take_profit=0.10,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0005,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=0.3,
+                momentum_weight=0.2,
+                breakout_weight=0.7,
+                range_weight=0.0,
+                volatility_weight=0.0,
+                entry_score_threshold=0.80,
+                min_positive_families=2,
+                require_trend_or_breakout=True,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.10,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.05,
+                take_profit_pct=0.10,
+            ),
         ),
-        Genome(
-            threshold_open=0.72,
-            threshold_close=0.30,
+        build_policy_v2_genome(
             position_size=0.16,
-            stop_loss=0.04,
-            take_profit=0.10,
-            use_momentum=True,
-            momentum_threshold=0.0008,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0008,
+            stop_loss_pct=0.04,
+            take_profit_pct=0.10,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=0.4,
+                momentum_weight=0.9,
+                breakout_weight=0.4,
+                range_weight=0.0,
+                volatility_weight=0.0,
+                entry_score_threshold=0.72,
+                min_positive_families=2,
+                require_trend_or_breakout=True,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.08,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.04,
+                take_profit_pct=0.10,
+            ),
         ),
-        Genome(
-            threshold_open=0.70,
-            threshold_close=0.28,
+        build_policy_v2_genome(
             position_size=0.15,
-            stop_loss=0.03,
-            take_profit=0.09,
-            use_trend=True,
-            trend_threshold=0.0006,
+            stop_loss_pct=0.03,
+            take_profit_pct=0.09,
             trend_window=4,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0008,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=1.0,
+                momentum_weight=0.2,
+                breakout_weight=0.2,
+                range_weight=0.0,
+                volatility_weight=0.0,
+                entry_score_threshold=0.70,
+                min_positive_families=2,
+                require_trend_or_breakout=True,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.05,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.03,
+                take_profit_pct=0.09,
+            ),
         ),
-        Genome(
-            threshold_open=0.66,
-            threshold_close=0.24,
+        build_policy_v2_genome(
             position_size=0.10,
-            stop_loss=0.02,
-            take_profit=0.06,
-            use_momentum=True,
-            momentum_threshold=0.0005,
-            use_trend=True,
-            trend_threshold=0.0004,
+            stop_loss_pct=0.02,
+            take_profit_pct=0.06,
             trend_window=3,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0005,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=0.8,
+                momentum_weight=0.8,
+                breakout_weight=0.2,
+                range_weight=0.0,
+                volatility_weight=0.0,
+                entry_score_threshold=0.66,
+                min_positive_families=2,
+                require_trend_or_breakout=True,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.02,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.02,
+                take_profit_pct=0.06,
+            ),
         ),
-        Genome(
-            threshold_open=0.40,
-            threshold_close=0.12,
+        build_policy_v2_genome(
             position_size=0.12,
-            stop_loss=0.03,
-            take_profit=0.08,
+            stop_loss_pct=0.03,
+            take_profit_pct=0.08,
             ret_short_window=1,
             ret_mid_window=3,
             ma_window=5,
             range_window=4,
             vol_short_window=2,
             vol_long_window=6,
-            weight_ret_short=1.1,
-            weight_ret_mid=0.7,
-            weight_dist_ma=0.4,
-            weight_range_pos=0.2,
-            weight_vol_ratio=-0.1,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0006,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=0.4,
+                momentum_weight=0.9,
+                breakout_weight=0.0,
+                range_weight=0.2,
+                volatility_weight=-0.1,
+                entry_score_threshold=0.40,
+                min_positive_families=1,
+                require_trend_or_breakout=False,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.12,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.03,
+                take_profit_pct=0.08,
+            ),
         ),
-        Genome(
-            threshold_open=0.42,
-            threshold_close=0.14,
+        build_policy_v2_genome(
             position_size=0.12,
-            stop_loss=0.03,
-            take_profit=0.09,
+            stop_loss_pct=0.03,
+            take_profit_pct=0.09,
             ret_short_window=2,
             ret_mid_window=5,
             ma_window=6,
             range_window=5,
             vol_short_window=2,
             vol_long_window=7,
-            weight_ret_short=-0.8,
-            weight_ret_mid=0.9,
-            weight_dist_ma=-0.5,
-            weight_range_pos=0.6,
-            weight_vol_ratio=0.2,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0007,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=-0.5,
+                momentum_weight=0.05,
+                breakout_weight=0.0,
+                range_weight=0.6,
+                volatility_weight=0.2,
+                entry_score_threshold=0.42,
+                min_positive_families=1,
+                require_trend_or_breakout=False,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.14,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.03,
+                take_profit_pct=0.09,
+            ),
         ),
-        Genome(
-            threshold_open=0.38,
-            threshold_close=0.10,
+        build_policy_v2_genome(
             position_size=0.10,
-            stop_loss=0.025,
-            take_profit=0.07,
+            stop_loss_pct=0.025,
+            take_profit_pct=0.07,
             ret_short_window=1,
             ret_mid_window=4,
             ma_window=8,
             range_window=6,
             vol_short_window=2,
             vol_long_window=8,
-            weight_ret_short=0.5,
-            weight_ret_mid=1.2,
-            weight_dist_ma=0.3,
-            weight_range_pos=-0.4,
-            weight_vol_ratio=0.4,
-            use_momentum=True,
-            momentum_threshold=0.0003,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0005,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=0.3,
+                momentum_weight=0.85,
+                breakout_weight=0.0,
+                range_weight=-0.4,
+                volatility_weight=0.4,
+                entry_score_threshold=0.38,
+                min_positive_families=1,
+                require_trend_or_breakout=False,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.10,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.025,
+                take_profit_pct=0.07,
+            ),
         ),
-        Genome(
-            threshold_open=0.44,
-            threshold_close=0.16,
+        build_policy_v2_genome(
             position_size=0.14,
-            stop_loss=0.04,
-            take_profit=0.10,
+            stop_loss_pct=0.04,
+            take_profit_pct=0.10,
             ret_short_window=2,
             ret_mid_window=6,
             ma_window=10,
             range_window=6,
             vol_short_window=3,
             vol_long_window=9,
-            weight_ret_short=-0.6,
-            weight_ret_mid=-0.3,
-            weight_dist_ma=0.9,
-            weight_range_pos=0.5,
-            weight_vol_ratio=-0.2,
-            use_trend=True,
-            trend_threshold=0.0004,
             trend_window=3,
-            use_exit_momentum=True,
-            exit_momentum_threshold=-0.0006,
+            entry_trigger=EntryTriggerGene(
+                trend_weight=0.9,
+                momentum_weight=-0.45,
+                breakout_weight=0.0,
+                range_weight=0.5,
+                volatility_weight=-0.2,
+                entry_score_threshold=0.44,
+                min_positive_families=1,
+                require_trend_or_breakout=True,
+            ),
+            exit_policy=ExitPolicyGene(
+                exit_score_threshold=0.16,
+                exit_on_signal_reversal=True,
+                stop_loss_pct=0.04,
+                take_profit_pct=0.10,
+            ),
         ),
     ]
 
     genomes = list(base_genomes)
 
     while len(genomes) < population_size:
-        genomes.append(build_random_genome(random_generator))
+        genomes.append(
+            build_random_genome(
+                random_generator,
+                entry_score_margin=entry_score_margin,
+                min_bars_between_entries=min_bars_between_entries,
+                entry_confirmation_bars=entry_confirmation_bars,
+            )
+        )
 
-    selected_genomes = genomes[:population_size]
+    selected_genomes = [
+        _apply_entry_trigger_overrides(genome, entry_trigger_overrides)
+        for genome in genomes[:population_size]
+    ]
     return [Agent.create(genome) for genome in selected_genomes]
+
+
+def _apply_entry_trigger_overrides(
+    genome: Genome,
+    entry_trigger_overrides: dict[str, Any] | None,
+) -> Genome:
+    if not entry_trigger_overrides:
+        return genome
+
+    merged_trigger = dict(genome.to_dict()["entry_trigger"])
+    merged_trigger.update(entry_trigger_overrides)
+    return genome.copy_with(entry_trigger=merged_trigger)
 
 
 def build_environment(
@@ -418,7 +507,13 @@ def execute_historical_run(
         mutation_profile=config.mutation_profile,
     )
 
-    population = build_initial_population(config.population_size)
+    population = build_initial_population(
+        config.population_size,
+        entry_score_margin=config.entry_score_margin,
+        min_bars_between_entries=config.min_bars_between_entries,
+        entry_confirmation_bars=config.entry_confirmation_bars,
+        entry_trigger_overrides=config.entry_trigger_overrides,
+    )
 
     if output_dir is None:
         output_dir = RUN_LOG_DIR
@@ -447,6 +542,9 @@ def execute_historical_run(
         f"Trade cost rate: {config.trade_cost_rate}",
         f"Cost penalty weight: {config.cost_penalty_weight}",
         f"Trade count penalty weight: {config.trade_count_penalty_weight}",
+        f"Entry score margin: {config.entry_score_margin:.4f}",
+        f"Min bars between entries: {config.min_bars_between_entries}",
+        f"Entry confirmation bars: {config.entry_confirmation_bars}",
         f"Regime filter enabled: {config.regime_filter_enabled}",
         f"Min trend long for entry: {config.min_trend_long_for_entry:.4f}",
         f"Min breakout for entry: {config.min_breakout_for_entry:.4f}",
@@ -485,6 +583,9 @@ def execute_historical_run(
     print(f"Trade cost rate: {config.trade_cost_rate}")
     print(f"Cost penalty weight: {config.cost_penalty_weight}")
     print(f"Trade count penalty weight: {config.trade_count_penalty_weight}")
+    print(f"Entry score margin: {config.entry_score_margin:.4f}")
+    print(f"Min bars between entries: {config.min_bars_between_entries}")
+    print(f"Entry confirmation bars: {config.entry_confirmation_bars}")
     print(f"Regime filter enabled: {config.regime_filter_enabled}")
     print(f"Min trend long for entry: {config.min_trend_long_for_entry:.4f}")
     print(f"Min breakout for entry: {config.min_breakout_for_entry:.4f}")

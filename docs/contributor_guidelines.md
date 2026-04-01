@@ -14,6 +14,7 @@ This document is for maintainers, contributors, and coding agents working inside
 - a good single seed is not a strong conclusion
 - prefer clarity over cleverness
 - keep documentation aligned with the actual code, not with plans
+- prefer portable market-feature families over platform-specific indicator catalogs
 
 ## Documentation Rules
 
@@ -23,6 +24,17 @@ This document is for maintainers, contributors, and coding agents working inside
 - do not preserve outdated execution paths "just in case"
 - use English for documentation and code comments
 - do not add a new top-level guide unless the existing canonical docs clearly cannot absorb the topic
+- when documenting signals or decision rules, describe them in English with:
+  - what it measures
+  - trading meaning
+  - interpretation
+  - limitation
+- keep signal naming portable and family-oriented:
+  - trend
+  - momentum
+  - breakout
+  - range
+  - volatility
 
 ## Reporting Rules
 
@@ -53,6 +65,13 @@ This document is for maintainers, contributors, and coding agents working inside
 - no obsolete execution mode references remain
 - no stale "legacy" guidance survives by accident
 - tests still reflect the canonical workflow rather than historical ones
+
+## Legacy Retirement Criteria
+
+- New campaigns already run on policy v2.1 only. Treat legacy as historical compatibility, not as an active experimentation option.
+- do not retire legacy until policy v2.1 has been validated across multiple campaigns
+- do not retire legacy while it is still needed for historical reevaluation or reproducibility
+- prefer explicit deprecation before deletion
 
 ## Known Terminology Debt
 

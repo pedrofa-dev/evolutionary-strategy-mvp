@@ -402,6 +402,26 @@ def test_hash_and_fingerprint_generation_is_stable() -> None:
     assert len(first_fingerprint) == 64
 
 
+def test_execution_fingerprint_changes_when_logic_version_changes() -> None:
+    config_snapshot = build_config_snapshot(seed=101)
+
+    previous_fingerprint = build_execution_fingerprint(
+        config_hash=hash_config_snapshot(config_snapshot),
+        effective_seed=101,
+        dataset_signature="sig-001",
+        logic_version="v6",
+    )
+    current_fingerprint = build_execution_fingerprint(
+        config_hash=hash_config_snapshot(config_snapshot),
+        effective_seed=101,
+        dataset_signature="sig-001",
+        logic_version=CURRENT_LOGIC_VERSION,
+    )
+
+    assert CURRENT_LOGIC_VERSION == "v7"
+    assert previous_fingerprint != current_fingerprint
+
+
 def test_utc_now_iso_returns_utc_text_timestamp() -> None:
     value = utc_now_iso()
     assert value.endswith("Z")
