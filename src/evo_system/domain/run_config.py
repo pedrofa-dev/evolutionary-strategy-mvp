@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from evo_system.mutation.mutator import MutationProfile
@@ -28,6 +28,10 @@ class RunConfig:
     exit_policy_overrides: dict[str, Any] | None = None
     trade_control_overrides: dict[str, Any] | None = None
     entry_trigger_constraints: dict[str, Any] | None = None
+    signal_pack_name: str = "policy_v21_default"
+    genome_schema_name: str = "policy_v2_default"
+    decision_policy_name: str = "policy_v2_default"
+    mutation_profile_name: str = "default_runtime_profile"
     seeds: list[int] | None = None
     seed_start: int | None = None
     seed_count: int | None = None
@@ -89,6 +93,15 @@ class RunConfig:
         if not isinstance(self.dataset_catalog_id, str) or not self.dataset_catalog_id.strip():
             raise ValueError("dataset_catalog_id is required")
 
+        for field_name, value in (
+            ("signal_pack_name", self.signal_pack_name),
+            ("genome_schema_name", self.genome_schema_name),
+            ("decision_policy_name", self.decision_policy_name),
+            ("mutation_profile_name", self.mutation_profile_name),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} is required")
+
         if self.seeds is not None:
             if not self.seeds:
                 raise ValueError("seeds cannot be empty when provided")
@@ -102,3 +115,8 @@ class RunConfig:
                 raise ValueError("seed_start and seed_count must be provided together")
             if self.seed_count <= 0:
                 raise ValueError("seed_count must be greater than 0")
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["mutation_profile"] = self.mutation_profile.to_dict()
+        return payload

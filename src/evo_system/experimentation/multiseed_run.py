@@ -465,6 +465,7 @@ def execute_multiseed_job(job: MultiseedJob) -> HistoricalRunSummary:
                     persistence_db_path=job.persistence_db_path,
                     run_execution_id=job.run_execution_id,
                     config_json_snapshot=job.effective_config_snapshot,
+                    preset_name=job.preset_name,
                 )
                 return preserve_original_config_path(summary, job.config_path)
     finally:
@@ -486,6 +487,7 @@ def execute_multiseed_job_sequential(job: MultiseedJob) -> HistoricalRunSummary:
             persistence_db_path=job.persistence_db_path,
             run_execution_id=job.run_execution_id,
             config_json_snapshot=job.effective_config_snapshot,
+            preset_name=job.preset_name,
         )
         return preserve_original_config_path(summary, job.config_path)
     finally:
@@ -561,6 +563,7 @@ def build_run_summary_payload(summary: HistoricalRunSummary) -> dict:
         "log_file_path": str(summary.log_file_path),
         "config_path": str(summary.config_path) if summary.config_path is not None else None,
         "execution_status": summary.execution_status,
+        "experimental_space_snapshot": getattr(summary, "experimental_space_snapshot", None),
     }
 
 
@@ -650,6 +653,7 @@ def build_summary_from_reused_execution(
         train_validation_profit_gap=float(summary_json["train_validation_profit_gap"]),
         config_path=config_path,
         execution_status="reused",
+        experimental_space_snapshot=summary_json.get("experimental_space_snapshot"),
     )
 
 

@@ -16,7 +16,10 @@ __all__ = [
     "get_default_genome_schema",
     "get_default_mutation_profile_definition",
     "get_default_signal_pack",
+    "get_decision_policy",
     "get_genome_schema",
+    "get_mutation_profile_definition",
+    "get_signal_pack",
     "mutation_profile_registry",
     "signal_pack_registry",
 ]
@@ -30,7 +33,10 @@ def __getattr__(name: str):
         "get_default_genome_schema",
         "get_default_mutation_profile_definition",
         "get_default_signal_pack",
+        "get_decision_policy",
         "get_genome_schema",
+        "get_mutation_profile_definition",
+        "get_signal_pack",
         "mutation_profile_registry",
         "signal_pack_registry",
     }:

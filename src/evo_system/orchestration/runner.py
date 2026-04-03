@@ -11,6 +11,7 @@ from evo_system.domain.genome import (
 )
 from evo_system.experimental_space import (
     get_default_genome_schema,
+    get_mutation_profile_definition,
     get_default_mutation_profile_definition,
     get_genome_schema,
 )
@@ -39,6 +40,7 @@ class EvolutionRunner:
         mutation_profile: MutationProfile | None = None,
         entry_trigger_constraints: dict[str, float] | None = None,
         genome_schema_name: str | None = None,
+        mutation_profile_name: str | None = None,
     ) -> None:
         self._random = random.Random(mutation_seed)
         self.genome_schema = (
@@ -46,7 +48,11 @@ class EvolutionRunner:
             if genome_schema_name is not None
             else get_default_genome_schema()
         )
-        self.mutation_profile_definition = get_default_mutation_profile_definition()
+        self.mutation_profile_definition = (
+            get_mutation_profile_definition(mutation_profile_name)
+            if mutation_profile_name is not None
+            else get_default_mutation_profile_definition()
+        )
         self.mutator = Mutator(
             seed=mutation_seed,
             profile=self.mutation_profile_definition.resolve_runtime_profile(

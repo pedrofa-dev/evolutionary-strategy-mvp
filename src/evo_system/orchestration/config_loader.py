@@ -12,7 +12,7 @@ def load_run_config(config_path: str) -> RunConfig:
         data = json.load(config_file)
 
     mutation_profile_data = data.get("mutation_profile", {})
-    mutation_profile = MutationProfile(**mutation_profile_data)
+    mutation_profile = MutationProfile.from_dict(mutation_profile_data)
 
     return RunConfig(
         mutation_seed=int(data["mutation_seed"]),
@@ -55,6 +55,12 @@ def load_run_config(config_path: str) -> RunConfig:
             if "entry_trigger_constraints" in data
             and data["entry_trigger_constraints"] is not None
             else None
+        ),
+        signal_pack_name=str(data.get("signal_pack_name", "policy_v21_default")),
+        genome_schema_name=str(data.get("genome_schema_name", "policy_v2_default")),
+        decision_policy_name=str(data.get("decision_policy_name", "policy_v2_default")),
+        mutation_profile_name=str(
+            data.get("mutation_profile_name", "default_runtime_profile")
         ),
         mutation_profile=mutation_profile,
         dataset_catalog_id=data["dataset_catalog_id"],

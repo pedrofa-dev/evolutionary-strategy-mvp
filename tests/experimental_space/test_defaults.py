@@ -8,12 +8,15 @@ from evo_system.domain.historical_candle import HistoricalCandle
 from evo_system.environment.historical_environment import HistoricalEnvironment
 from evo_system.experimental_space import (
     decision_policy_registry,
+    get_decision_policy,
     genome_schema_registry,
     get_default_decision_policy,
     get_default_genome_schema,
     get_default_mutation_profile_definition,
     get_default_signal_pack,
     get_genome_schema,
+    get_mutation_profile_definition,
+    get_signal_pack,
     mutation_profile_registry,
     signal_pack_registry,
 )
@@ -39,6 +42,16 @@ def test_default_registries_expose_phase_one_components() -> None:
     assert decision_policy_registry.default_name == "policy_v2_default"
     assert mutation_profile_registry.default_name == "default_runtime_profile"
     assert "modular_genome_v1" in genome_schema_registry.list_names()
+
+
+def test_component_registries_resolve_named_defaults_explicitly() -> None:
+    assert get_signal_pack("policy_v21_default").name == "policy_v21_default"
+    assert get_genome_schema("modular_genome_v1").name == "modular_genome_v1"
+    assert get_decision_policy("policy_v2_default").name == "policy_v2_default"
+    assert (
+        get_mutation_profile_definition("default_runtime_profile").name
+        == "default_runtime_profile"
+    )
 
 
 def test_default_signal_pack_matches_current_environment_methods() -> None:

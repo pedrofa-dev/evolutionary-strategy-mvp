@@ -28,6 +28,10 @@ def test_run_config_builds_valid_instance() -> None:
     assert config.min_breakout_for_entry == 0.0
     assert config.max_realized_volatility_for_entry is None
     assert config.dataset_catalog_id == "core_1h_spot"
+    assert config.signal_pack_name == "policy_v21_default"
+    assert config.genome_schema_name == "policy_v2_default"
+    assert config.decision_policy_name == "policy_v2_default"
+    assert config.mutation_profile_name == "default_runtime_profile"
 
 
 def test_run_config_accepts_required_dataset_catalog_id() -> None:
@@ -223,6 +227,43 @@ def test_run_config_accepts_policy_v2_override_blocks() -> None:
     assert config.trade_control_overrides["cooldown_bars"] == 2
     assert config.entry_trigger_constraints is not None
     assert config.entry_trigger_constraints["min_trend_weight"] == 0.0
+
+
+def test_run_config_accepts_explicit_modular_component_names() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
+        signal_pack_name="policy_v21_default",
+        genome_schema_name="modular_genome_v1",
+        decision_policy_name="policy_v2_default",
+        mutation_profile_name="default_runtime_profile",
+    )
+
+    assert config.signal_pack_name == "policy_v21_default"
+    assert config.genome_schema_name == "modular_genome_v1"
+    assert config.decision_policy_name == "policy_v2_default"
+    assert config.mutation_profile_name == "default_runtime_profile"
+
+
+def test_run_config_to_dict_serializes_mutation_profile_and_component_names() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
+    )
+
+    payload = config.to_dict()
+
+    assert payload["mutation_profile"] == config.mutation_profile.to_dict()
+    assert payload["signal_pack_name"] == "policy_v21_default"
+    assert payload["genome_schema_name"] == "policy_v2_default"
 
 
 def test_run_config_requires_dataset_catalog_id() -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from evo_system.domain.genome import (
@@ -26,6 +26,13 @@ class MutationProfile:
     flag_flip_probability: float = 0.05
     weight_delta: float = 0.20
     window_step_mode: str = "default"  # "small", "default", "wide"
+
+    def to_dict(self) -> dict[str, float | str]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "MutationProfile":
+        return cls(**(data or {}))
 
     def main_delta(self) -> float:
         return 0.03 * self.numeric_delta_scale

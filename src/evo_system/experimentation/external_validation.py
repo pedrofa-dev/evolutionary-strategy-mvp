@@ -18,6 +18,8 @@ def build_environment(
     min_trend_long_for_entry: float = 0.0,
     min_breakout_for_entry: float = 0.0,
     max_realized_volatility_for_entry: float | None = None,
+    signal_pack_name: str | None = None,
+    decision_policy_name: str | None = None,
 ) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
     return HistoricalEnvironment(
@@ -27,6 +29,8 @@ def build_environment(
         min_trend_long_for_entry=min_trend_long_for_entry,
         min_breakout_for_entry=min_breakout_for_entry,
         max_realized_volatility_for_entry=max_realized_volatility_for_entry,
+        signal_pack_name=signal_pack_name,
+        decision_policy_name=decision_policy_name,
     )
 
 
@@ -40,6 +44,8 @@ def run_external_validation(
     min_trend_long_for_entry: float = 0.0,
     min_breakout_for_entry: float = 0.0,
     max_realized_volatility_for_entry: float | None = None,
+    signal_pack_name: str | None = None,
+    decision_policy_name: str | None = None,
 ) -> AgentEvaluation:
     """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
 
@@ -69,6 +75,8 @@ def run_external_validation(
             min_trend_long_for_entry=min_trend_long_for_entry,
             min_breakout_for_entry=min_breakout_for_entry,
             max_realized_volatility_for_entry=max_realized_volatility_for_entry,
+            signal_pack_name=signal_pack_name,
+            decision_policy_name=decision_policy_name,
         )
         for path in external_dataset_paths
     ]

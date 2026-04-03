@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -19,3 +20,4 @@ class HistoricalRunSummary:
     train_validation_profit_gap: float
     config_path: Path | None = None
     execution_status: str = "executed"
+    experimental_space_snapshot: dict[str, Any] | None = None

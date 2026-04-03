@@ -7,8 +7,10 @@ from evo_system.domain.episode_result import EpisodeResult
 from evo_system.domain.historical_candle import HistoricalCandle
 from evo_system.experimental_space.base import EntryDecision, ExitDecision
 from evo_system.experimental_space import (
+    get_decision_policy,
     get_default_decision_policy,
     get_default_signal_pack,
+    get_signal_pack,
 )
 
 
@@ -36,6 +38,8 @@ class HistoricalEnvironment:
         min_trend_long_for_entry: float = 0.0,
         min_breakout_for_entry: float = 0.0,
         max_realized_volatility_for_entry: float | None = None,
+        signal_pack_name: str | None = None,
+        decision_policy_name: str | None = None,
     ) -> None:
         if not candles:
             raise ValueError("candles cannot be empty")
@@ -49,8 +53,16 @@ class HistoricalEnvironment:
         self.min_trend_long_for_entry = min_trend_long_for_entry
         self.min_breakout_for_entry = min_breakout_for_entry
         self.max_realized_volatility_for_entry = max_realized_volatility_for_entry
-        self.signal_pack = get_default_signal_pack()
-        self.decision_policy = get_default_decision_policy()
+        self.signal_pack = (
+            get_signal_pack(signal_pack_name)
+            if signal_pack_name is not None
+            else get_default_signal_pack()
+        )
+        self.decision_policy = (
+            get_decision_policy(decision_policy_name)
+            if decision_policy_name is not None
+            else get_default_decision_policy()
+        )
 
         self._closes = [candle.close for candle in candles]
         self._highs = [candle.high for candle in candles]

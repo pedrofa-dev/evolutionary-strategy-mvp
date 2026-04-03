@@ -30,6 +30,7 @@ from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.environment.csv_loader import load_historical_candles
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.environment.historical_environment import HistoricalEnvironment
+from evo_system.experimental_space.identity import build_experimental_space_snapshot
 from evo_system.evaluation import (
     AgentEvaluator,
     INVALID_VALIDATION_PENALTY,
@@ -459,6 +460,8 @@ def build_environment(
     min_trend_long_for_entry: float = 0.0,
     min_breakout_for_entry: float = 0.0,
     max_realized_volatility_for_entry: float | None = None,
+    signal_pack_name: str | None = None,
+    decision_policy_name: str | None = None,
 ) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
     return HistoricalEnvironment(
@@ -468,6 +471,8 @@ def build_environment(
         min_trend_long_for_entry=min_trend_long_for_entry,
         min_breakout_for_entry=min_breakout_for_entry,
         max_realized_volatility_for_entry=max_realized_volatility_for_entry,
+        signal_pack_name=signal_pack_name,
+        decision_policy_name=decision_policy_name,
     )
 
 
@@ -561,6 +566,7 @@ def execute_historical_run(
     persistence_db_path: Path = DEFAULT_PERSISTENCE_DB_PATH,
     run_execution_id: int | None = None,
     config_json_snapshot: dict | None = None,
+    preset_name: str | None = None,
 ) -> HistoricalRunSummary:
     run_start_time = time.perf_counter()
 
@@ -585,11 +591,17 @@ def execute_historical_run(
     )
 
     run_id = str(uuid.uuid4())
+    experimental_space_snapshot = build_experimental_space_snapshot(
+        config,
+        experiment_preset_name=preset_name,
+    )
 
     runner = EvolutionRunner(
         mutation_seed=config.mutation_seed,
         mutation_profile=config.mutation_profile,
         entry_trigger_constraints=config.entry_trigger_constraints,
+        genome_schema_name=config.genome_schema_name,
+        mutation_profile_name=config.mutation_profile_name,
     )
 
     population = build_initial_population(
@@ -623,6 +635,15 @@ def execute_historical_run(
         f"Dataset signature: {dataset_signature}",
         f"Mutation seed: {config.mutation_seed}",
         f"Mutation profile: {config.mutation_profile}",
+        (
+            "Experimental space -> "
+            f"signal_pack={experimental_space_snapshot.signal_pack_name} | "
+            f"genome_schema={experimental_space_snapshot.genome_schema_name} | "
+            f"gene_catalog={experimental_space_snapshot.gene_type_catalog_name} | "
+            f"decision_policy={experimental_space_snapshot.decision_policy_name} | "
+            f"mutation_profile_definition={experimental_space_snapshot.mutation_profile_name} | "
+            f"preset={experimental_space_snapshot.experiment_preset_name or 'none'}"
+        ),
         f"Population size: {config.population_size}",
         f"Target population size: {config.target_population_size}",
         f"Survivors count: {config.survivors_count}",
@@ -664,6 +685,15 @@ def execute_historical_run(
     print(f"Dataset root: {effective_dataset_root}")
     print(f"Dataset signature: {dataset_signature}")
     print(f"Mutation profile: {config.mutation_profile}")
+    print(
+        "Experimental space: "
+        f"signal_pack={experimental_space_snapshot.signal_pack_name} | "
+        f"genome_schema={experimental_space_snapshot.genome_schema_name} | "
+        f"gene_catalog={experimental_space_snapshot.gene_type_catalog_name} | "
+        f"decision_policy={experimental_space_snapshot.decision_policy_name} | "
+        f"mutation_profile_definition={experimental_space_snapshot.mutation_profile_name} | "
+        f"preset={experimental_space_snapshot.experiment_preset_name or 'none'}"
+    )
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
         f"validation={len(validation_dataset_paths)}"
@@ -724,6 +754,8 @@ def execute_historical_run(
                 min_trend_long_for_entry=config.min_trend_long_for_entry,
                 min_breakout_for_entry=config.min_breakout_for_entry,
                 max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                signal_pack_name=config.signal_pack_name,
+                decision_policy_name=config.decision_policy_name,
             )
             for path in sampled_train_paths
         ]
@@ -735,6 +767,8 @@ def execute_historical_run(
                 min_trend_long_for_entry=config.min_trend_long_for_entry,
                 min_breakout_for_entry=config.min_breakout_for_entry,
                 max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                signal_pack_name=config.signal_pack_name,
+                decision_policy_name=config.decision_policy_name,
             )
             for path in validation_dataset_paths
         ]
@@ -1080,6 +1114,8 @@ def execute_historical_run(
                     min_trend_long_for_entry=config.min_trend_long_for_entry,
                     min_breakout_for_entry=config.min_breakout_for_entry,
                     max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
+                    signal_pack_name=config.signal_pack_name,
+                    decision_policy_name=config.decision_policy_name,
                 )
                 external_validation_metrics = build_external_validation_metrics(
                     evaluation=external_validation_evaluation,
@@ -1214,4 +1250,5 @@ def execute_historical_run(
         train_validation_selection_gap=train_validation_selection_gap,
         train_validation_profit_gap=train_validation_profit_gap,
         config_path=config_path,
+        experimental_space_snapshot=experimental_space_snapshot.to_dict(),
     )

@@ -312,6 +312,10 @@ def get_default_signal_pack() -> SignalPack:
     return signal_pack_registry.get_default()
 
 
+def get_signal_pack(name: str) -> SignalPack:
+    return signal_pack_registry.get(name)
+
+
 def get_default_genome_schema() -> GenomeSchema:
     return genome_schema_registry.get_default()
 
@@ -324,5 +328,13 @@ def get_default_decision_policy() -> DecisionPolicy:
     return decision_policy_registry.get_default()
 
 
+def get_decision_policy(name: str) -> DecisionPolicy:
+    return decision_policy_registry.get(name)
+
+
 def get_default_mutation_profile_definition() -> MutationProfileDefinition:
     return mutation_profile_registry.get_default()
+
+
+def get_mutation_profile_definition(name: str) -> MutationProfileDefinition:
+    return mutation_profile_registry.get(name)

@@ -38,6 +38,10 @@ def test_load_run_config_reads_required_and_optional_fields(tmp_path) -> None:
     assert config.min_trend_long_for_entry == 0.0
     assert config.min_breakout_for_entry == 0.0
     assert config.max_realized_volatility_for_entry is None
+    assert config.signal_pack_name == "policy_v21_default"
+    assert config.genome_schema_name == "policy_v2_default"
+    assert config.decision_policy_name == "policy_v2_default"
+    assert config.mutation_profile_name == "default_runtime_profile"
 
 
 def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
@@ -260,6 +264,34 @@ def test_load_run_config_reads_policy_v2_override_blocks(tmp_path) -> None:
         "min_trend_weight": 0.0,
         "min_breakout_weight": 0.0,
     }
+
+
+def test_load_run_config_reads_explicit_modular_component_names(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "dataset_catalog_id": "core_1h_spot",
+                "signal_pack_name": "policy_v21_default",
+                "genome_schema_name": "modular_genome_v1",
+                "decision_policy_name": "policy_v2_default",
+                "mutation_profile_name": "default_runtime_profile",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.signal_pack_name == "policy_v21_default"
+    assert config.genome_schema_name == "modular_genome_v1"
+    assert config.decision_policy_name == "policy_v2_default"
+    assert config.mutation_profile_name == "default_runtime_profile"
 
 
 def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:

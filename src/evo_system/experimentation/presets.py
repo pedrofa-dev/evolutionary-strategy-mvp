@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from evo_system.experimental_space.registry import NamedRegistry
+
 
 @dataclass(frozen=True)
 class ExperimentPreset:
@@ -42,23 +44,43 @@ PRESET_FULL = ExperimentPreset(
     max_seeds=100,
 )
 
-PRESETS_BY_NAME = {
-    PRESET_QUICK.name: PRESET_QUICK,
-    PRESET_SCREENING.name: PRESET_SCREENING,
-    PRESET_STANDARD.name: PRESET_STANDARD,
-    PRESET_EXTENDED.name: PRESET_EXTENDED,
-    PRESET_FULL.name: PRESET_FULL,
-}
+PRESET_REGISTRY: NamedRegistry[ExperimentPreset] = NamedRegistry()
+PRESET_REGISTRY.register(PRESET_QUICK.name, PRESET_QUICK)
+PRESET_REGISTRY.register(PRESET_SCREENING.name, PRESET_SCREENING)
+PRESET_REGISTRY.register(PRESET_STANDARD.name, PRESET_STANDARD)
+PRESET_REGISTRY.register(PRESET_EXTENDED.name, PRESET_EXTENDED)
+PRESET_REGISTRY.register(PRESET_FULL.name, PRESET_FULL)
 
 
 def get_available_preset_names() -> list[str]:
-    return sorted(PRESETS_BY_NAME.keys())
+    return PRESET_REGISTRY.list_names()
 
 
 def get_preset_by_name(name: str | None) -> ExperimentPreset | None:
     if name is None:
         return None
-    return PRESETS_BY_NAME.get(name.lower())
+    try:
+        return PRESET_REGISTRY.get(name.lower())
+    except KeyError:
+        return None
+
+
+def serialize_preset(preset: ExperimentPreset | None) -> dict[str, Any] | None:
+    if preset is None:
+        return None
+
+    return {
+        "name": preset.name,
+        "generations": preset.generations,
+        "max_seeds": preset.max_seeds,
+        "seeds": list(preset.seeds) if preset.seeds is not None else None,
+    }
+
+
+def deserialize_preset(payload: dict[str, Any] | None) -> ExperimentPreset | None:
+    if payload is None:
+        return None
+    return get_preset_by_name(payload.get("name"))
 
 
 def apply_preset_to_config_data(
