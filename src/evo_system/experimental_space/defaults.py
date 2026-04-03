@@ -17,6 +17,9 @@ from evo_system.experimental_space.base import (
     MutationProfileDefinition,
     SignalPack,
 )
+from evo_system.experimental_space.gene_catalog import (
+    MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
+)
 from evo_system.experimental_space.registry import NamedRegistry
 from evo_system.mutation.mutator import MutationProfile
 
@@ -53,6 +56,28 @@ class CurrentPolicyV2GenomeSchema(GenomeSchema):
     def is_active_for_genome(self, genome: Genome) -> bool:
         return genome.policy_v2_enabled
 
+    def get_gene_type_catalog(self):
+        return MODULAR_GENOME_V1_GENE_TYPE_CATALOG
+
+    def get_module_names(self) -> tuple[str, ...]:
+        return tuple(self.get_gene_type_catalog().list_gene_type_names())
+
+    def build_default_module(self, module_name: str) -> Any:
+        return self.get_gene_type_catalog().build_default_module(module_name)
+
+    def build_genome_from_modules(
+        self,
+        *,
+        position_size: float,
+        schema_fields: dict[str, int],
+        gene_blocks: dict[str, Any],
+    ) -> Genome:
+        return self.get_gene_type_catalog().build_genome(
+            position_size=position_size,
+            schema_fields=schema_fields,
+            gene_blocks=gene_blocks,
+        )
+
     def build_genome(self, **kwargs: Any) -> Genome:
         return build_policy_v2_genome(**kwargs)
 
@@ -76,6 +101,28 @@ class ModularGenomeSchemaV1(GenomeSchema):
 
     def is_active_for_genome(self, genome: Genome) -> bool:
         return genome.policy_v2_enabled
+
+    def get_gene_type_catalog(self):
+        return MODULAR_GENOME_V1_GENE_TYPE_CATALOG
+
+    def get_module_names(self) -> tuple[str, ...]:
+        return tuple(self.get_gene_type_catalog().list_gene_type_names())
+
+    def build_default_module(self, module_name: str) -> Any:
+        return self.get_gene_type_catalog().build_default_module(module_name)
+
+    def build_genome_from_modules(
+        self,
+        *,
+        position_size: float,
+        schema_fields: dict[str, int],
+        gene_blocks: dict[str, Any],
+    ) -> Genome:
+        return self.get_gene_type_catalog().build_genome(
+            position_size=position_size,
+            schema_fields=schema_fields,
+            gene_blocks=gene_blocks,
+        )
 
     def build_entry_context(self, **kwargs: Any) -> EntryContextGene:
         """Build the entry-context block for modular schema v1."""
@@ -145,6 +192,74 @@ class CurrentPolicyV2DecisionPolicy(DecisionPolicy):
             genome,
             signal_families,
             trigger_score,
+        )
+
+    def should_enter(
+        self,
+        *,
+        environment: Any,
+        genome: Genome,
+        signal_families: dict[str, float],
+        trigger_score: float,
+        regime_filter_ok: bool,
+    ) -> bool:
+        return environment._should_enter_policy_v2(
+            genome=genome,
+            signal_families=signal_families,
+            trigger_score=trigger_score,
+            regime_filter_ok=regime_filter_ok,
+        )
+
+    def should_exit(
+        self,
+        *,
+        environment: Any,
+        genome: Genome,
+        signal_families: dict[str, float],
+        trigger_score: float,
+        normalized_momentum: float,
+        trade_return: float,
+        holding_bars: int,
+    ) -> bool:
+        return environment._should_exit_policy_v2(
+            genome=genome,
+            signal_families=signal_families,
+            trigger_score=trigger_score,
+            normalized_momentum=normalized_momentum,
+            trade_return=trade_return,
+            holding_bars=holding_bars,
+        )
+
+    def evaluate_entry(
+        self,
+        *,
+        environment: Any,
+        genome: Genome,
+        signal_families: dict[str, float],
+        regime_filter_ok: bool,
+    ):
+        return environment._evaluate_policy_v2_entry(
+            genome=genome,
+            signal_families=signal_families,
+            regime_filter_ok=regime_filter_ok,
+        )
+
+    def evaluate_exit(
+        self,
+        *,
+        environment: Any,
+        genome: Genome,
+        signal_families: dict[str, float],
+        normalized_momentum: float,
+        trade_return: float,
+        holding_bars: int,
+    ):
+        return environment._evaluate_policy_v2_exit(
+            genome=genome,
+            signal_families=signal_families,
+            normalized_momentum=normalized_momentum,
+            trade_return=trade_return,
+            holding_bars=holding_bars,
         )
 
 

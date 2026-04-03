@@ -452,8 +452,6 @@ def test_active_policy_v21_configs_build_population_without_legacy_threshold_dep
         "balanced_bnb fee_5bps_fees_policy_v21_conservative.json",
         "balanced_bnb fee_5bps_fees_policy_v21_baseline.json",
         "balanced_bnb fee_5bps_fees_policy_v21_permissive.json",
-        "balanced_bnb fee_5bps_fees_policy_v21_recovery.json",
-        "balanced_bnb fee_5bps_fees_policy_v21_recovery_trend.json",
     ]
 
     for config_name in config_names:
@@ -483,8 +481,6 @@ def test_active_policy_v21_family_uses_expected_entry_trigger_values() -> None:
         "balanced_bnb fee_5bps_fees_policy_v21_conservative.json": (0.55, 3),
         "balanced_bnb fee_5bps_fees_policy_v21_baseline.json": (0.45, 2),
         "balanced_bnb fee_5bps_fees_policy_v21_permissive.json": (0.40, 1),
-        "balanced_bnb fee_5bps_fees_policy_v21_recovery.json": (0.43, 1),
-        "balanced_bnb fee_5bps_fees_policy_v21_recovery_trend.json": (0.43, 1),
     }
 
     for config_name, (expected_threshold, expected_positive_families) in expected_values.items():
@@ -493,38 +489,22 @@ def test_active_policy_v21_family_uses_expected_entry_trigger_values() -> None:
         assert config.entry_trigger_overrides is not None, config_name
         assert config.entry_trigger_overrides["entry_score_threshold"] == expected_threshold, config_name
         assert config.entry_trigger_overrides["min_positive_families"] == expected_positive_families, config_name
-        expected_require = not config_name.endswith("_recovery.json") and not config_name.endswith("_recovery_trend.json")
-        assert config.entry_trigger_overrides["require_trend_or_breakout"] is expected_require, config_name
+        assert config.entry_trigger_overrides["require_trend_or_breakout"] is True, config_name
 
 
-def test_recovery_configs_apply_trade_controls_and_trend_guardrails() -> None:
-    expected_files = {
-        "balanced_bnb fee_5bps_fees_policy_v21_recovery.json": False,
-        "balanced_bnb fee_5bps_fees_policy_v21_recovery_trend.json": True,
+def test_active_policy_v21_configs_do_not_apply_recovery_only_overrides() -> None:
+    config_names = {
+        "balanced_bnb fee_5bps_fees_policy_v21_conservative.json",
+        "balanced_bnb fee_5bps_fees_policy_v21_baseline.json",
+        "balanced_bnb fee_5bps_fees_policy_v21_permissive.json",
     }
 
-    for config_name, expects_constraints in expected_files.items():
+    for config_name in config_names:
         config = load_run_config(str(Path("configs/runs") / config_name))
 
-        assert config.trade_control_overrides == {
-            "cooldown_bars": 2,
-            "min_holding_bars": 2,
-            "reentry_block_bars": 2,
-        }, config_name
-        assert config.exit_policy_overrides == {
-            "exit_score_threshold": 0.08,
-            "exit_on_signal_reversal": True,
-            "max_holding_bars": 24,
-            "stop_loss_pct": 0.04,
-            "take_profit_pct": 0.12,
-        }, config_name
-        if expects_constraints:
-            assert config.entry_trigger_constraints == {
-                "min_trend_weight": 0.0,
-                "min_breakout_weight": 0.0,
-            }, config_name
-        else:
-            assert config.entry_trigger_constraints is None, config_name
+        assert config.trade_control_overrides is None, config_name
+        assert config.exit_policy_overrides is None, config_name
+        assert config.entry_trigger_constraints is None, config_name
 
 
 def test_build_multiseed_jobs_expands_config_seed_pairs(tmp_path: Path) -> None:

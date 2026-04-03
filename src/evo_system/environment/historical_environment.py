@@ -5,6 +5,7 @@ from statistics import pstdev
 from evo_system.domain.agent import Agent
 from evo_system.domain.episode_result import EpisodeResult
 from evo_system.domain.historical_candle import HistoricalCandle
+from evo_system.experimental_space.base import EntryDecision, ExitDecision
 from evo_system.experimental_space import (
     get_default_decision_policy,
     get_default_signal_pack,
@@ -160,23 +161,14 @@ class HistoricalEnvironment:
                 )
             )
             if genome.policy_v2_enabled:
-                trigger_score = self.decision_policy.get_entry_trigger_score(
+                entry_decision = self.decision_policy.evaluate_entry(
                     environment=self,
                     genome=agent.genome,
                     signal_families=signal_families,
+                    regime_filter_ok=regime_filter_ok,
                 )
-                context_ok = self.decision_policy.passes_entry_context(
-                    environment=self,
-                    genome=agent.genome,
-                    signal_families=signal_families,
-                )
-                trigger_ok = self.decision_policy.passes_entry_trigger(
-                    environment=self,
-                    genome=agent.genome,
-                    signal_families=signal_families,
-                    trigger_score=trigger_score,
-                )
-                entry_signal_ok = regime_filter_ok and context_ok and trigger_ok
+                trigger_score = entry_decision.trigger_score
+                entry_signal_ok = entry_decision.should_enter
                 required_confirmation_bars = 1
             else:
                 setup_ok = self._is_legacy_setup_ok(
@@ -240,38 +232,17 @@ class HistoricalEnvironment:
                 holding_bars = 0 if entry_index is None else index - entry_index
 
                 if genome.policy_v2_enabled:
-                    hit_stop_loss = trade_return <= -genome.exit_policy.stop_loss_pct
-                    hit_take_profit = trade_return >= genome.exit_policy.take_profit_pct
-
-                    min_holding_ok = holding_bars >= genome.trade_control.min_holding_bars
-                    should_close_by_score = (
-                        min_holding_ok
-                        and trigger_score <= genome.exit_policy.exit_score_threshold
+                    exit_decision = self.decision_policy.evaluate_exit(
+                        environment=self,
+                        genome=genome,
+                        signal_families=signal_families,
+                        normalized_momentum=normalized_momentum,
+                        trade_return=trade_return,
+                        holding_bars=holding_bars,
                     )
-                    should_close_on_reversal = (
-                        min_holding_ok
-                        and genome.exit_policy.exit_on_signal_reversal
-                        and (
-                            signal_families["trend"] < 0.0
-                            or signal_families["momentum"] < 0.0
-                            or trigger_score < 0.0
-                        )
-                    )
-                    should_close_on_holding_limit = (
-                        genome.exit_policy.max_holding_bars > 0
-                        and holding_bars >= genome.exit_policy.max_holding_bars
-                    )
-                    should_close = (
-                        should_close_by_score
-                        or should_close_on_reversal
-                        or should_close_on_holding_limit
-                    )
-
-                    if genome.use_exit_momentum:
-                        should_close = should_close or (
-                            min_holding_ok
-                            and normalized_momentum <= genome.exit_momentum_threshold
-                        )
+                    should_close = exit_decision.should_close
+                    hit_stop_loss = exit_decision.hit_stop_loss
+                    hit_take_profit = exit_decision.hit_take_profit
                 else:
                     hit_stop_loss = trade_return <= -genome.stop_loss
                     hit_take_profit = trade_return >= genome.take_profit
@@ -443,6 +414,118 @@ class HistoricalEnvironment:
             trigger_score >= genome.entry_trigger.entry_score_threshold
             and positive_family_count >= genome.entry_trigger.min_positive_families
             and trend_or_breakout_ok
+        )
+
+    def _should_enter_policy_v2(
+        self,
+        *,
+        genome,
+        signal_families: dict[str, float],
+        trigger_score: float,
+        regime_filter_ok: bool,
+    ) -> bool:
+        """Evaluate the current policy_v2 entry decision without side effects."""
+        return self._evaluate_policy_v2_entry(
+            genome=genome,
+            signal_families=signal_families,
+            regime_filter_ok=regime_filter_ok,
+        ).should_enter
+
+    def _should_exit_policy_v2(
+        self,
+        *,
+        genome,
+        signal_families: dict[str, float],
+        trigger_score: float,
+        normalized_momentum: float,
+        trade_return: float,
+        holding_bars: int,
+    ) -> bool:
+        """Evaluate the current policy_v2 exit decision without side effects."""
+        return self._evaluate_policy_v2_exit(
+            genome=genome,
+            signal_families=signal_families,
+            normalized_momentum=normalized_momentum,
+            trade_return=trade_return,
+            holding_bars=holding_bars,
+        ).should_close
+
+    def _evaluate_policy_v2_entry(
+        self,
+        *,
+        genome,
+        signal_families: dict[str, float],
+        regime_filter_ok: bool,
+    ) -> EntryDecision:
+        """Return the full current entry decision state for policy_v2."""
+        trigger_score = self._get_entry_trigger_score(genome, signal_families)
+        context_ok = self._passes_entry_context(genome, signal_families)
+        trigger_ok = self._passes_entry_trigger(
+            genome,
+            signal_families,
+            trigger_score,
+        )
+        return EntryDecision(
+            trigger_score=trigger_score,
+            context_ok=context_ok,
+            trigger_ok=trigger_ok,
+            regime_filter_ok=regime_filter_ok,
+            should_enter=regime_filter_ok and context_ok and trigger_ok,
+        )
+
+    def _evaluate_policy_v2_exit(
+        self,
+        *,
+        genome,
+        signal_families: dict[str, float],
+        normalized_momentum: float,
+        trade_return: float,
+        holding_bars: int,
+    ) -> ExitDecision:
+        """Return the full current exit decision state for policy_v2."""
+        trigger_score = self._get_entry_trigger_score(genome, signal_families)
+        hit_stop_loss = trade_return <= -genome.exit_policy.stop_loss_pct
+        hit_take_profit = trade_return >= genome.exit_policy.take_profit_pct
+
+        min_holding_ok = holding_bars >= genome.trade_control.min_holding_bars
+        should_close_by_score = (
+            min_holding_ok
+            and trigger_score <= genome.exit_policy.exit_score_threshold
+        )
+        should_close_on_reversal = (
+            min_holding_ok
+            and genome.exit_policy.exit_on_signal_reversal
+            and (
+                signal_families["trend"] < 0.0
+                or signal_families["momentum"] < 0.0
+                or trigger_score < 0.0
+            )
+        )
+        should_close_on_holding_limit = (
+            genome.exit_policy.max_holding_bars > 0
+            and holding_bars >= genome.exit_policy.max_holding_bars
+        )
+        should_close = (
+            hit_stop_loss
+            or hit_take_profit
+            or should_close_by_score
+            or should_close_on_reversal
+            or should_close_on_holding_limit
+        )
+
+        if genome.use_exit_momentum:
+            should_close = should_close or (
+                min_holding_ok
+                and normalized_momentum <= genome.exit_momentum_threshold
+            )
+
+        return ExitDecision(
+            hit_stop_loss=hit_stop_loss,
+            hit_take_profit=hit_take_profit,
+            should_close_by_score=should_close_by_score,
+            should_close_on_reversal=should_close_on_reversal,
+            should_close_on_holding_limit=should_close_on_holding_limit,
+            should_close=should_close,
         )
 
     def _get_policy_v21_signal_features(

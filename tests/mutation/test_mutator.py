@@ -9,6 +9,7 @@ from evo_system.domain.genome import (
 from evo_system.experimental_space.gene_catalog import (
     MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
 )
+from evo_system.experimental_space.defaults import get_genome_schema
 from evo_system.mutation.mutator import MutationProfile, Mutator
 
 
@@ -250,6 +251,14 @@ def test_mutator_uses_modular_gene_catalog_by_default_for_policy_v2() -> None:
     ]
 
 
+def test_mutator_uses_schema_catalog_and_module_order_deterministically() -> None:
+    schema = get_genome_schema("modular_genome_v1")
+    mutator = Mutator(seed=42, genome_schema=schema)
+
+    assert mutator.gene_type_catalog == schema.get_gene_type_catalog()
+    assert mutator.modular_engine._get_module_names() == schema.get_module_names()
+
+
 def test_mutate_policy_v2_is_reproducible_with_same_seed() -> None:
     genome = build_policy_v2_genome(
         position_size=0.2,
@@ -373,6 +382,14 @@ def test_modular_engine_can_rebuild_module_from_catalog_metadata() -> None:
     )
 
 
+def test_modular_engine_can_build_default_module_from_catalog_metadata() -> None:
+    mutator = Mutator(seed=42)
+
+    rebuilt_module = mutator.modular_engine.rebuild_module("entry_trigger", {})
+
+    assert rebuilt_module == EntryTriggerGene()
+
+
 def test_modular_engine_normalizes_schema_field_order_constraints() -> None:
     genome = build_policy_v2_genome(
         position_size=0.2,
@@ -389,3 +406,22 @@ def test_modular_engine_normalizes_schema_field_order_constraints() -> None:
 
     assert mutated.ret_short_window < mutated.ret_mid_window
     assert mutated.vol_short_window < mutated.vol_long_window
+
+
+def test_strong_policy_v2_mutation_is_deterministic_with_schema_selected() -> None:
+    schema = get_genome_schema("modular_genome_v1")
+    genome = build_policy_v2_genome(
+        position_size=0.2,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.1,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(),
+        exit_policy=ExitPolicyGene(),
+        trade_control=TradeControlGene(),
+    )
+    profile = MutationProfile(strong_mutation_probability=1.0)
+
+    mutator_a = Mutator(seed=99, profile=profile, genome_schema=schema)
+    mutator_b = Mutator(seed=99, profile=profile, genome_schema=schema)
+
+    assert mutator_a.mutate(genome) == mutator_b.mutate(genome)

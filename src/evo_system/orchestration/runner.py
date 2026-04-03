@@ -53,6 +53,7 @@ class EvolutionRunner:
                 mutation_profile
             ),
             entry_trigger_constraints=entry_trigger_constraints,
+            genome_schema=self.genome_schema,
         )
         self.selector = Selector()
 

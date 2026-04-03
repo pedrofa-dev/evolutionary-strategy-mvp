@@ -13,7 +13,7 @@ from typing import Any, Iterator
 # This token is part of reusable execution identity. Changing it casually
 # breaks comparability across campaigns; failing to change it when runtime
 # semantics change can incorrectly reuse incompatible executions.
-CURRENT_LOGIC_VERSION = "v9"
+CURRENT_LOGIC_VERSION = "v11"
 DEFAULT_PERSISTENCE_DB_PATH = Path("data/evolution_v2.db")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 

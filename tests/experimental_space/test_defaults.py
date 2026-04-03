@@ -177,6 +177,26 @@ def test_default_genome_schema_builds_active_policy_v2_genomes() -> None:
     assert genome.policy_v2_enabled is True
 
 
+def test_genome_schema_exposes_gene_type_catalog() -> None:
+    schema = get_genome_schema("modular_genome_v1")
+    catalog = schema.get_gene_type_catalog()
+
+    assert catalog.name == "modular_genome_v1_gene_catalog"
+    assert catalog.list_gene_type_names() == [
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    ]
+    assert schema.get_module_names() == (
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    )
+    assert schema.get_module_names() == schema.get_module_names()
+
+
 def test_modular_genome_schema_v1_builds_explicit_gene_blocks() -> None:
     schema = get_genome_schema("modular_genome_v1")
 
@@ -193,6 +213,15 @@ def test_modular_genome_schema_v1_builds_explicit_gene_blocks() -> None:
     assert isinstance(genome.trade_control, TradeControlGene)
 
 
+def test_modular_genome_schema_v1_builds_default_modules_explicitly() -> None:
+    schema = get_genome_schema("modular_genome_v1")
+
+    assert isinstance(schema.build_default_module("entry_context"), EntryContextGene)
+    assert isinstance(schema.build_default_module("entry_trigger"), EntryTriggerGene)
+    assert isinstance(schema.build_default_module("exit_policy"), ExitPolicyGene)
+    assert isinstance(schema.build_default_module("trade_control"), TradeControlGene)
+
+
 def test_runner_can_select_modular_genome_schema_v1_explicitly() -> None:
     runner = EvolutionRunner(
         mutation_seed=42,
@@ -207,3 +236,186 @@ def test_runner_can_select_modular_genome_schema_v1_explicitly() -> None:
     assert isinstance(genome.entry_trigger, EntryTriggerGene)
     assert isinstance(genome.exit_policy, ExitPolicyGene)
     assert isinstance(genome.trade_control, TradeControlGene)
+
+
+def test_default_decision_policy_should_enter_matches_current_policy_v2_logic() -> None:
+    environment = _sample_environment()
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=1.0,
+            momentum_weight=0.5,
+            breakout_weight=0.25,
+            range_weight=0.0,
+            volatility_weight=-0.5,
+            entry_score_threshold=0.2,
+            min_positive_families=1,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=-0.1,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+        ),
+        trade_control=TradeControlGene(),
+    )
+    families = {
+        "trend": 0.6,
+        "momentum": 0.4,
+        "breakout": 0.5,
+        "range": 0.1,
+        "volatility": -0.2,
+        "realized_volatility": 0.0,
+    }
+    decision_policy = get_default_decision_policy()
+    score = decision_policy.get_entry_trigger_score(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+    )
+
+    assert decision_policy.should_enter(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        trigger_score=score,
+        regime_filter_ok=True,
+    ) == environment._should_enter_policy_v2(
+        genome=genome,
+        signal_families=families,
+        trigger_score=score,
+        regime_filter_ok=True,
+    )
+
+
+def test_default_decision_policy_evaluate_entry_matches_current_policy_v2_logic() -> None:
+    environment = _sample_environment()
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=1.0,
+            momentum_weight=0.5,
+            breakout_weight=0.25,
+            range_weight=0.0,
+            volatility_weight=-0.5,
+            entry_score_threshold=0.2,
+            min_positive_families=1,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=-0.1,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+        ),
+        trade_control=TradeControlGene(),
+    )
+    families = {
+        "trend": 0.6,
+        "momentum": 0.4,
+        "breakout": 0.5,
+        "range": 0.1,
+        "volatility": -0.2,
+        "realized_volatility": 0.0,
+    }
+    decision_policy = get_default_decision_policy()
+
+    assert decision_policy.evaluate_entry(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        regime_filter_ok=True,
+    ) == environment._evaluate_policy_v2_entry(
+        genome=genome,
+        signal_families=families,
+        regime_filter_ok=True,
+    )
+
+
+def test_default_decision_policy_should_exit_matches_current_policy_v2_logic() -> None:
+    environment = _sample_environment()
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=0.1,
+            exit_on_signal_reversal=True,
+            max_holding_bars=24,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+        ),
+        trade_control=TradeControlGene(min_holding_bars=1),
+    )
+    families = {
+        "trend": -0.2,
+        "momentum": -0.1,
+        "breakout": 0.0,
+        "range": 0.0,
+        "volatility": 0.0,
+        "realized_volatility": 0.0,
+    }
+    decision_policy = get_default_decision_policy()
+
+    assert decision_policy.should_exit(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        trigger_score=-0.1,
+        normalized_momentum=-0.2,
+        trade_return=0.0,
+        holding_bars=2,
+    ) == environment._should_exit_policy_v2(
+        genome=genome,
+        signal_families=families,
+        trigger_score=-0.1,
+        normalized_momentum=-0.2,
+        trade_return=0.0,
+        holding_bars=2,
+    )
+
+
+def test_default_decision_policy_evaluate_exit_matches_current_policy_v2_logic() -> None:
+    environment = _sample_environment()
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=0.1,
+            exit_on_signal_reversal=True,
+            max_holding_bars=24,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+        ),
+        trade_control=TradeControlGene(min_holding_bars=1),
+    )
+    families = {
+        "trend": -0.2,
+        "momentum": -0.1,
+        "breakout": 0.0,
+        "range": 0.0,
+        "volatility": 0.0,
+        "realized_volatility": 0.0,
+    }
+    decision_policy = get_default_decision_policy()
+
+    assert decision_policy.evaluate_exit(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        normalized_momentum=-0.2,
+        trade_return=0.0,
+        holding_bars=2,
+    ) == environment._evaluate_policy_v2_exit(
+        genome=genome,
+        signal_families=families,
+        normalized_momentum=-0.2,
+        trade_return=0.0,
+        holding_bars=2,
+    )

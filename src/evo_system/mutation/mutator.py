@@ -5,19 +5,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from evo_system.domain.genome import (
-    EntryContextGene,
-    EntryTriggerGene,
-    ExitPolicyGene,
     Genome,
-    TradeControlGene,
-    build_policy_v2_genome,
 )
+from evo_system.experimental_space.base import GenomeSchema
 from evo_system.experimental_space.gene_catalog import (
     GeneFieldSpec,
     GeneTypeCatalog,
-    GeneTypeSpec,
     MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
-    normalize_gene_data,
 )
 
 
@@ -72,11 +66,13 @@ class ModularGenomeMutationEngine:
         profile: MutationProfile,
         gene_type_catalog: GeneTypeCatalog,
         entry_trigger_constraints: dict[str, float],
+        genome_schema: GenomeSchema | None = None,
     ) -> None:
         self.random = random_source
         self.profile = profile
         self.gene_type_catalog = gene_type_catalog
         self.entry_trigger_constraints = entry_trigger_constraints
+        self.genome_schema = genome_schema
 
     def mutate_small(self, genome: Genome) -> Genome:
         schema_fields = self._mutate_schema_fields_small(genome)
@@ -108,13 +104,12 @@ class ModularGenomeMutationEngine:
         spec = self.gene_type_catalog.get_gene_type(module_name)
         mutated_data = {
             field_spec.field_name: self._mutate_field_small(
-                spec,
                 field_spec,
                 getattr(module_value, field_spec.field_name),
             )
             for field_spec in spec.field_specs
         }
-        return self._build_module(spec, mutated_data)
+        return self._build_module(module_name, mutated_data)
 
     def mutate_module_strong(self, module_name: str) -> Any:
         spec = self.gene_type_catalog.get_gene_type(module_name)
@@ -122,7 +117,7 @@ class ModularGenomeMutationEngine:
             field_spec.field_name: self._mutate_field_strong(field_spec)
             for field_spec in spec.field_specs
         }
-        return self._build_module(spec, mutated_data)
+        return self._build_module(module_name, mutated_data)
 
     def rebuild_module(self, module_name: str, module_data: dict[str, Any]) -> Any:
         """Rebuild one module from catalog metadata plus normalized payload.
@@ -132,34 +127,23 @@ class ModularGenomeMutationEngine:
           reconstruct modular gene blocks from metadata.
         """
         spec = self.gene_type_catalog.get_gene_type(module_name)
-        return self._build_module(spec, module_data)
+        return self._build_module(module_name, module_data)
 
     def _mutate_gene_blocks_small(self, genome: Genome) -> dict[str, Any]:
+        module_names = self._get_module_names()
+
         return {
-            "entry_context": self.mutate_module_small(
-                "entry_context",
-                genome.entry_context or EntryContextGene(),
-            ),
-            "entry_trigger": self.mutate_module_small(
-                "entry_trigger",
-                genome.entry_trigger or EntryTriggerGene(),
-            ),
-            "exit_policy": self.mutate_module_small(
-                "exit_policy",
-                genome.exit_policy or ExitPolicyGene(),
-            ),
-            "trade_control": self.mutate_module_small(
-                "trade_control",
-                genome.trade_control or TradeControlGene(),
-            ),
+            module_name: self.mutate_module_small(
+                module_name,
+                self._get_module_value(genome, module_name),
+            )
+            for module_name in module_names
         }
 
     def _mutate_gene_blocks_strong(self) -> dict[str, Any]:
         return {
-            "entry_context": self.mutate_module_strong("entry_context"),
-            "entry_trigger": self.mutate_module_strong("entry_trigger"),
-            "exit_policy": self.mutate_module_strong("exit_policy"),
-            "trade_control": self.mutate_module_strong("trade_control"),
+            module_name: self.mutate_module_strong(module_name)
+            for module_name in self._get_module_names()
         }
 
     def _build_modular_genome(
@@ -170,35 +154,43 @@ class ModularGenomeMutationEngine:
         gene_blocks: dict[str, Any],
         position_size: float,
     ) -> Genome:
-        exit_policy = gene_blocks["exit_policy"]
+        if self.genome_schema is not None:
+            return self.genome_schema.build_genome_from_modules(
+                position_size=position_size,
+                schema_fields=schema_fields,
+                gene_blocks=gene_blocks,
+            )
 
-        return build_policy_v2_genome(
+        return self.gene_type_catalog.build_genome(
             position_size=position_size,
-            stop_loss_pct=exit_policy.stop_loss_pct,
-            take_profit_pct=exit_policy.take_profit_pct,
-            entry_context=gene_blocks["entry_context"],
-            entry_trigger=gene_blocks["entry_trigger"],
-            exit_policy=exit_policy,
-            trade_control=gene_blocks["trade_control"],
-            **schema_fields,
+            schema_fields=schema_fields,
+            gene_blocks=gene_blocks,
         )
 
-    def _build_module(self, spec: GeneTypeSpec, data: dict[str, Any]) -> Any:
-        normalized = normalize_gene_data(spec.name, data)
+    def _build_module(self, module_name: str, data: dict[str, Any]) -> Any:
+        return self.gene_type_catalog.build_module(
+            module_name,
+            data,
+            constraints=self.entry_trigger_constraints,
+        )
 
-        if spec.name == "entry_trigger":
-            normalized = self._apply_entry_trigger_constraints(normalized)
+    def _get_module_names(self) -> tuple[str, ...]:
+        if self.genome_schema is not None:
+            return self.genome_schema.get_module_names()
+        return tuple(self.gene_type_catalog.list_gene_type_names())
 
-        if spec.factory_name == "build_entry_context":
-            return EntryContextGene.from_dict(normalized)
-        if spec.factory_name == "build_entry_trigger":
-            return EntryTriggerGene.from_dict(normalized)
-        if spec.factory_name == "build_exit_policy":
-            return ExitPolicyGene.from_dict(normalized)
-        if spec.factory_name == "build_trade_control":
-            return TradeControlGene.from_dict(normalized)
+    def _get_module_value(self, genome: Genome, module_name: str) -> Any:
+        module_value = getattr(genome, module_name, None)
+        if module_value is not None:
+            return module_value
 
-        raise KeyError(f"Unknown factory for gene type: {spec.factory_name}")
+        if self.genome_schema is not None:
+            return self.genome_schema.build_default_module(module_name)
+
+        return self.gene_type_catalog.build_default_module(
+            module_name,
+            constraints=self.entry_trigger_constraints,
+        )
 
     def _mutate_schema_fields_small(self, genome: Genome) -> dict[str, int]:
         # Schema-level mutation owns only non-gene structural fields such as
@@ -236,19 +228,10 @@ class ModularGenomeMutationEngine:
         return self.random.randint(field_spec.minimum, field_spec.maximum)
 
     def _normalize_schema_fields(self, mutated: dict[str, int]) -> dict[str, int]:
-        normalized = dict(mutated)
-
-        if normalized["ret_short_window"] >= normalized["ret_mid_window"]:
-            normalized["ret_short_window"] = max(2, normalized["ret_mid_window"] - 1)
-
-        if normalized["vol_short_window"] >= normalized["vol_long_window"]:
-            normalized["vol_short_window"] = max(2, normalized["vol_long_window"] - 1)
-
-        return normalized
+        return self.gene_type_catalog.normalize_schema_fields(mutated)
 
     def _mutate_field_small(
         self,
-        gene_spec: GeneTypeSpec,
         field_spec: GeneFieldSpec,
         value: Any,
     ) -> Any:
@@ -285,9 +268,7 @@ class ModularGenomeMutationEngine:
                 ),
             )
 
-        raise KeyError(
-            f"Unsupported mutation kind {field_spec.mutation_kind} for {gene_spec.name}.{field_spec.field_name}"
-        )
+        raise KeyError(f"Unsupported mutation kind {field_spec.mutation_kind} for {field_spec.field_name}")
 
     def _mutate_field_strong(self, field_spec: GeneFieldSpec) -> Any:
         if field_spec.mutation_kind == "weight":
@@ -308,36 +289,6 @@ class ModularGenomeMutationEngine:
             return self.random.randint(int(field_spec.strong_min), int(field_spec.strong_max))
 
         raise KeyError(f"Unsupported strong mutation kind {field_spec.mutation_kind}")
-
-    def _apply_entry_trigger_constraints(
-        self,
-        trigger_data: dict[str, float | int | bool],
-    ) -> dict[str, float | int | bool]:
-        constrained = dict(trigger_data)
-
-        for field_name in (
-            "trend_weight",
-            "momentum_weight",
-            "breakout_weight",
-            "range_weight",
-            "volatility_weight",
-        ):
-            min_key = f"min_{field_name}"
-            max_key = f"max_{field_name}"
-
-            if min_key in self.entry_trigger_constraints:
-                constrained[field_name] = max(
-                    float(constrained[field_name]),
-                    float(self.entry_trigger_constraints[min_key]),
-                )
-
-            if max_key in self.entry_trigger_constraints:
-                constrained[field_name] = min(
-                    float(constrained[field_name]),
-                    float(self.entry_trigger_constraints[max_key]),
-                )
-
-        return constrained
 
     def _clamp(self, value: float, min_value: float, max_value: float) -> float:
         return max(min_value, min(max_value, value))
@@ -373,16 +324,26 @@ class Mutator:
         profile: MutationProfile | None = None,
         entry_trigger_constraints: dict[str, float] | None = None,
         gene_type_catalog: GeneTypeCatalog | None = None,
+        genome_schema: GenomeSchema | None = None,
     ) -> None:
         self.random = random.Random(seed)
         self.profile = profile or MutationProfile()
         self.entry_trigger_constraints = entry_trigger_constraints or {}
-        self.gene_type_catalog = gene_type_catalog or MODULAR_GENOME_V1_GENE_TYPE_CATALOG
+        self.genome_schema = genome_schema
+        self.gene_type_catalog = (
+            gene_type_catalog
+            or (
+                genome_schema.get_gene_type_catalog()
+                if genome_schema is not None
+                else MODULAR_GENOME_V1_GENE_TYPE_CATALOG
+            )
+        )
         self.modular_engine = ModularGenomeMutationEngine(
             random_source=self.random,
             profile=self.profile,
             gene_type_catalog=self.gene_type_catalog,
             entry_trigger_constraints=self.entry_trigger_constraints,
+            genome_schema=self.genome_schema,
         )
 
     def mutate(self, genome: Genome) -> Genome:

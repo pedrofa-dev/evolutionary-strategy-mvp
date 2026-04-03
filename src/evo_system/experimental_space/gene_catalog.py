@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import asdict, dataclass
+from typing import Any, Callable
+
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    Genome,
+    TradeControlGene,
+    build_policy_v2_genome,
+)
 
 
 # Phase 2 of incremental modularization:
@@ -41,8 +50,10 @@ class GeneTypeSpec:
     """
 
     name: str
-    factory_name: str
+    builder: Callable[[dict[str, Any]], Any]
     field_specs: tuple[GeneFieldSpec, ...]
+    normalizer: Callable[[dict[str, Any]], dict[str, Any]]
+    constraint_applier: Callable[[dict[str, Any], dict[str, float]], dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +82,8 @@ class GeneTypeCatalog:
     name: str
     gene_types: tuple[GeneTypeSpec, ...]
     schema_fields: tuple[SchemaFieldSpec, ...]
+    schema_normalizer: Callable[[dict[str, int]], dict[str, int]]
+    genome_builder: Callable[[float, dict[str, int], dict[str, Any]], Genome]
 
     def get_gene_type(self, name: str) -> GeneTypeSpec:
         for gene_type in self.gene_types:
@@ -84,9 +97,112 @@ class GeneTypeCatalog:
     def list_schema_field_names(self) -> list[str]:
         return [field.field_name for field in self.schema_fields]
 
+    def build_module(
+        self,
+        name: str,
+        data: dict[str, Any],
+        constraints: dict[str, float] | None = None,
+    ) -> Any:
+        spec = self.get_gene_type(name)
+        normalized = spec.normalizer(data)
+        if spec.constraint_applier is not None:
+            normalized = spec.constraint_applier(normalized, constraints or {})
+        return spec.builder(normalized)
+
+    def build_default_module(
+        self,
+        name: str,
+        constraints: dict[str, float] | None = None,
+    ) -> Any:
+        spec = self.get_gene_type(name)
+        default_instance = spec.builder({})
+        default_data = asdict(default_instance)
+        if spec.constraint_applier is not None:
+            default_data = spec.constraint_applier(default_data, constraints or {})
+        return spec.builder(default_data)
+
+    def normalize_schema_fields(self, data: dict[str, int]) -> dict[str, int]:
+        return self.schema_normalizer(data)
+
+    def build_genome(
+        self,
+        *,
+        position_size: float,
+        schema_fields: dict[str, int],
+        gene_blocks: dict[str, Any],
+    ) -> Genome:
+        return self.genome_builder(position_size, schema_fields, gene_blocks)
+
+
+def _identity_normalizer(data: dict[str, Any]) -> dict[str, Any]:
+    return dict(data)
+
+
+def _apply_entry_trigger_constraints(
+    data: dict[str, Any],
+    constraints: dict[str, float],
+) -> dict[str, Any]:
+    constrained = dict(data)
+
+    for field_name in (
+        "trend_weight",
+        "momentum_weight",
+        "breakout_weight",
+        "range_weight",
+        "volatility_weight",
+    ):
+        min_key = f"min_{field_name}"
+        max_key = f"max_{field_name}"
+
+        if min_key in constraints:
+            constrained[field_name] = max(
+                float(constrained[field_name]),
+                float(constraints[min_key]),
+            )
+
+        if max_key in constraints:
+            constrained[field_name] = min(
+                float(constrained[field_name]),
+                float(constraints[max_key]),
+            )
+
+    return constrained
+
+
+def _normalize_modular_schema_fields(data: dict[str, int]) -> dict[str, int]:
+    normalized = dict(data)
+
+    if normalized["ret_short_window"] >= normalized["ret_mid_window"]:
+        normalized["ret_short_window"] = max(2, normalized["ret_mid_window"] - 1)
+
+    if normalized["vol_short_window"] >= normalized["vol_long_window"]:
+        normalized["vol_short_window"] = max(2, normalized["vol_long_window"] - 1)
+
+    return normalized
+
+
+def _build_modular_policy_v2_genome(
+    position_size: float,
+    schema_fields: dict[str, int],
+    gene_blocks: dict[str, Any],
+) -> Genome:
+    exit_policy = gene_blocks["exit_policy"]
+    return build_policy_v2_genome(
+        position_size=position_size,
+        stop_loss_pct=exit_policy.stop_loss_pct,
+        take_profit_pct=exit_policy.take_profit_pct,
+        entry_context=gene_blocks["entry_context"],
+        entry_trigger=gene_blocks["entry_trigger"],
+        exit_policy=exit_policy,
+        trade_control=gene_blocks["trade_control"],
+        **schema_fields,
+    )
+
 
 MODULAR_GENOME_V1_GENE_TYPE_CATALOG = GeneTypeCatalog(
     name="modular_genome_v1_gene_catalog",
+    schema_normalizer=_normalize_modular_schema_fields,
+    genome_builder=_build_modular_policy_v2_genome,
     schema_fields=(
         SchemaFieldSpec("trend_window", "window", 2, 50),
         SchemaFieldSpec("ret_short_window", "window", 2, 10),
@@ -99,7 +215,8 @@ MODULAR_GENOME_V1_GENE_TYPE_CATALOG = GeneTypeCatalog(
     gene_types=(
         GeneTypeSpec(
             name="entry_context",
-            factory_name="build_entry_context",
+            builder=EntryContextGene.from_dict,
+            normalizer=lambda data: normalize_gene_data("entry_context", data),
             field_specs=(
                 GeneFieldSpec(
                     "min_trend_strength",
@@ -153,7 +270,9 @@ MODULAR_GENOME_V1_GENE_TYPE_CATALOG = GeneTypeCatalog(
         ),
         GeneTypeSpec(
             name="entry_trigger",
-            factory_name="build_entry_trigger",
+            builder=EntryTriggerGene.from_dict,
+            normalizer=_identity_normalizer,
+            constraint_applier=_apply_entry_trigger_constraints,
             field_specs=(
                 GeneFieldSpec(
                     "trend_weight",
@@ -220,7 +339,8 @@ MODULAR_GENOME_V1_GENE_TYPE_CATALOG = GeneTypeCatalog(
         ),
         GeneTypeSpec(
             name="exit_policy",
-            factory_name="build_exit_policy",
+            builder=ExitPolicyGene.from_dict,
+            normalizer=_identity_normalizer,
             field_specs=(
                 GeneFieldSpec(
                     "exit_score_threshold",
@@ -263,7 +383,8 @@ MODULAR_GENOME_V1_GENE_TYPE_CATALOG = GeneTypeCatalog(
         ),
         GeneTypeSpec(
             name="trade_control",
-            factory_name="build_trade_control",
+            builder=TradeControlGene.from_dict,
+            normalizer=_identity_normalizer,
             field_specs=(
                 GeneFieldSpec(
                     "cooldown_bars",
