@@ -193,6 +193,38 @@ def test_run_config_accepts_entry_trigger_overrides() -> None:
     assert config.entry_trigger_overrides["entry_score_threshold"] == 0.55
 
 
+def test_run_config_accepts_policy_v2_override_blocks() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
+        exit_policy_overrides={
+            "max_holding_bars": 24,
+            "stop_loss_pct": 0.04,
+            "take_profit_pct": 0.12,
+        },
+        trade_control_overrides={
+            "cooldown_bars": 2,
+            "min_holding_bars": 2,
+            "reentry_block_bars": 2,
+        },
+        entry_trigger_constraints={
+            "min_trend_weight": 0.0,
+            "min_breakout_weight": 0.0,
+        },
+    )
+
+    assert config.exit_policy_overrides is not None
+    assert config.exit_policy_overrides["max_holding_bars"] == 24
+    assert config.trade_control_overrides is not None
+    assert config.trade_control_overrides["cooldown_bars"] == 2
+    assert config.entry_trigger_constraints is not None
+    assert config.entry_trigger_constraints["min_trend_weight"] == 0.0
+
+
 def test_run_config_requires_dataset_catalog_id() -> None:
     with pytest.raises(ValueError, match="dataset_catalog_id is required"):
         RunConfig(

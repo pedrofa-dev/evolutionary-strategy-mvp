@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-CURRENT_LOGIC_VERSION = "v7"
+# CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+# This token is part of reusable execution identity. Changing it casually
+# breaks comparability across campaigns; failing to change it when runtime
+# semantics change can incorrectly reuse incompatible executions.
+CURRENT_LOGIC_VERSION = "v9"
 DEFAULT_PERSISTENCE_DB_PATH = Path("data/evolution_v2.db")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -72,6 +76,18 @@ def build_execution_fingerprint(
     dataset_signature: str,
     logic_version: str,
 ) -> str:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - This is the canonical reuse identity for multiseed executions.
+
+    Invariants:
+    - It must remain strict: config snapshot + seed + dataset identity +
+      logic_version.
+
+    Risk:
+    - Weakening this causes invalid reuse and contaminated research history.
+    """
     return sha256_hex(
         serialize_json(
             {
@@ -116,6 +132,20 @@ def _row_to_dict(row: sqlite3.Row, json_columns: set[str]) -> dict[str, Any]:
 
 
 class PersistenceStore:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - This store is the canonical source of truth for run, champion, analysis,
+      and reevaluation persistence.
+
+    Invariants:
+    - Stored snapshots must stay self-contained and queryable.
+    - Persistence semantics must remain aligned with runtime and reuse logic.
+
+    Risk:
+    - UI- or experiment-specific edits here can make historical results
+      incomparable or corrupt the reuse guarantees of the system.
+    """
     def __init__(self, database_path: str | Path = DEFAULT_PERSISTENCE_DB_PATH) -> None:
         self.database_path = Path(database_path)
 
@@ -132,6 +162,16 @@ class PersistenceStore:
             connection.close()
 
     def initialize(self) -> None:
+        """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+        Why:
+        - This defines the canonical schema expected by runtime, reporting, and
+          reevaluation.
+
+        Risk:
+        - Uncoordinated schema edits here can invalidate persistence and break
+          cross-run analysis in subtle ways.
+        """
         with self.connect() as connection:
             connection.executescript(
                 """

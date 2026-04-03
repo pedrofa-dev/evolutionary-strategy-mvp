@@ -40,6 +40,22 @@ def load_run_config(config_path: str) -> RunConfig:
             if "entry_trigger" in data and data["entry_trigger"] is not None
             else None
         ),
+        exit_policy_overrides=(
+            dict(data["exit_policy"])
+            if "exit_policy" in data and data["exit_policy"] is not None
+            else None
+        ),
+        trade_control_overrides=(
+            dict(data["trade_control"])
+            if "trade_control" in data and data["trade_control"] is not None
+            else None
+        ),
+        entry_trigger_constraints=(
+            dict(data["entry_trigger_constraints"])
+            if "entry_trigger_constraints" in data
+            and data["entry_trigger_constraints"] is not None
+            else None
+        ),
         mutation_profile=mutation_profile,
         dataset_catalog_id=data["dataset_catalog_id"],
         seeds=(

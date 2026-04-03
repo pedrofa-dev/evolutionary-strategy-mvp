@@ -25,6 +25,9 @@ class RunConfig:
     min_breakout_for_entry: float = 0.0
     max_realized_volatility_for_entry: float | None = None
     entry_trigger_overrides: dict[str, Any] | None = None
+    exit_policy_overrides: dict[str, Any] | None = None
+    trade_control_overrides: dict[str, Any] | None = None
+    entry_trigger_constraints: dict[str, Any] | None = None
     seeds: list[int] | None = None
     seed_start: int | None = None
     seed_count: int | None = None

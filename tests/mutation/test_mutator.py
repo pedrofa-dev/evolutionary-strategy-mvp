@@ -6,6 +6,9 @@ from evo_system.domain.genome import (
     TradeControlGene,
     build_policy_v2_genome,
 )
+from evo_system.experimental_space.gene_catalog import (
+    MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
+)
 from evo_system.mutation.mutator import MutationProfile, Mutator
 
 
@@ -200,3 +203,189 @@ def test_mutate_policy_v2_preserves_v2_blocks_without_legacy_threshold_dependenc
     assert mutated.trade_control is not None
     assert mutated.threshold_open == 0.0
     assert mutated.threshold_close == 0.0
+
+
+def test_mutator_respects_entry_trigger_weight_constraints_for_policy_v2() -> None:
+    genome = build_policy_v2_genome(
+        position_size=0.2,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.1,
+        entry_trigger=EntryTriggerGene(
+            trend_weight=-0.8,
+            momentum_weight=0.2,
+            breakout_weight=-0.6,
+            range_weight=0.1,
+            volatility_weight=0.0,
+            entry_score_threshold=0.43,
+            min_positive_families=1,
+            require_trend_or_breakout=False,
+        ),
+    )
+
+    mutator = Mutator(
+        seed=42,
+        profile=MutationProfile(strong_mutation_probability=1.0),
+        entry_trigger_constraints={
+            "min_trend_weight": 0.0,
+            "min_breakout_weight": 0.0,
+        },
+    )
+
+    mutated = mutator.mutate(genome)
+
+    assert mutated.entry_trigger is not None
+    assert mutated.entry_trigger.trend_weight >= 0.0
+    assert mutated.entry_trigger.breakout_weight >= 0.0
+
+
+def test_mutator_uses_modular_gene_catalog_by_default_for_policy_v2() -> None:
+    mutator = Mutator(seed=42)
+
+    assert mutator.gene_type_catalog == MODULAR_GENOME_V1_GENE_TYPE_CATALOG
+    assert mutator.gene_type_catalog.list_gene_type_names() == [
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    ]
+
+
+def test_mutate_policy_v2_is_reproducible_with_same_seed() -> None:
+    genome = build_policy_v2_genome(
+        position_size=0.2,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.1,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=0.8,
+            momentum_weight=0.6,
+            breakout_weight=0.4,
+            range_weight=0.1,
+            volatility_weight=-0.2,
+            entry_score_threshold=0.45,
+            min_positive_families=2,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=0.05,
+            exit_on_signal_reversal=True,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+        ),
+        trade_control=TradeControlGene(
+            cooldown_bars=1,
+            min_holding_bars=2,
+            reentry_block_bars=1,
+        ),
+    )
+
+    mutator1 = Mutator(seed=42, profile=MutationProfile(strong_mutation_probability=0.0))
+    mutator2 = Mutator(seed=42, profile=MutationProfile(strong_mutation_probability=0.0))
+
+    assert mutator1.mutate(genome) == mutator2.mutate(genome)
+
+
+def test_mutate_policy_v2_strong_is_reproducible_with_same_seed() -> None:
+    genome = build_policy_v2_genome(
+        position_size=0.2,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.1,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=0.8,
+            momentum_weight=0.6,
+            breakout_weight=0.4,
+            range_weight=0.1,
+            volatility_weight=-0.2,
+            entry_score_threshold=0.45,
+            min_positive_families=2,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=0.05,
+            exit_on_signal_reversal=True,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.1,
+        ),
+        trade_control=TradeControlGene(
+            cooldown_bars=1,
+            min_holding_bars=2,
+            reentry_block_bars=1,
+        ),
+    )
+
+    profile = MutationProfile(strong_mutation_probability=1.0)
+    mutator1 = Mutator(seed=42, profile=profile)
+    mutator2 = Mutator(seed=42, profile=profile)
+
+    assert mutator1.mutate(genome) == mutator2.mutate(genome)
+
+
+def test_modular_engine_can_mutate_target_gene_module_with_constraints() -> None:
+    mutator = Mutator(
+        seed=42,
+        profile=MutationProfile(strong_mutation_probability=0.0),
+        entry_trigger_constraints={
+            "min_trend_weight": 0.0,
+            "min_breakout_weight": 0.0,
+        },
+    )
+
+    mutated_module = mutator.modular_engine.mutate_module_small(
+        "entry_trigger",
+        EntryTriggerGene(
+            trend_weight=-0.8,
+            momentum_weight=0.2,
+            breakout_weight=-0.6,
+            range_weight=0.1,
+            volatility_weight=0.0,
+            entry_score_threshold=0.43,
+            min_positive_families=1,
+            require_trend_or_breakout=False,
+        ),
+    )
+
+    assert isinstance(mutated_module, EntryTriggerGene)
+    assert mutated_module.trend_weight >= 0.0
+    assert mutated_module.breakout_weight >= 0.0
+
+
+def test_modular_engine_can_rebuild_module_from_catalog_metadata() -> None:
+    mutator = Mutator(seed=42)
+
+    rebuilt_module = mutator.modular_engine.rebuild_module(
+        "exit_policy",
+        {
+            "exit_score_threshold": 0.05,
+            "exit_on_signal_reversal": True,
+            "max_holding_bars": 24,
+            "stop_loss_pct": 0.05,
+            "take_profit_pct": 0.10,
+        },
+    )
+
+    assert rebuilt_module == ExitPolicyGene(
+        exit_score_threshold=0.05,
+        exit_on_signal_reversal=True,
+        max_holding_bars=24,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+    )
+
+
+def test_modular_engine_normalizes_schema_field_order_constraints() -> None:
+    genome = build_policy_v2_genome(
+        position_size=0.2,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.1,
+        ret_short_window=9,
+        ret_mid_window=10,
+        vol_short_window=19,
+        vol_long_window=20,
+    )
+    mutator = Mutator(seed=42, profile=MutationProfile(strong_mutation_probability=0.0))
+
+    mutated = mutator.mutate(genome)
+
+    assert mutated.ret_short_window < mutated.ret_mid_window
+    assert mutated.vol_short_window < mutated.vol_long_window

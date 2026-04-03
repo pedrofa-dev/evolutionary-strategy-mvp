@@ -8,20 +8,52 @@ from evo_system.domain.genome import (
     ExitPolicyGene,
     Genome,
     TradeControlGene,
-    build_policy_v2_genome,
+)
+from evo_system.experimental_space import (
+    get_default_genome_schema,
+    get_default_mutation_profile_definition,
+    get_genome_schema,
 )
 from evo_system.mutation.mutator import Mutator, MutationProfile
 from evo_system.selection.selector import Selector
 
 
 class EvolutionRunner:
+    """Coordinate selection plus mutation for one generation step.
+
+    Responsibility boundary:
+    - This class orchestrates evolution, but it should not own signal or gene
+      semantics directly.
+
+    TODO: candidate for modularization
+    - Population creation and schema-aware mutation dispatch could later be
+      driven by factories once the experimental space is modularized.
+
+    Phase 1 modularization note:
+    - `genome_schema` and `mutation_profile_definition` are compatibility
+      adapters. The current helper functions and mutator still define behavior.
+    """
     def __init__(
         self,
         mutation_seed: int = 42,
         mutation_profile: MutationProfile | None = None,
+        entry_trigger_constraints: dict[str, float] | None = None,
+        genome_schema_name: str | None = None,
     ) -> None:
         self._random = random.Random(mutation_seed)
-        self.mutator = Mutator(seed=mutation_seed, profile=mutation_profile)
+        self.genome_schema = (
+            get_genome_schema(genome_schema_name)
+            if genome_schema_name is not None
+            else get_default_genome_schema()
+        )
+        self.mutation_profile_definition = get_default_mutation_profile_definition()
+        self.mutator = Mutator(
+            seed=mutation_seed,
+            profile=self.mutation_profile_definition.resolve_runtime_profile(
+                mutation_profile
+            ),
+            entry_trigger_constraints=entry_trigger_constraints,
+        )
         self.selector = Selector()
 
     def create_initial_population(self, population_size: int) -> list[Agent]:
@@ -83,12 +115,16 @@ class EvolutionRunner:
         return Agent.create(self._build_random_genome())
 
     def _build_random_genome(self) -> Genome:
+        # TODO: candidate for modularization
+        # Initial random population seeding is tightly coupled to the current
+        # policy_v2 genome schema and would be a good candidate for a genome
+        # factory once multiple experimental schemas coexist.
         ret_short_window = self._random.randint(1, 5)
         ret_mid_window = self._random.randint(max(2, ret_short_window + 1), 20)
         vol_short_window = self._random.randint(2, 8)
         vol_long_window = self._random.randint(max(3, vol_short_window + 1), 30)
 
-        return build_policy_v2_genome(
+        return self.genome_schema.build_genome(
             position_size=self._random.uniform(0.05, 1.0),
             stop_loss_pct=self._random.uniform(0.01, 0.2),
             take_profit_pct=self._random.uniform(0.02, 0.3),

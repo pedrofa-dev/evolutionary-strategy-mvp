@@ -86,6 +86,9 @@ def build_random_genome(
     min_bars_between_entries: int = 0,
     entry_confirmation_bars: int = 1,
     entry_trigger_overrides: dict[str, Any] | None = None,
+    exit_policy_overrides: dict[str, Any] | None = None,
+    trade_control_overrides: dict[str, Any] | None = None,
+    entry_trigger_constraints: dict[str, Any] | None = None,
 ) -> Genome:
     ret_short_window = random_generator.randint(1, 5)
     ret_mid_window = random_generator.randint(max(2, ret_short_window + 1), 20)
@@ -124,7 +127,13 @@ def build_random_genome(
         trade_control=TradeControlGene(),
     )
 
-    return _apply_entry_trigger_overrides(genome, entry_trigger_overrides)
+    return _apply_policy_v2_overrides(
+        genome,
+        entry_trigger_overrides=entry_trigger_overrides,
+        exit_policy_overrides=exit_policy_overrides,
+        trade_control_overrides=trade_control_overrides,
+        entry_trigger_constraints=entry_trigger_constraints,
+    )
 
 
 def build_initial_population(
@@ -133,6 +142,9 @@ def build_initial_population(
     min_bars_between_entries: int = 0,
     entry_confirmation_bars: int = 1,
     entry_trigger_overrides: dict[str, Any] | None = None,
+    exit_policy_overrides: dict[str, Any] | None = None,
+    trade_control_overrides: dict[str, Any] | None = None,
+    entry_trigger_constraints: dict[str, Any] | None = None,
 ) -> list[Agent]:
     if population_size <= 0:
         raise ValueError("population_size must be greater than 0")
@@ -346,26 +358,98 @@ def build_initial_population(
                 entry_score_margin=entry_score_margin,
                 min_bars_between_entries=min_bars_between_entries,
                 entry_confirmation_bars=entry_confirmation_bars,
+                entry_trigger_overrides=entry_trigger_overrides,
+                exit_policy_overrides=exit_policy_overrides,
+                trade_control_overrides=trade_control_overrides,
+                entry_trigger_constraints=entry_trigger_constraints,
             )
         )
 
     selected_genomes = [
-        _apply_entry_trigger_overrides(genome, entry_trigger_overrides)
+        _apply_policy_v2_overrides(
+            genome,
+            entry_trigger_overrides=entry_trigger_overrides,
+            exit_policy_overrides=exit_policy_overrides,
+            trade_control_overrides=trade_control_overrides,
+            entry_trigger_constraints=entry_trigger_constraints,
+        )
         for genome in genomes[:population_size]
     ]
     return [Agent.create(genome) for genome in selected_genomes]
 
 
-def _apply_entry_trigger_overrides(
+def _apply_policy_v2_overrides(
     genome: Genome,
-    entry_trigger_overrides: dict[str, Any] | None,
+    entry_trigger_overrides: dict[str, Any] | None = None,
+    exit_policy_overrides: dict[str, Any] | None = None,
+    trade_control_overrides: dict[str, Any] | None = None,
+    entry_trigger_constraints: dict[str, Any] | None = None,
 ) -> Genome:
-    if not entry_trigger_overrides:
+    if (
+        not entry_trigger_overrides
+        and not exit_policy_overrides
+        and not trade_control_overrides
+        and not entry_trigger_constraints
+    ):
         return genome
 
-    merged_trigger = dict(genome.to_dict()["entry_trigger"])
-    merged_trigger.update(entry_trigger_overrides)
-    return genome.copy_with(entry_trigger=merged_trigger)
+    data = genome.to_dict()
+
+    merged_trigger = dict(data["entry_trigger"])
+    if entry_trigger_overrides:
+        merged_trigger.update(entry_trigger_overrides)
+    merged_trigger = _apply_entry_trigger_constraints(
+        merged_trigger,
+        entry_trigger_constraints,
+    )
+
+    changes: dict[str, Any] = {"entry_trigger": merged_trigger}
+
+    if exit_policy_overrides:
+        merged_exit_policy = dict(data["exit_policy"])
+        merged_exit_policy.update(exit_policy_overrides)
+        changes["exit_policy"] = merged_exit_policy
+
+    if trade_control_overrides:
+        merged_trade_control = dict(data["trade_control"])
+        merged_trade_control.update(trade_control_overrides)
+        changes["trade_control"] = merged_trade_control
+
+    return genome.copy_with(**changes)
+
+
+def _apply_entry_trigger_constraints(
+    trigger_data: dict[str, Any],
+    entry_trigger_constraints: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not entry_trigger_constraints:
+        return trigger_data
+
+    constrained = dict(trigger_data)
+
+    for field_name in (
+        "trend_weight",
+        "momentum_weight",
+        "breakout_weight",
+        "range_weight",
+        "volatility_weight",
+    ):
+        min_key = f"min_{field_name}"
+        max_key = f"max_{field_name}"
+
+        if min_key in entry_trigger_constraints:
+            constrained[field_name] = max(
+                float(constrained[field_name]),
+                float(entry_trigger_constraints[min_key]),
+            )
+
+        if max_key in entry_trigger_constraints:
+            constrained[field_name] = min(
+                float(constrained[field_name]),
+                float(entry_trigger_constraints[max_key]),
+            )
+
+    return constrained
 
 
 def build_environment(
@@ -505,6 +589,7 @@ def execute_historical_run(
     runner = EvolutionRunner(
         mutation_seed=config.mutation_seed,
         mutation_profile=config.mutation_profile,
+        entry_trigger_constraints=config.entry_trigger_constraints,
     )
 
     population = build_initial_population(
@@ -513,6 +598,9 @@ def execute_historical_run(
         min_bars_between_entries=config.min_bars_between_entries,
         entry_confirmation_bars=config.entry_confirmation_bars,
         entry_trigger_overrides=config.entry_trigger_overrides,
+        exit_policy_overrides=config.exit_policy_overrides,
+        trade_control_overrides=config.trade_control_overrides,
+        entry_trigger_constraints=config.entry_trigger_constraints,
     )
 
     if output_dir is None:

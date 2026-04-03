@@ -5,8 +5,18 @@ import math
 from typing import Any
 
 
+# Responsibility boundary:
+# - Gene classes below define the persisted configuration surface of policy_v2.
+# - Future modularization can split them into a dedicated `gene_types` module,
+#   but their serialization shape must remain stable for persistence and reuse.
 @dataclass(frozen=True)
 class EntryContextGene:
+    """Describe market structure required before entry conviction is considered.
+
+    Invariants:
+    - These values are hard gates for policy v2+ entry.
+    - They must stay normalized and portable across datasets.
+    """
     min_trend_strength: float = -1.0
     min_breakout_strength: float = -1.0
     min_realized_volatility: float = -1.0
@@ -68,8 +78,25 @@ class EntryContextGene:
         return gene
 
 
+# Responsibility boundary:
+# - EntryTriggerGene consumes family-level signals, not raw platform-specific
+#   indicators.
+# - Dependencies: the runtime decision layer must provide normalized family
+#   values for trend, momentum, breakout, range, and volatility.
+# TODO: candidate for modularization
+# - This gene type is a good candidate for a dedicated registry or factory once
+#   multiple trigger families or trigger schemas coexist.
 @dataclass(frozen=True)
 class EntryTriggerGene:
+    """Describe conviction once entry context has already passed.
+
+    Context:
+    - The environment consumes this block together with family-level signals.
+
+    Constraints:
+    - This block should express weighting and simple structural requirements,
+      not platform-specific indicator logic.
+    """
     trend_weight: float = 0.0
     momentum_weight: float = 0.0
     breakout_weight: float = 0.0
@@ -126,8 +153,18 @@ class EntryTriggerGene:
         return gene
 
 
+# Responsibility boundary:
+# - ExitPolicyGene owns exit semantics only.
+# - Dependencies: decision policies may reuse the same signal families, but the
+#   genome structure should keep exit rules separate from entry rules.
 @dataclass(frozen=True)
 class ExitPolicyGene:
+    """Describe policy_v2 exit behavior independently from entry logic.
+
+    Invariant:
+    - Exit semantics must remain separable from entry semantics so that
+      experiments can change one side without silently changing the other.
+    """
     exit_score_threshold: float = 0.1
     exit_on_signal_reversal: bool = False
     max_holding_bars: int = 0
@@ -168,8 +205,17 @@ class ExitPolicyGene:
         return gene
 
 
+# Responsibility boundary:
+# - TradeControlGene owns operational timing constraints around entries/exits.
+# - It should stay orthogonal to scoring and evaluator logic.
 @dataclass(frozen=True)
 class TradeControlGene:
+    """Describe operational anti-churn controls around trade timing.
+
+    Why it exists:
+    - These controls protect against overtrading without polluting scoring or
+      evaluation with ad hoc runtime hacks.
+    """
     cooldown_bars: int = 0
     min_holding_bars: int = 0
     reentry_block_bars: int = 0
@@ -194,8 +240,26 @@ class TradeControlGene:
         return gene
 
 
+# Responsibility boundary:
+# - Genome composes gene blocks into the canonical persisted strategy object.
+# - Dependencies: mutation, environment decision logic, persistence, and
+#   reevaluation all rely on this composition layer.
+# TODO: candidate for modularization
+# - The synchronization/compatibility logic below is tightly coupled and would
+#   be a candidate for a dedicated genome factory / compatibility adapter module.
 @dataclass(frozen=True)
 class Genome:
+    """Canonical policy payload for both historical and active runtime lanes.
+
+    Context:
+    - Persisted snapshots, mutation, evaluation, and experiment execution all
+      pass through this object.
+
+    Invariants:
+    - New campaigns use policy_v2 blocks as the active semantics.
+    - Legacy flat fields remain only for bounded historical compatibility.
+    - Serialization must stay stable enough for persistence and reuse identity.
+    """
     threshold_open: float
     threshold_close: float
     position_size: float
@@ -243,6 +307,17 @@ class Genome:
         self.validate()
 
     def _synchronize_policy_blocks(self) -> None:
+        """Keep the genome internally coherent across active and legacy lanes.
+
+        Constraints:
+        - Active policy_v2 runs must not depend on legacy thresholds as runtime
+          semantics.
+        - Historical snapshots still need a narrow compatibility mirror.
+        """
+        # TODO: candidate for modularization
+        # This method currently mixes active genome composition with legacy
+        # compatibility reconstruction. A future modular design could move this
+        # into separate factories/adapters without changing the serialized shape.
         if self.policy_v2_enabled:
             entry_context = self.entry_context or self._build_entry_context_from_legacy()
             entry_trigger = self.entry_trigger or self._build_entry_trigger_from_legacy()
@@ -271,6 +346,10 @@ class Genome:
         object.__setattr__(self, "trade_control", self._build_trade_control_from_legacy())
 
     def _build_entry_context_from_legacy(self) -> EntryContextGene:
+        # Dependency note:
+        # Legacy flat fields are translated into the active EntryContextGene
+        # shape here. This is compatibility glue, not the desired long-term
+        # composition path for new experimental modules.
         min_trend_strength = self.trend_threshold if self.use_trend else -1.0
         gene = EntryContextGene(
             min_trend_strength=min_trend_strength,
@@ -283,6 +362,9 @@ class Genome:
         return gene
 
     def _build_entry_trigger_from_legacy(self) -> EntryTriggerGene:
+        # TODO: candidate for modularization
+        # This translation is tightly coupled to old flat weights and to the
+        # current family-level trigger schema.
         trend_components = [
             self.weight_dist_ma,
             self.weight_trend_strength,
@@ -310,6 +392,9 @@ class Genome:
         return gene
 
     def _build_exit_policy_from_legacy(self) -> ExitPolicyGene:
+        # Dependency note:
+        # Historical snapshots still rely on this bridge, but new policy_v2
+        # campaigns should arrive with an explicit ExitPolicyGene already built.
         gene = ExitPolicyGene(
             exit_score_threshold=self.threshold_close,
             exit_on_signal_reversal=self.use_exit_momentum,
@@ -328,6 +413,12 @@ class Genome:
         return gene
 
     def validate(self) -> None:
+        """Reject impossible or semantically inconsistent genome states.
+
+        Invariant:
+        - Validation here protects persistence, mutation, and execution from
+          silently drifting into structurally invalid policy objects.
+        """
         if not 0.0 < self.position_size <= 1.0:
             raise ValueError("position_size must be between 0.0 and 1.0")
 
@@ -503,6 +594,20 @@ def build_policy_v2_genome(
     exit_policy: ExitPolicyGene | None = None,
     trade_control: TradeControlGene | None = None,
 ) -> Genome:
+    """Build a new active-runtime genome without relying on legacy entry/exit semantics.
+
+    Context:
+    - New campaign population builders and mutators should prefer this helper.
+
+    Invariant:
+    - The returned genome must be `policy_v2_enabled=True` and structurally
+      complete in its block-based policy fields.
+    """
+    # Responsibility boundary:
+    # - This helper is the current composition point for new active genomes.
+    # TODO: candidate for modularization
+    # - If multiple genome schemas are introduced later, this could evolve into
+    #   a configuration-driven genome factory.
     resolved_exit_policy = exit_policy or ExitPolicyGene(
         stop_loss_pct=stop_loss_pct,
         take_profit_pct=take_profit_pct,

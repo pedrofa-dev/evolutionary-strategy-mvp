@@ -232,6 +232,20 @@ def prepare_run_execution(
     preset_name: str | None,
     dataset_root: Path,
 ) -> PreparedRunExecution:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - This function defines the persisted execution identity before any run is
+      launched.
+
+    Invariants:
+    - Effective config snapshot, seed, dataset signature, and logic_version
+      must remain aligned with the execution fingerprint.
+
+    Risk:
+    - Ad hoc changes here can cause invalid reuse, duplicate executions, or
+      broken campaign accounting.
+    """
     effective_config_snapshot = build_effective_config_snapshot(
         config_path,
         preset_name,
@@ -563,6 +577,15 @@ def create_multiseed_run_record(
     effective_parallel_workers: int,
     runs_planned: int,
 ) -> tuple[int, str]:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - This is the top-level persistence record for one multiseed campaign.
+
+    Risk:
+    - If campaign metadata is mutated inconsistently, champions, failures, and
+      post-run outputs stop being attributable to the real executed campaign.
+    """
     multiseed_run_uid = output_dir.name
     multiseed_run_id = store.save_multiseed_run(
         multiseed_run_uid=multiseed_run_uid,
@@ -1191,6 +1214,19 @@ def run_multiseed_experiment(
     audit_dir: Path | None = None,
     skip_post_multiseed_analysis: bool = False,
 ) -> Path | None:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - This is the canonical orchestration path for new experiment campaigns.
+
+    Invariants:
+    - Reuse semantics, execution accounting, and post-multiseed persistence
+      must stay synchronized with actual runtime behavior.
+
+    Risk:
+    - Experiment-layer hacks here can silently bias which runs execute, reuse,
+      or fail, making campaign comparisons invalid.
+    """
     if parallel_workers <= 0:
         raise ValueError("parallel_workers must be greater than 0")
 

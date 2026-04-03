@@ -17,6 +17,12 @@ NEGATIVE_VALIDATION_PENALTY = 2.0
 def collect_soft_penalty_violations(
     dispersion: float,
 ) -> list[str]:
+    """Collect evaluation issues that should hurt score but not hard-fail it.
+
+    Why it exists:
+    - Some pathologies signal fragility without being strong enough to void the
+      whole evaluation.
+    """
     violations: list[str] = []
 
     if dispersion > MAX_DISPERSION:
@@ -29,6 +35,15 @@ def calculate_evaluation_penalty(
     violations: list[str],
     median_trades: float,
 ) -> float:
+    """Translate soft/hard violation labels into an additive score penalty.
+
+    Invariants:
+    - This function must not silently turn hard vetoes into valid outcomes.
+    - Trade scarcity remains penalized even when it is already a veto signal.
+
+    Context:
+    - The evaluator combines this with scoring and veto validity checks.
+    """
     penalty = 0.0
 
     if "too_few_trades" in violations:

@@ -22,6 +22,24 @@ from evo_system.evaluation.vetoes import (
 
 
 class AgentEvaluator:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - This class is the canonical bridge from episode outcomes to the
+      evaluation object consumed by evolution, champion classification, and
+      reevaluation.
+
+    Invariants:
+    - Train, validation, external, and audit must all pass through the same
+      scoring, penalty, and veto pipeline.
+    - Experimental config layers may change genomes or datasets, but must not
+      redefine how evaluations are assembled here.
+
+    Risk:
+    - Changing this from a UI or experiment-specific layer would make campaign
+      comparisons invalid and can create hidden overfitting by evaluating each
+      experiment under different rules.
+    """
     def __init__(
         self,
         cost_penalty_weight: float = DEFAULT_COST_PENALTY_WEIGHT,
@@ -42,6 +60,15 @@ class AgentEvaluator:
         agent: Agent,
         environments: list[HistoricalEnvironment],
     ) -> AgentEvaluation:
+        """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+        Context:
+        - Every validation lane uses this exact assembly path.
+
+        Invariant:
+        - Violation collection, penalty application, and validity checks must
+          happen in one place and in this order.
+        """
         if not environments:
             raise ValueError("environments cannot be empty")
 

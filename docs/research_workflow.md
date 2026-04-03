@@ -104,20 +104,22 @@ The current signal set for policy v2.1 is grouped into reusable market families:
 
 These features were chosen because they are portable across future environments and do not depend on a specific platform indicator catalog. The goal is to describe reusable market structure, not to optimize around named retail indicators.
 
-The active v2.1 family now compares three `EntryTriggerGene` variants:
+The active v2.1 family now compares five `EntryTriggerGene` variants:
 
 - conservative
 - baseline
 - permissive
+- recovery
+- recovery_trend
 
 They differ only in:
 
 - `entry_score_threshold`
 - `min_positive_families`
 
-`require_trend_or_breakout` stays fixed at `true` across the active family.
+`require_trend_or_breakout` stays fixed at `true` for the canonical conservative / baseline / permissive lane. The two recovery probes are intentionally narrower experiments that relax this flag while adding explicit anti-churn trade controls.
 
-In this phase, only trigger conviction changes. Signals, scoring, datasets, and architecture remain fixed.
+In this phase, signals, scoring, datasets, and architecture remain fixed. The recovery probes still vary trigger conviction first, while adding bounded trade-control guardrails to avoid reopening the fee-destroyed micro-trading regime.
 
 Current active values:
 
@@ -130,6 +132,17 @@ Current active values:
 - permissive
   - `entry_score_threshold = 0.40`
   - `min_positive_families = 1`
+- recovery
+  - `entry_score_threshold = 0.43`
+  - `min_positive_families = 1`
+  - `require_trend_or_breakout = false`
+  - `cooldown_bars = 2`
+  - `min_holding_bars = 2`
+  - `reentry_block_bars = 2`
+- recovery_trend
+  - same as recovery
+  - `trend_weight >= 0.0`
+  - `breakout_weight >= 0.0`
 
 The previous `min_bars_between_entries`, `entry_confirmation_bars`, `entry_score_margin`, and earlier `policy_v2_*` configs are kept under `configs/runs/deprecated/` as historical runs. The code support remains available for compatibility, but the active run set has moved to policy v2.1.
 

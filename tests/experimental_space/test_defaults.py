@@ -1,0 +1,209 @@
+from evo_system.domain.genome import (
+    EntryContextGene,
+    EntryTriggerGene,
+    ExitPolicyGene,
+    TradeControlGene,
+)
+from evo_system.domain.historical_candle import HistoricalCandle
+from evo_system.environment.historical_environment import HistoricalEnvironment
+from evo_system.experimental_space import (
+    decision_policy_registry,
+    genome_schema_registry,
+    get_default_decision_policy,
+    get_default_genome_schema,
+    get_default_mutation_profile_definition,
+    get_default_signal_pack,
+    get_genome_schema,
+    mutation_profile_registry,
+    signal_pack_registry,
+)
+from evo_system.mutation.mutator import MutationProfile
+from evo_system.orchestration.runner import EvolutionRunner
+
+
+def _sample_environment() -> HistoricalEnvironment:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 104, 99, 103),
+        HistoricalCandle("3", 103, 108, 102, 107),
+        HistoricalCandle("4", 107, 111, 106, 110),
+        HistoricalCandle("5", 110, 115, 109, 114),
+        HistoricalCandle("6", 114, 118, 113, 117),
+    ]
+    return HistoricalEnvironment(candles)
+
+
+def test_default_registries_expose_phase_one_components() -> None:
+    assert signal_pack_registry.default_name == "policy_v21_default"
+    assert genome_schema_registry.default_name == "policy_v2_default"
+    assert decision_policy_registry.default_name == "policy_v2_default"
+    assert mutation_profile_registry.default_name == "default_runtime_profile"
+    assert "modular_genome_v1" in genome_schema_registry.list_names()
+
+
+def test_default_signal_pack_matches_current_environment_methods() -> None:
+    environment = _sample_environment()
+    genome = EvolutionRunner(mutation_seed=42)._build_random_genome()
+    trend_series = environment._get_trend_series(genome.trend_window)
+
+    signal_pack = get_default_signal_pack()
+
+    features = signal_pack.build_signal_features(
+        environment=environment,
+        index=5,
+        normalized_momentum=environment._normalized_momentum_series[5],
+        normalized_trend=trend_series[5],
+        ret_short_series=environment._get_return_series(genome.ret_short_window),
+        ret_mid_series=environment._get_return_series(genome.ret_mid_window),
+        ma_distance_series=environment._get_ma_distance_series(genome.ma_window),
+        range_position_series=environment._get_range_position_series(genome.range_window),
+        vol_ratio_series=environment._get_vol_ratio_series(
+            genome.vol_short_window,
+            genome.vol_long_window,
+        ),
+        trend_strength_series=environment._get_trend_strength_series(genome.ma_window),
+        realized_volatility_series=environment._get_realized_volatility_series(
+            genome.vol_long_window
+        ),
+        trend_long_series=environment._get_trend_long_series(genome.ma_window),
+        breakout_series=environment._get_breakout_series(genome.range_window),
+    )
+    direct_features = environment._get_policy_v21_signal_features(
+        index=5,
+        normalized_momentum=environment._normalized_momentum_series[5],
+        normalized_trend=trend_series[5],
+        ret_short_series=environment._get_return_series(genome.ret_short_window),
+        ret_mid_series=environment._get_return_series(genome.ret_mid_window),
+        ma_distance_series=environment._get_ma_distance_series(genome.ma_window),
+        range_position_series=environment._get_range_position_series(genome.range_window),
+        vol_ratio_series=environment._get_vol_ratio_series(
+            genome.vol_short_window,
+            genome.vol_long_window,
+        ),
+        trend_strength_series=environment._get_trend_strength_series(genome.ma_window),
+        realized_volatility_series=environment._get_realized_volatility_series(
+            genome.vol_long_window
+        ),
+        trend_long_series=environment._get_trend_long_series(genome.ma_window),
+        breakout_series=environment._get_breakout_series(genome.range_window),
+    )
+
+    assert features == direct_features
+    assert signal_pack.build_signal_families(
+        environment=environment,
+        signal_features=features,
+    ) == environment._get_signal_families(signal_features=features)
+
+
+def test_default_decision_policy_matches_current_environment_methods() -> None:
+    environment = _sample_environment()
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=1.0,
+            momentum_weight=0.5,
+            breakout_weight=0.25,
+            range_weight=0.0,
+            volatility_weight=-0.5,
+            entry_score_threshold=0.2,
+            min_positive_families=1,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=-0.1,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+        ),
+        trade_control=TradeControlGene(),
+    )
+    families = {
+        "trend": 0.6,
+        "momentum": 0.4,
+        "breakout": 0.5,
+        "range": 0.1,
+        "volatility": -0.2,
+        "realized_volatility": 0.0,
+    }
+    decision_policy = get_default_decision_policy()
+
+    score = decision_policy.get_entry_trigger_score(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+    )
+
+    assert score == environment._get_entry_trigger_score(genome, families)
+    assert decision_policy.passes_entry_context(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+    ) == environment._passes_entry_context(genome, families)
+    assert decision_policy.passes_entry_trigger(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        trigger_score=score,
+    ) == environment._passes_entry_trigger(genome, families, score)
+
+
+def test_default_mutation_profile_definition_preserves_current_runtime_profile() -> None:
+    definition = get_default_mutation_profile_definition()
+    custom_profile = MutationProfile(numeric_delta_scale=1.5)
+
+    assert definition.resolve_runtime_profile(custom_profile) == custom_profile
+    assert definition.resolve_runtime_profile(None) == MutationProfile()
+
+
+def test_runner_and_environment_expose_default_modular_components() -> None:
+    environment = _sample_environment()
+    runner = EvolutionRunner(mutation_seed=42)
+
+    assert environment.signal_pack.name == "policy_v21_default"
+    assert environment.decision_policy.name == "policy_v2_default"
+    assert runner.genome_schema.name == "policy_v2_default"
+    assert runner.mutation_profile_definition.name == "default_runtime_profile"
+
+
+def test_default_genome_schema_builds_active_policy_v2_genomes() -> None:
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+    )
+
+    assert genome.policy_v2_enabled is True
+
+
+def test_modular_genome_schema_v1_builds_explicit_gene_blocks() -> None:
+    schema = get_genome_schema("modular_genome_v1")
+
+    genome = schema.build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+    )
+
+    assert genome.policy_v2_enabled is True
+    assert isinstance(genome.entry_context, EntryContextGene)
+    assert isinstance(genome.entry_trigger, EntryTriggerGene)
+    assert isinstance(genome.exit_policy, ExitPolicyGene)
+    assert isinstance(genome.trade_control, TradeControlGene)
+
+
+def test_runner_can_select_modular_genome_schema_v1_explicitly() -> None:
+    runner = EvolutionRunner(
+        mutation_seed=42,
+        genome_schema_name="modular_genome_v1",
+    )
+
+    genome = runner._build_random_genome()
+
+    assert runner.genome_schema.name == "modular_genome_v1"
+    assert genome.policy_v2_enabled is True
+    assert isinstance(genome.entry_context, EntryContextGene)
+    assert isinstance(genome.entry_trigger, EntryTriggerGene)
+    assert isinstance(genome.exit_policy, ExitPolicyGene)
+    assert isinstance(genome.trade_control, TradeControlGene)

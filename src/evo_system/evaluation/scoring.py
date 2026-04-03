@@ -23,6 +23,16 @@ def calculate_dataset_score(
     trades: int,
     cost_penalty_weight: float,
 ) -> float:
+    """Score one dataset episode on net outcome rather than raw activity.
+
+    Invariants:
+    - Profit, drawdown, and trading cost must remain the dominant drivers.
+    - Trade count is only a weak tie-breaker and must not become the main edge.
+
+    Constraints:
+    - Experimental layers may tune policy behavior, but must not reinterpret
+      this function as a champion-selection shortcut.
+    """
     raw_score = (
         profit
         - DRAWDOWN_WEIGHT * drawdown
@@ -54,6 +64,16 @@ def calculate_selection_score(
     median_trades: float,
     trade_count_penalty_weight: float,
 ) -> float:
+    """Convert aggregated performance into a selection score for evolution.
+
+    Why it exists:
+    - Evolution should prefer stable, downside-aware agents, not just agents
+      with high mean score on favorable subsets.
+
+    Invariants:
+    - Dispersion and downside penalties must remain visible in selection.
+    - Trade-count penalty is a cost-control term, not a reward for inactivity.
+    """
     downside_penalty = max(0.0, -bottom_quartile_score)
     return (
         aggregated_score
@@ -69,6 +89,21 @@ def build_evolution_selection_score(
     invalid_validation_penalty: float,
     negative_validation_penalty: float,
 ) -> float:
+    """Rank genomes for reproduction using train and validation together.
+
+    Context:
+    - This is the bridge between per-dataset evaluation and the evolutionary
+      loop in experiment execution.
+
+    Invariants:
+    - Validation remains the authority over train.
+    - Overfit and underfit gaps both matter.
+    - Invalid validation must stay strongly penalized.
+
+    Constraints:
+    - Do not let configuration experiments bypass this by weakening validation
+      penalties here. That belongs in explicit evaluation-policy changes.
+    """
     selection_gap = (
         train_evaluation.selection_score
         - validation_evaluation.selection_score

@@ -418,7 +418,7 @@ def test_execution_fingerprint_changes_when_logic_version_changes() -> None:
         logic_version=CURRENT_LOGIC_VERSION,
     )
 
-    assert CURRENT_LOGIC_VERSION == "v7"
+    assert CURRENT_LOGIC_VERSION == "v9"
     assert previous_fingerprint != current_fingerprint
 
 

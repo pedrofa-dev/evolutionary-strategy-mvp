@@ -41,6 +41,19 @@ def run_external_validation(
     min_breakout_for_entry: float = 0.0,
     max_realized_volatility_for_entry: float | None = None,
 ) -> AgentEvaluation:
+    """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
+
+    Why:
+    - External validation is a generalization check, not a tuning shortcut.
+
+    Invariants:
+    - It must reuse the same evaluator and runtime semantics as train and
+      validation while staying dataset-disjoint from optimization.
+
+    Risk:
+    - If this path drifts from the canonical evaluator, external results stop
+      being comparable and can be used to justify overfit conclusions.
+    """
     if not external_dataset_paths:
         raise ValueError("external_dataset_paths cannot be empty")
 

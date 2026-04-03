@@ -277,6 +277,9 @@ def test_execute_historical_run_persists_champion_in_new_store(
         entry_confirmation_bars: int = 1,
         entry_score_margin: float = 0.0,
         entry_trigger_overrides=None,
+        exit_policy_overrides=None,
+        trade_control_overrides=None,
+        entry_trigger_constraints=None,
     ):
         return [agent]
 
@@ -392,11 +395,65 @@ def test_build_initial_population_applies_entry_trigger_overrides() -> None:
     assert genome.entry_trigger.require_trend_or_breakout is True
 
 
+def test_build_initial_population_applies_policy_v2_recovery_overrides() -> None:
+    population = build_initial_population(
+        1,
+        entry_trigger_overrides={
+            "entry_score_threshold": 0.43,
+            "min_positive_families": 1,
+            "require_trend_or_breakout": False,
+        },
+        exit_policy_overrides={
+            "max_holding_bars": 24,
+            "stop_loss_pct": 0.04,
+            "take_profit_pct": 0.12,
+        },
+        trade_control_overrides={
+            "cooldown_bars": 2,
+            "min_holding_bars": 2,
+            "reentry_block_bars": 2,
+        },
+    )
+
+    genome = population[0].genome
+
+    assert genome.policy_v2_enabled is True
+    assert genome.entry_trigger is not None
+    assert genome.exit_policy is not None
+    assert genome.trade_control is not None
+    assert genome.entry_trigger.entry_score_threshold == 0.43
+    assert genome.entry_trigger.min_positive_families == 1
+    assert genome.entry_trigger.require_trend_or_breakout is False
+    assert genome.exit_policy.max_holding_bars == 24
+    assert genome.exit_policy.stop_loss_pct == 0.04
+    assert genome.exit_policy.take_profit_pct == 0.12
+    assert genome.trade_control.cooldown_bars == 2
+    assert genome.trade_control.min_holding_bars == 2
+    assert genome.trade_control.reentry_block_bars == 2
+
+
+def test_build_initial_population_applies_recovery_trend_constraints() -> None:
+    population = build_initial_population(
+        2,
+        entry_trigger_constraints={
+            "min_trend_weight": 0.0,
+            "min_breakout_weight": 0.0,
+        },
+    )
+
+    for agent in population:
+        assert agent.genome.entry_trigger is not None
+        assert agent.genome.entry_trigger.trend_weight >= 0.0
+        assert agent.genome.entry_trigger.breakout_weight >= 0.0
+
+
 def test_active_policy_v21_configs_build_population_without_legacy_threshold_dependency() -> None:
     config_names = [
         "balanced_bnb fee_5bps_fees_policy_v21_conservative.json",
         "balanced_bnb fee_5bps_fees_policy_v21_baseline.json",
         "balanced_bnb fee_5bps_fees_policy_v21_permissive.json",
+        "balanced_bnb fee_5bps_fees_policy_v21_recovery.json",
+        "balanced_bnb fee_5bps_fees_policy_v21_recovery_trend.json",
     ]
 
     for config_name in config_names:
@@ -407,6 +464,9 @@ def test_active_policy_v21_configs_build_population_without_legacy_threshold_dep
             min_bars_between_entries=config.min_bars_between_entries,
             entry_confirmation_bars=config.entry_confirmation_bars,
             entry_trigger_overrides=config.entry_trigger_overrides,
+            exit_policy_overrides=config.exit_policy_overrides,
+            trade_control_overrides=config.trade_control_overrides,
+            entry_trigger_constraints=config.entry_trigger_constraints,
         )
 
         assert population
@@ -423,6 +483,8 @@ def test_active_policy_v21_family_uses_expected_entry_trigger_values() -> None:
         "balanced_bnb fee_5bps_fees_policy_v21_conservative.json": (0.55, 3),
         "balanced_bnb fee_5bps_fees_policy_v21_baseline.json": (0.45, 2),
         "balanced_bnb fee_5bps_fees_policy_v21_permissive.json": (0.40, 1),
+        "balanced_bnb fee_5bps_fees_policy_v21_recovery.json": (0.43, 1),
+        "balanced_bnb fee_5bps_fees_policy_v21_recovery_trend.json": (0.43, 1),
     }
 
     for config_name, (expected_threshold, expected_positive_families) in expected_values.items():
@@ -431,7 +493,38 @@ def test_active_policy_v21_family_uses_expected_entry_trigger_values() -> None:
         assert config.entry_trigger_overrides is not None, config_name
         assert config.entry_trigger_overrides["entry_score_threshold"] == expected_threshold, config_name
         assert config.entry_trigger_overrides["min_positive_families"] == expected_positive_families, config_name
-        assert config.entry_trigger_overrides["require_trend_or_breakout"] is True, config_name
+        expected_require = not config_name.endswith("_recovery.json") and not config_name.endswith("_recovery_trend.json")
+        assert config.entry_trigger_overrides["require_trend_or_breakout"] is expected_require, config_name
+
+
+def test_recovery_configs_apply_trade_controls_and_trend_guardrails() -> None:
+    expected_files = {
+        "balanced_bnb fee_5bps_fees_policy_v21_recovery.json": False,
+        "balanced_bnb fee_5bps_fees_policy_v21_recovery_trend.json": True,
+    }
+
+    for config_name, expects_constraints in expected_files.items():
+        config = load_run_config(str(Path("configs/runs") / config_name))
+
+        assert config.trade_control_overrides == {
+            "cooldown_bars": 2,
+            "min_holding_bars": 2,
+            "reentry_block_bars": 2,
+        }, config_name
+        assert config.exit_policy_overrides == {
+            "exit_score_threshold": 0.08,
+            "exit_on_signal_reversal": True,
+            "max_holding_bars": 24,
+            "stop_loss_pct": 0.04,
+            "take_profit_pct": 0.12,
+        }, config_name
+        if expects_constraints:
+            assert config.entry_trigger_constraints == {
+                "min_trend_weight": 0.0,
+                "min_breakout_weight": 0.0,
+            }, config_name
+        else:
+            assert config.entry_trigger_constraints is None, config_name
 
 
 def test_build_multiseed_jobs_expands_config_seed_pairs(tmp_path: Path) -> None:

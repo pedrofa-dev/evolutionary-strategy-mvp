@@ -5,9 +5,28 @@ from statistics import pstdev
 from evo_system.domain.agent import Agent
 from evo_system.domain.episode_result import EpisodeResult
 from evo_system.domain.historical_candle import HistoricalCandle
+from evo_system.experimental_space import (
+    get_default_decision_policy,
+    get_default_signal_pack,
+)
 
 
 class HistoricalEnvironment:
+    """Replay one candle series under the current trading-policy semantics.
+
+    Context:
+    - Evaluation and reevaluation both depend on this environment being the
+      execution authority for net-after-cost episode behavior.
+
+    Invariants:
+    - Fees must always be applied here, not guessed later.
+    - Active policy_v2 entry/exit semantics must remain centralized here.
+
+    Phase 1 modularization note:
+    - `signal_pack` and `decision_policy` are thin adapters over the current
+      methods below. They make future modular extraction explicit without
+      replacing the current runtime authority.
+    """
     def __init__(
         self,
         candles: list[HistoricalCandle],
@@ -29,6 +48,8 @@ class HistoricalEnvironment:
         self.min_trend_long_for_entry = min_trend_long_for_entry
         self.min_breakout_for_entry = min_breakout_for_entry
         self.max_realized_volatility_for_entry = max_realized_volatility_for_entry
+        self.signal_pack = get_default_signal_pack()
+        self.decision_policy = get_default_decision_policy()
 
         self._closes = [candle.close for candle in candles]
         self._highs = [candle.high for candle in candles]
@@ -59,6 +80,24 @@ class HistoricalEnvironment:
         )
 
     def get_episode_diagnostics(self, agent: Agent) -> dict[str, float | int]:
+        """Run one full episode and return the metrics used by evaluation.
+
+        Why it exists:
+        - This is the decision-loop runtime used to turn a genome into profit,
+          drawdown, trade count, and cost.
+
+        Invariants:
+        - Entry, exit, and trade-control decisions must stay net-of-cost aware.
+        - Experimental layers may change genome values, but not bypass this loop.
+        """
+        # Responsibility boundary:
+        # - This loop is the current decision-policy runtime.
+        # - Signals, gene blocks, and costs come together here to produce
+        #   actions and episode outcomes.
+        # TODO: candidate for modularization
+        # - Entry/exit policy evaluation could later move into dedicated
+        #   decision-policy objects, but this loop remains the execution source
+        #   of truth for evaluation.
         in_position = False
         entry_price = 0.0
         entry_index: int | None = None
@@ -93,7 +132,8 @@ class HistoricalEnvironment:
         for index, candle in enumerate(self.candles):
             normalized_momentum = self._normalized_momentum_series[index]
             normalized_trend = trend_series[index]
-            signal_features = self._get_policy_v21_signal_features(
+            signal_features = self.signal_pack.build_signal_features(
+                environment=self,
                 index=index,
                 normalized_momentum=normalized_momentum,
                 normalized_trend=normalized_trend,
@@ -107,7 +147,8 @@ class HistoricalEnvironment:
                 trend_long_series=trend_long_series,
                 breakout_series=breakout_series,
             )
-            signal_families = self._get_signal_families(
+            signal_families = self.signal_pack.build_signal_families(
+                environment=self,
                 signal_features=signal_features,
             )
             regime_filter_ok = (
@@ -119,12 +160,21 @@ class HistoricalEnvironment:
                 )
             )
             if genome.policy_v2_enabled:
-                trigger_score = self._get_entry_trigger_score(agent.genome, signal_families)
-                context_ok = self._passes_entry_context(agent.genome, signal_families)
-                trigger_ok = self._passes_entry_trigger(
-                    agent.genome,
-                    signal_families,
-                    trigger_score,
+                trigger_score = self.decision_policy.get_entry_trigger_score(
+                    environment=self,
+                    genome=agent.genome,
+                    signal_families=signal_families,
+                )
+                context_ok = self.decision_policy.passes_entry_context(
+                    environment=self,
+                    genome=agent.genome,
+                    signal_families=signal_families,
+                )
+                trigger_ok = self.decision_policy.passes_entry_trigger(
+                    environment=self,
+                    genome=agent.genome,
+                    signal_families=signal_families,
+                    trigger_score=trigger_score,
                 )
                 entry_signal_ok = regime_filter_ok and context_ok and trigger_ok
                 required_confirmation_bars = 1
@@ -346,6 +396,9 @@ class HistoricalEnvironment:
         genome,
         signal_families: dict[str, float],
     ) -> bool:
+        # Responsibility boundary:
+        # - Context gating belongs to decision policy, not to signal definition
+        #   and not to evaluator/scoring code.
         # Entry context is a hard gate. It exists to reject markets that are
         # structurally wrong for the policy before trigger conviction is even
         # considered.
@@ -366,6 +419,9 @@ class HistoricalEnvironment:
         signal_families: dict[str, float],
         trigger_score: float,
     ) -> bool:
+        # TODO: candidate for modularization
+        # This is a good extraction point for a future `decision_policies`
+        # module because it combines gene constraints with signal families.
         # Entry trigger expresses conviction after the context gate passes. It
         # combines weighted family scores with simple structural rules to avoid
         # one-dimensional spike entries.
@@ -405,6 +461,20 @@ class HistoricalEnvironment:
         trend_long_series: list[float],
         breakout_series: list[float],
     ) -> dict[str, float]:
+        """Build the portable feature set consumed by policy v2.1 families.
+
+        Constraints:
+        - Keep these features reusable and normalized.
+        - Do not let config experiments redefine what the features mean.
+        """
+        # Responsibility boundary:
+        # - This block defines the active raw signal surface for policy_v2.1.
+        # Dependencies:
+        # - EntryContextGene and EntryTriggerGene depend on these features only
+        #   after they are aggregated into families.
+        # TODO: candidate for modularization
+        # - This is a natural candidate for a signal-definition registry or
+        #   factory once multiple signal sets are supported.
         # Measures medium-term directional strength across moving-average
         # structure.
         # Trading meaning: trend-following feature.
@@ -487,6 +557,17 @@ class HistoricalEnvironment:
         *,
         signal_features: dict[str, float],
     ) -> dict[str, float]:
+        """Collapse raw features into the family scores used by EntryTriggerGene.
+
+        Invariant:
+        - Policy genes mutate family weights, not bespoke per-feature logic.
+        """
+        # Responsibility boundary:
+        # - This is the adapter between signal definitions and gene-trigger
+        #   consumption.
+        # TODO: candidate for modularization
+        # - Future modularization could make this a configuration-driven family
+        #   mapper, as long as family semantics stay stable for genomes.
         # Trend strength measures directional structure across moving-average
         # relationships. It is useful for avoiding flat tape, but it lags.
         trend_score = self._clamp(
@@ -542,6 +623,15 @@ class HistoricalEnvironment:
 
     @staticmethod
     def _get_entry_trigger_score(genome, signal_families: dict[str, float]) -> float:
+        """Apply EntryTriggerGene weights to family scores.
+
+        Context:
+        - This keeps the runtime decision surface aligned with the persisted
+          gene structure instead of hidden ad hoc calculations elsewhere.
+        """
+        # Dependency note:
+        # - EntryTriggerGene depends on the exact family names produced by
+        #   `_get_signal_families`.
         trigger = genome.entry_trigger
         return (
             trigger.trend_weight * signal_families["trend"]
@@ -580,6 +670,9 @@ class HistoricalEnvironment:
         trend_long_series: list[float],
         breakout_series: list[float],
     ) -> float:
+        # TODO: candidate for modularization
+        # Legacy trigger scoring is tightly coupled to historical flat weights.
+        # It can later move into a separate legacy decision-policy adapter.
         genome = agent.genome
 
         if not self._has_legacy_feature_weights(agent):
@@ -629,6 +722,9 @@ class HistoricalEnvironment:
         return series
 
     def _get_trend_series(self, window: int) -> list[float]:
+        # Signal-definition boundary:
+        # - Cached normalized series builders below are the raw ingredients used
+        #   by the active signal set and should remain side-effect free.
         cached = self._trend_cache.get(window)
         if cached is not None:
             return cached

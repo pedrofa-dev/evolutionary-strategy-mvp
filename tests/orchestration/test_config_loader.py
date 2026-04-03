@@ -214,6 +214,54 @@ def test_load_run_config_reads_entry_trigger_overrides(tmp_path) -> None:
     }
 
 
+def test_load_run_config_reads_policy_v2_override_blocks(tmp_path) -> None:
+    config_path = tmp_path / "run_config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mutation_seed": 42,
+                "population_size": 12,
+                "target_population_size": 12,
+                "survivors_count": 4,
+                "generations_planned": 25,
+                "dataset_catalog_id": "core_1h_spot",
+                "exit_policy": {
+                    "max_holding_bars": 24,
+                    "stop_loss_pct": 0.04,
+                    "take_profit_pct": 0.12,
+                },
+                "trade_control": {
+                    "cooldown_bars": 2,
+                    "min_holding_bars": 2,
+                    "reentry_block_bars": 2,
+                },
+                "entry_trigger_constraints": {
+                    "min_trend_weight": 0.0,
+                    "min_breakout_weight": 0.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_run_config(str(config_path))
+
+    assert config.exit_policy_overrides == {
+        "max_holding_bars": 24,
+        "stop_loss_pct": 0.04,
+        "take_profit_pct": 0.12,
+    }
+    assert config.trade_control_overrides == {
+        "cooldown_bars": 2,
+        "min_holding_bars": 2,
+        "reentry_block_bars": 2,
+    }
+    assert config.entry_trigger_constraints == {
+        "min_trend_weight": 0.0,
+        "min_breakout_weight": 0.0,
+    }
+
+
 def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:
     config_path = tmp_path / "run_config.json"
     config_path.write_text(
