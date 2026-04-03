@@ -25,11 +25,13 @@ MULTISEED_RUNS_JSON_COLUMNS = {
 RUN_EXECUTIONS_JSON_COLUMNS = {
     "config_json_snapshot",
     "dataset_context_json",
+    "experimental_space_snapshot_json",
     "summary_json",
 }
 CHAMPIONS_JSON_COLUMNS = {
     "genome_json_snapshot",
     "config_json_snapshot",
+    "experimental_space_snapshot_json",
     "train_metrics_json",
     "validation_metrics_json",
     "champion_metrics_json",
@@ -84,6 +86,8 @@ def build_execution_fingerprint(
     Invariants:
     - It must remain strict: config snapshot + seed + dataset identity +
       logic_version.
+    - Modular traceability metadata such as experimental-space snapshots must
+      not silently enter this fingerprint in metadata-only phases.
 
     Risk:
     - Weakening this causes invalid reuse and contaminated research history.
@@ -224,6 +228,7 @@ class PersistenceStore:
                     completed_at TEXT,
                     context_name TEXT,
                     preset_name TEXT,
+                    experimental_space_snapshot_json TEXT,
                     requested_dataset_root TEXT,
                     resolved_dataset_root TEXT,
                     failure_reason TEXT,
@@ -248,6 +253,7 @@ class PersistenceStore:
                     genome_json_snapshot TEXT NOT NULL,
                     genome_hash TEXT NOT NULL,
                     config_json_snapshot TEXT NOT NULL,
+                    experimental_space_snapshot_json TEXT,
                     dataset_catalog_id TEXT NOT NULL,
                     dataset_signature TEXT NOT NULL,
                     train_metrics_json TEXT NOT NULL,
@@ -365,6 +371,22 @@ class PersistenceStore:
                 connection.execute(
                     "ALTER TABLE multiseed_runs ADD COLUMN runs_reused INTEGER NOT NULL DEFAULT 0"
                 )
+            run_execution_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(run_executions)")
+            }
+            if "experimental_space_snapshot_json" not in run_execution_columns:
+                connection.execute(
+                    "ALTER TABLE run_executions ADD COLUMN experimental_space_snapshot_json TEXT"
+                )
+            champion_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(champions)")
+            }
+            if "experimental_space_snapshot_json" not in champion_columns:
+                connection.execute(
+                    "ALTER TABLE champions ADD COLUMN experimental_space_snapshot_json TEXT"
+                )
 
     def save_multiseed_run(
         self,
@@ -473,6 +495,7 @@ class PersistenceStore:
         external_evaluation_status: str | None = None,
         audit_evaluation_status: str | None = None,
         failure_summary_json: dict[str, Any] | list[Any] | None = None,
+        environment_snapshot_json: dict[str, Any] | None = None,
         summary_artifact_path: str | Path | None = None,
         quick_summary_artifact_path: str | Path | None = None,
         champions_summary_artifact_path: str | Path | None = None,
@@ -492,6 +515,11 @@ class PersistenceStore:
             "failure_summary_json": (
                 serialize_json(failure_summary_json)
                 if failure_summary_json is not None
+                else None
+            ),
+            "environment_snapshot_json": (
+                serialize_json(environment_snapshot_json)
+                if environment_snapshot_json is not None
                 else None
             ),
             "summary_artifact_path": to_repo_relative_path(summary_artifact_path),
@@ -535,6 +563,7 @@ class PersistenceStore:
         completed_at: str | None = None,
         context_name: str | None = None,
         preset_name: str | None = None,
+        experimental_space_snapshot_json: dict[str, Any] | None = None,
         requested_dataset_root: str | Path | None = None,
         resolved_dataset_root: str | Path | None = None,
         failure_reason: str | None = None,
@@ -572,6 +601,7 @@ class PersistenceStore:
                     completed_at,
                     context_name,
                     preset_name,
+                    experimental_space_snapshot_json,
                     requested_dataset_root,
                     resolved_dataset_root,
                     failure_reason,
@@ -579,7 +609,7 @@ class PersistenceStore:
                     progress_snapshot_artifact_path,
                     per_run_summary_artifact_path,
                     summary_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_execution_uid,
@@ -599,6 +629,9 @@ class PersistenceStore:
                     completed_at,
                     context_name,
                     preset_name,
+                    serialize_json(experimental_space_snapshot_json)
+                    if experimental_space_snapshot_json is not None
+                    else None,
                     to_repo_relative_path(requested_dataset_root),
                     to_repo_relative_path(resolved_dataset_root),
                     failure_reason,
@@ -621,6 +654,7 @@ class PersistenceStore:
         log_artifact_path: str | Path | None = None,
         progress_snapshot_artifact_path: str | Path | None = None,
         per_run_summary_artifact_path: str | Path | None = None,
+        experimental_space_snapshot_json: dict[str, Any] | None = None,
         summary_json: dict[str, Any] | None = None,
     ) -> None:
         assignments = ["status = ?", "completed_at = ?"]
@@ -632,6 +666,11 @@ class PersistenceStore:
             "log_artifact_path": to_repo_relative_path(log_artifact_path),
             "progress_snapshot_artifact_path": to_repo_relative_path(progress_snapshot_artifact_path),
             "per_run_summary_artifact_path": to_repo_relative_path(per_run_summary_artifact_path),
+            "experimental_space_snapshot_json": (
+                serialize_json(experimental_space_snapshot_json)
+                if experimental_space_snapshot_json is not None
+                else None
+            ),
             "summary_json": serialize_json(summary_json) if summary_json is not None else None,
         }
 
@@ -772,6 +811,7 @@ class PersistenceStore:
         mutation_seed: int,
         champion_type: str,
         genome_json_snapshot: dict[str, Any],
+        experimental_space_snapshot_json: dict[str, Any] | None = None,
         dataset_catalog_id: str,
         dataset_signature: str,
         train_metrics_json: dict[str, Any],
@@ -803,6 +843,7 @@ class PersistenceStore:
                     genome_json_snapshot,
                     genome_hash,
                     config_json_snapshot,
+                    experimental_space_snapshot_json,
                     dataset_catalog_id,
                     dataset_signature,
                     train_metrics_json,
@@ -813,7 +854,7 @@ class PersistenceStore:
                     notes,
                     champion_card_artifact_path,
                     serialized_snapshot_artifact_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     champion_uid,
@@ -828,6 +869,9 @@ class PersistenceStore:
                     serialize_json(genome_json_snapshot),
                     genome_hash,
                     serialize_json(config_json_snapshot),
+                    serialize_json(experimental_space_snapshot_json)
+                    if experimental_space_snapshot_json is not None
+                    else None,
                     dataset_catalog_id,
                     dataset_signature,
                     serialize_json(train_metrics_json),

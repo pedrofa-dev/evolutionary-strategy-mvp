@@ -23,12 +23,16 @@ class HistoricalEnvironment:
 
     Invariants:
     - Fees must always be applied here, not guessed later.
-    - Active policy_v2 entry/exit semantics must remain centralized here.
+    - Active policy_v2.1 entry/exit semantics must stay reproducible for the
+      same candles, genome, and modular runtime identity.
 
-    Phase 1 modularization note:
-    - `signal_pack` and `decision_policy` are thin adapters over the current
-      methods below. They make future modular extraction explicit without
-      replacing the current runtime authority.
+    Modular responsibility:
+    - `SignalPack` owns derived features and family scores.
+    - `DecisionPolicy` owns entry/exit interpretation of those signals plus
+      genome blocks.
+    - This environment owns market replay, fees, position state, and execution
+      ordering. It orchestrates the runtime but should not redefine the active
+      modular signal or decision semantics.
     """
     def __init__(
         self,
@@ -104,13 +108,11 @@ class HistoricalEnvironment:
         - Experimental layers may change genome values, but not bypass this loop.
         """
         # Responsibility boundary:
-        # - This loop is the current decision-policy runtime.
-        # - Signals, gene blocks, and costs come together here to produce
-        #   actions and episode outcomes.
-        # TODO: candidate for modularization
-        # - Entry/exit policy evaluation could later move into dedicated
-        #   decision-policy objects, but this loop remains the execution source
-        #   of truth for evaluation.
+        # - This loop is the execution authority for replay, costs, and
+        #   position state transitions.
+        # - It delegates signal derivation to SignalPack and policy semantics
+        #   to DecisionPolicy, then applies the resulting decisions in a
+        #   deterministic market replay.
         in_position = False
         entry_price = 0.0
         entry_index: int | None = None

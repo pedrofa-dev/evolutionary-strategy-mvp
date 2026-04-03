@@ -157,6 +157,15 @@ def test_save_run_execution_and_find_by_fingerprint(tmp_path: Path) -> None:
             "validation_count": 1,
         },
         status="completed",
+        experimental_space_snapshot_json={
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "policy_v2_default",
+            "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "mutation_profile": {},
+            "experiment_preset_name": "standard",
+        },
         resolved_dataset_root="data/datasets",
         log_artifact_path="artifacts/multiseed/multiseed_001/run_a_seed101.txt",
     )
@@ -175,6 +184,7 @@ def test_save_run_execution_and_find_by_fingerprint(tmp_path: Path) -> None:
     assert loaded["run_id"] == "run-001"
     assert loaded["config_json_snapshot"]["dataset_catalog_id"] == "core_1h_spot"
     assert loaded["dataset_context_json"]["train_count"] == 1
+    assert loaded["experimental_space_snapshot_json"]["signal_pack_name"] == "policy_v21_default"
     assert loaded["resolved_dataset_root"] == "data/datasets"
 
 
@@ -223,6 +233,15 @@ def test_save_champion_persists_snapshots_and_hashes(tmp_path: Path) -> None:
         mutation_seed=101,
         champion_type="robust",
         genome_json_snapshot=genome_snapshot,
+        experimental_space_snapshot_json={
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "policy_v2_default",
+            "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "mutation_profile": {},
+            "experiment_preset_name": "standard",
+        },
         dataset_catalog_id="core_1h_spot",
         dataset_signature="sig-001",
         train_metrics_json={"selection": 12.3},
@@ -241,6 +260,7 @@ def test_save_champion_persists_snapshots_and_hashes(tmp_path: Path) -> None:
                 genome_hash,
                 config_json_snapshot,
                 genome_json_snapshot,
+                experimental_space_snapshot_json,
                 champion_metrics_json,
                 champion_card_artifact_path
             FROM champions
@@ -254,8 +274,14 @@ def test_save_champion_persists_snapshots_and_hashes(tmp_path: Path) -> None:
     assert row[1] == hash_genome_snapshot(genome_snapshot)
     assert '"dataset_catalog_id":"core_1h_spot"' in row[2]
     assert '"threshold_open":0.4' in row[3]
-    assert '"selection_gap":2.5' in row[4]
-    assert row[5] == "artifacts/analysis/card.json"
+    assert '"signal_pack_name":"policy_v21_default"' in row[4]
+    assert '"selection_gap":2.5' in row[5]
+    assert row[6] == "artifacts/analysis/card.json"
+
+    loaded_champion = store.load_champions(run_ids=["run-001"])[0]
+    assert loaded_champion["experimental_space_snapshot_json"]["decision_policy_name"] == (
+        "policy_v2_default"
+    )
 
 
 def test_save_analysis_and_evaluation_memberships(tmp_path: Path) -> None:
@@ -420,6 +446,72 @@ def test_execution_fingerprint_changes_when_logic_version_changes() -> None:
 
     assert CURRENT_LOGIC_VERSION == "v13"
     assert previous_fingerprint != current_fingerprint
+
+
+def test_execution_fingerprint_is_not_affected_by_modular_identity_metadata(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "test_fingerprint_metadata_ignored.db"
+    store = PersistenceStore(database_path)
+    try:
+        store.initialize()
+        multiseed_run_id = store.save_multiseed_run(
+            multiseed_run_uid="multiseed-001",
+            configs_dir_snapshot={"configs": ["a.json"]},
+            requested_parallel_workers=1,
+            effective_parallel_workers=1,
+            dataset_root="data/datasets",
+            runs_planned=2,
+            runs_completed=0,
+            runs_reused=0,
+            runs_failed=0,
+            champions_found=False,
+            champion_analysis_status="pending",
+            external_evaluation_status="pending",
+            audit_evaluation_status="pending",
+        )
+        config_snapshot = build_config_snapshot(seed=101)
+        first_id = store.save_run_execution(
+            run_execution_uid="execution-001",
+            multiseed_run_id=multiseed_run_id,
+            run_id="run-001",
+            config_name="run_a.json",
+            config_json_snapshot=config_snapshot,
+            effective_seed=101,
+            dataset_catalog_id="core_1h_spot",
+            dataset_signature="sig-001",
+            dataset_context_json={"train_count": 1, "validation_count": 1},
+            status="completed",
+            experimental_space_snapshot_json={
+                "signal_pack_name": "policy_v21_default",
+                "decision_policy_name": "policy_v2_default",
+            },
+        )
+        second_id = store.save_run_execution(
+            run_execution_uid="execution-002",
+            multiseed_run_id=multiseed_run_id,
+            run_id="run-002",
+            config_name="run_a.json",
+            config_json_snapshot=config_snapshot,
+            effective_seed=101,
+            dataset_catalog_id="core_1h_spot",
+            dataset_signature="sig-001",
+            dataset_context_json={"train_count": 1, "validation_count": 1},
+            status="completed",
+            experimental_space_snapshot_json={
+                "signal_pack_name": "other_signal_pack",
+                "decision_policy_name": "other_decision_policy",
+            },
+        )
+
+        rows = store.load_run_executions(run_ids=["run-001", "run-002"])
+        fingerprints = {row["execution_fingerprint"] for row in rows}
+
+        assert first_id != second_id
+        assert len(fingerprints) == 1
+    finally:
+        if database_path.exists():
+            database_path.unlink()
 
 
 def test_utc_now_iso_returns_utc_text_timestamp() -> None:

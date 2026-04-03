@@ -1165,6 +1165,7 @@ def execute_historical_run(
                 mutation_seed=best_persistable_champion.mutation_seed,
                 champion_type=best_persistable_champion.champion_type,
                 genome_json_snapshot=best_persistable_champion.genome.to_dict(),
+                experimental_space_snapshot_json=experimental_space_snapshot.to_dict(),
                 dataset_catalog_id=config.dataset_catalog_id,
                 dataset_signature=champion_metrics["dataset_signature"],
                 train_metrics_json=serialize_agent_evaluation(

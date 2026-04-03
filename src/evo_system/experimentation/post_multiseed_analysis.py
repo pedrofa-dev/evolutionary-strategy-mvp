@@ -64,6 +64,8 @@ def build_multiseed_quick_summary_lines(
     external_summary = decision_payload["external_summary"]
     audit_summary = decision_payload["audit_summary"]
     best_candidate = decision_payload.get("best_candidate") or {}
+    experimental_space_summary = decision_payload.get("experimental_space_summary") or {}
+    stack_labels = experimental_space_summary.get("stack_labels") or []
 
     lines = [
         f"Multiseed: {multiseed_dir.name}",
@@ -76,6 +78,11 @@ def build_multiseed_quick_summary_lines(
             f"failed={decision_payload['runs_failed']}"
         ),
         f"Dataset root: {dataset_root_label}",
+        (
+            "Modules: "
+            f"{experimental_space_summary.get('stack_mode', 'unknown')} | "
+            f"{stack_labels[0] if stack_labels else 'unknown'}"
+        ),
         f"Champions found: {decision_payload['champion_count']}",
         (
             "Best champion: "
@@ -653,6 +660,24 @@ def write_multiseed_champions_summary(
             f"failed={decision_payload['runs_failed']}"
         ),
         f"  champions_found={decision_payload['champion_count']}",
+        (
+            "  modules="
+            f"{(decision_payload.get('experimental_space_summary') or {}).get('stack_mode', 'unknown')}"
+        ),
+        "",
+        "Active modular components",
+    ]
+
+    stack_labels = (
+        (decision_payload.get("experimental_space_summary") or {}).get("stack_labels") or []
+    )
+    if stack_labels:
+        for label in stack_labels:
+            lines.append(f"  {label}")
+    else:
+        lines.append("  unknown")
+
+    lines.extend([
         "",
         "Validation interpretation",
         (
@@ -668,7 +693,7 @@ def write_multiseed_champions_summary(
         format_mean_line(decision_payload["audit_summary"], "audit"),
         "",
         "Pattern highlights",
-    ]
+    ])
 
     pattern_highlights = decision_payload.get("pattern_highlights", [])
     if pattern_highlights:

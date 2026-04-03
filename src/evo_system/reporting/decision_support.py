@@ -4,6 +4,7 @@ from statistics import mean, pstdev
 from typing import Any
 
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.experimental_space.identity import summarize_experimental_space_snapshots
 
 
 NO_EDGE_DETECTED = "NO_EDGE_DETECTED"
@@ -238,6 +239,9 @@ def build_multiseed_decision_payload(
     pattern_highlights = build_pattern_highlights(report_data)
     top_examples = report_data.get("top_examples", {})
     best_candidate = top_examples.get("best_validation_selection")
+    experimental_space_summary = summarize_experimental_space_snapshots(
+        [getattr(summary, "experimental_space_snapshot", None) for summary in run_summaries]
+    )
 
     verdict = classify_multiseed_verdict(
         champion_count=champion_count,
@@ -260,6 +264,7 @@ def build_multiseed_decision_payload(
         "external_summary": external_summary,
         "audit_summary": audit_summary,
         "pattern_highlights": pattern_highlights,
+        "experimental_space_summary": experimental_space_summary,
         "top_examples": top_examples,
         "verdict": verdict["verdict"],
         "likely_limit": verdict["likely_limit"],

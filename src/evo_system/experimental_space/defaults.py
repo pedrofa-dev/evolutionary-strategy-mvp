@@ -27,8 +27,10 @@ from evo_system.mutation.mutator import MutationProfile
 
 
 # Phase 1 of incremental modularization:
-# - These default implementations are adapters over the current runtime.
-# - They exist to make boundaries explicit before any deeper refactor happens.
+# - These default implementations expose the active runtime modules through
+#   explicit registries and stable names.
+# - Some components still wrap existing helpers, but SignalPack and
+#   DecisionPolicy now own the active modular semantics directly.
 
 
 CurrentPolicyV21SignalPack = DefaultSignalPack

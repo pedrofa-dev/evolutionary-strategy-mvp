@@ -57,6 +57,7 @@ This document is for maintainers, contributors, and coding agents working inside
 - avoid reintroducing dependence on config files remaining on disk
 - keep fingerprint semantics strict
 - bump `logic_version` intentionally when compatibility changes
+- do not bump `logic_version` for metadata-only, persistence-only, or reporting-only changes
 
 ## Before Merging
 

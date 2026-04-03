@@ -41,6 +41,15 @@ def build_summary(
         train_validation_selection_gap=0.1,
         train_validation_profit_gap=0.01,
         config_path=tmp_path / config_name,
+        experimental_space_snapshot={
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "modular_genome_v1",
+            "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "mutation_profile": {},
+            "experiment_preset_name": "standard",
+        },
     )
 
 
@@ -269,6 +278,7 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
         / "post_multiseed_reevaluation_summary.txt"
     ).read_text(encoding="utf-8")
     assert "Runs: planned=1 | completed=1 | executed=1 | reused=0 | failed=0" in quick_summary
+    assert "Modules: single_stack | signal_pack=policy_v21_default" in quick_summary
     assert "Champions found: 1" in quick_summary
     assert "Final verdict:" in quick_summary
     assert "Next action:" in quick_summary
@@ -276,6 +286,11 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
     assert '"external_evaluation_type": "external"' in external_json
     assert '"external_dataset_catalog_id": "core_1h_spot"' in external_json
     assert "catalog_scope_mode=single_catalog" in combined_summary
+    champions_summary = (
+        multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME
+    ).read_text(encoding="utf-8")
+    assert "Active modular components" in champions_summary
+    assert "signal_pack=policy_v21_default" in champions_summary
     assert result.champion_count == 1
     assert result.champion_analysis_status == "completed"
     assert result.external_evaluation_status == "completed"

@@ -27,6 +27,10 @@ from evo_system.champions.rules import (
 )
 from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.reporting.decision_support import build_multiseed_decision_payload
+from evo_system.experimental_space.identity import (
+    build_experimental_space_snapshot_from_config_snapshot,
+    summarize_experimental_space_snapshots,
+)
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.experimentation.dataset_roots import (
     DEFAULT_DATASET_ROOT,
@@ -653,7 +657,10 @@ def build_summary_from_reused_execution(
         train_validation_profit_gap=float(summary_json["train_validation_profit_gap"]),
         config_path=config_path,
         execution_status="reused",
-        experimental_space_snapshot=summary_json.get("experimental_space_snapshot"),
+        experimental_space_snapshot=(
+            summary_json.get("experimental_space_snapshot")
+            or row.get("experimental_space_snapshot_json")
+        ),
     )
 
 
@@ -676,6 +683,10 @@ def persist_run_execution_start(
     job: MultiseedJob,
     context_name: str | None,
 ) -> int:
+    experimental_space_snapshot = build_experimental_space_snapshot_from_config_snapshot(
+        job.effective_config_snapshot,
+        experiment_preset_name=job.preset_name,
+    )
     return store.save_run_execution(
         run_execution_uid=job.run_execution_uid,
         multiseed_run_id=multiseed_run_id,
@@ -690,6 +701,7 @@ def persist_run_execution_start(
         logic_version=CURRENT_LOGIC_VERSION,
         context_name=context_name,
         preset_name=job.preset_name,
+        experimental_space_snapshot_json=experimental_space_snapshot.to_dict(),
         requested_dataset_root=job.requested_dataset_root,
         resolved_dataset_root=job.resolved_dataset_root,
         progress_snapshot_artifact_path=job.progress_snapshot_path,
@@ -1390,6 +1402,12 @@ def run_multiseed_experiment(
             champion_analysis_status = post_analysis_result.champion_analysis_status
             external_evaluation_status = post_analysis_result.external_evaluation_status
             audit_evaluation_status = post_analysis_result.audit_evaluation_status
+        experimental_space_summary = summarize_experimental_space_snapshots(
+            [
+                getattr(summary, "experimental_space_snapshot", None)
+                for summary in outcome.run_summaries
+            ]
+        )
         persistence_store.update_multiseed_run_status(
             multiseed_run_id,
             status="completed_with_failures" if outcome.failures else "completed",
@@ -1405,6 +1423,12 @@ def run_multiseed_experiment(
                 if outcome.failures
                 else None
             ),
+            environment_snapshot_json={
+                "dataset_root_label": dataset_root_label,
+                "context_name": context_name,
+                "preset_name": preset_name,
+                "experimental_space_summary": experimental_space_summary,
+            },
             summary_artifact_path=summary_path,
             quick_summary_artifact_path=output_dir / MULTISEED_QUICK_SUMMARY_NAME,
             champions_summary_artifact_path=(
@@ -1426,6 +1450,21 @@ def run_multiseed_experiment(
             external_evaluation_status="failed",
             audit_evaluation_status="failed",
             failure_summary_json={"failures": [str(exc)]},
+            environment_snapshot_json={
+                "dataset_root_label": dataset_root_label,
+                "context_name": context_name,
+                "preset_name": preset_name,
+                "experimental_space_summary": (
+                    summarize_experimental_space_snapshots(
+                        [
+                            getattr(summary, "experimental_space_snapshot", None)
+                            for summary in outcome.run_summaries
+                        ]
+                    )
+                    if outcome is not None
+                    else summarize_experimental_space_snapshots([])
+                ),
+            },
             summary_artifact_path=summary_path,
             quick_summary_artifact_path=(
                 output_dir / MULTISEED_QUICK_SUMMARY_NAME

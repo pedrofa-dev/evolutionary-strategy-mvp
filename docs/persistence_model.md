@@ -85,9 +85,14 @@ Old rows may remain stored for history, but they should not be treated as reusab
 
 Current runtime value:
 
-- `CURRENT_LOGIC_VERSION = "v7"`
+- `CURRENT_LOGIC_VERSION = "v13"`
 
-This value was bumped deliberately when the active policy v2 runtime moved to the v2.1 family-based signal set. That changes the effective execution semantics of new runs, so reuse across the previous logic version would be misleading.
+This value is bumped deliberately whenever runtime semantics change in a way
+that would make execution reuse unsafe.
+
+This modular identity consolidation phase does not change `logic_version`.
+It adds traceability metadata and reporting only, so reuse compatibility
+remains governed by the existing runtime semantics.
 
 ## Dataset Context Persistence
 
@@ -100,6 +105,41 @@ This value was bumped deliberately when the active policy v2 runtime moved to th
 `dataset_context_json` includes the resolved train and validation paths plus counts and relevant root context.
 
 This stored context is also used later by post-multiseed validation and reevaluation workflows.
+
+## Modular Runtime Identity
+
+The runtime now persists explicit modular identity for the active experimental
+space.
+
+At minimum, canonical run persistence can record:
+
+- `signal_pack`
+- `genome_schema`
+- `gene_type_catalog`
+- `decision_policy`
+- `mutation_profile`
+- `experiment_preset` when applicable
+
+This identity appears in:
+
+- `run_executions.experimental_space_snapshot_json`
+- `champions.experimental_space_snapshot_json`
+- `run_executions.summary_json.experimental_space_snapshot`
+- multiseed environment snapshots and top-level reporting summaries
+
+This is additive metadata for traceability. In this phase it does not replace
+the canonical execution fingerprint, which remains:
+
+- config snapshot hash
+- effective seed
+- dataset signature
+- `logic_version`
+
+In other words:
+
+- `execution_fingerprint` answers whether two executions are reusable
+- `logic_version` answers whether runtime semantics stayed compatible
+- `experimental_space_snapshot` answers which modular components were used
 
 ## Champion Self-Containment
 
