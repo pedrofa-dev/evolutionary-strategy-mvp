@@ -379,21 +379,11 @@ class HistoricalEnvironment:
         genome,
         signal_families: dict[str, float],
     ) -> bool:
-        # Responsibility boundary:
-        # - Context gating belongs to decision policy, not to signal definition
-        #   and not to evaluator/scoring code.
-        # Entry context is a hard gate. It exists to reject markets that are
-        # structurally wrong for the policy before trigger conviction is even
-        # considered.
-        context = genome.entry_context
-
-        return (
-            signal_families["trend"] >= context.min_trend_strength
-            and signal_families["breakout"] >= context.min_breakout_strength
-            and signal_families["realized_volatility"] >= context.min_realized_volatility
-            and signal_families["realized_volatility"] <= context.max_realized_volatility
-            and signal_families["range"] >= context.allowed_range_position_min
-            and signal_families["range"] <= context.allowed_range_position_max
+        """Compatibility wrapper over the active DecisionPolicy context gate."""
+        return self.decision_policy.passes_entry_context(
+            environment=self,
+            genome=genome,
+            signal_families=signal_families,
         )
 
     def _passes_entry_trigger(
@@ -402,30 +392,12 @@ class HistoricalEnvironment:
         signal_families: dict[str, float],
         trigger_score: float,
     ) -> bool:
-        # TODO: candidate for modularization
-        # This is a good extraction point for a future `decision_policies`
-        # module because it combines gene constraints with signal families.
-        # Entry trigger expresses conviction after the context gate passes. It
-        # combines weighted family scores with simple structural rules to avoid
-        # one-dimensional spike entries.
-        if not self._has_trigger_weights(genome):
-            return genome.entry_trigger.entry_score_threshold <= 0.0
-
-        positive_family_count = sum(
-            1
-            for key in ("trend", "momentum", "breakout", "range", "volatility")
-            if signal_families[key] > 0.0
-        )
-        trend_or_breakout_ok = (
-            not genome.entry_trigger.require_trend_or_breakout
-            or signal_families["trend"] > 0.0
-            or signal_families["breakout"] > 0.0
-        )
-
-        return (
-            trigger_score >= genome.entry_trigger.entry_score_threshold
-            and positive_family_count >= genome.entry_trigger.min_positive_families
-            and trend_or_breakout_ok
+        """Compatibility wrapper over the active DecisionPolicy trigger gate."""
+        return self.decision_policy.passes_entry_trigger(
+            environment=self,
+            genome=genome,
+            signal_families=signal_families,
+            trigger_score=trigger_score,
         )
 
     def _should_enter_policy_v2(
@@ -436,12 +408,14 @@ class HistoricalEnvironment:
         trigger_score: float,
         regime_filter_ok: bool,
     ) -> bool:
-        """Evaluate the current policy_v2 entry decision without side effects."""
-        return self._evaluate_policy_v2_entry(
+        """Compatibility wrapper over the active DecisionPolicy entry decision."""
+        return self.decision_policy.should_enter(
+            environment=self,
             genome=genome,
             signal_families=signal_families,
+            trigger_score=trigger_score,
             regime_filter_ok=regime_filter_ok,
-        ).should_enter
+        )
 
     def _should_exit_policy_v2(
         self,
@@ -453,14 +427,16 @@ class HistoricalEnvironment:
         trade_return: float,
         holding_bars: int,
     ) -> bool:
-        """Evaluate the current policy_v2 exit decision without side effects."""
-        return self._evaluate_policy_v2_exit(
+        """Compatibility wrapper over the active DecisionPolicy exit decision."""
+        return self.decision_policy.should_exit(
+            environment=self,
             genome=genome,
             signal_families=signal_families,
+            trigger_score=trigger_score,
             normalized_momentum=normalized_momentum,
             trade_return=trade_return,
             holding_bars=holding_bars,
-        ).should_close
+        )
 
     def _evaluate_policy_v2_entry(
         self,
@@ -469,20 +445,12 @@ class HistoricalEnvironment:
         signal_families: dict[str, float],
         regime_filter_ok: bool,
     ) -> EntryDecision:
-        """Return the full current entry decision state for policy_v2."""
-        trigger_score = self._get_entry_trigger_score(genome, signal_families)
-        context_ok = self._passes_entry_context(genome, signal_families)
-        trigger_ok = self._passes_entry_trigger(
-            genome,
-            signal_families,
-            trigger_score,
-        )
-        return EntryDecision(
-            trigger_score=trigger_score,
-            context_ok=context_ok,
-            trigger_ok=trigger_ok,
+        """Compatibility wrapper over the active DecisionPolicy entry evaluation."""
+        return self.decision_policy.evaluate_entry(
+            environment=self,
+            genome=genome,
+            signal_families=signal_families,
             regime_filter_ok=regime_filter_ok,
-            should_enter=regime_filter_ok and context_ok and trigger_ok,
         )
 
     def _evaluate_policy_v2_exit(
@@ -494,50 +462,14 @@ class HistoricalEnvironment:
         trade_return: float,
         holding_bars: int,
     ) -> ExitDecision:
-        """Return the full current exit decision state for policy_v2."""
-        trigger_score = self._get_entry_trigger_score(genome, signal_families)
-        hit_stop_loss = trade_return <= -genome.exit_policy.stop_loss_pct
-        hit_take_profit = trade_return >= genome.exit_policy.take_profit_pct
-
-        min_holding_ok = holding_bars >= genome.trade_control.min_holding_bars
-        should_close_by_score = (
-            min_holding_ok
-            and trigger_score <= genome.exit_policy.exit_score_threshold
-        )
-        should_close_on_reversal = (
-            min_holding_ok
-            and genome.exit_policy.exit_on_signal_reversal
-            and (
-                signal_families["trend"] < 0.0
-                or signal_families["momentum"] < 0.0
-                or trigger_score < 0.0
-            )
-        )
-        should_close_on_holding_limit = (
-            genome.exit_policy.max_holding_bars > 0
-            and holding_bars >= genome.exit_policy.max_holding_bars
-        )
-        should_close = (
-            hit_stop_loss
-            or hit_take_profit
-            or should_close_by_score
-            or should_close_on_reversal
-            or should_close_on_holding_limit
-        )
-
-        if genome.use_exit_momentum:
-            should_close = should_close or (
-                min_holding_ok
-                and normalized_momentum <= genome.exit_momentum_threshold
-            )
-
-        return ExitDecision(
-            hit_stop_loss=hit_stop_loss,
-            hit_take_profit=hit_take_profit,
-            should_close_by_score=should_close_by_score,
-            should_close_on_reversal=should_close_on_reversal,
-            should_close_on_holding_limit=should_close_on_holding_limit,
-            should_close=should_close,
+        """Compatibility wrapper over the active DecisionPolicy exit evaluation."""
+        return self.decision_policy.evaluate_exit(
+            environment=self,
+            genome=genome,
+            signal_families=signal_families,
+            normalized_momentum=normalized_momentum,
+            trade_return=trade_return,
+            holding_bars=holding_bars,
         )
 
     def _get_policy_v21_signal_features(
@@ -556,199 +488,40 @@ class HistoricalEnvironment:
         trend_long_series: list[float],
         breakout_series: list[float],
     ) -> dict[str, float]:
-        """Build the portable feature set consumed by policy v2.1 families.
-
-        Constraints:
-        - Keep these features reusable and normalized.
-        - Do not let config experiments redefine what the features mean.
-        """
-        # Responsibility boundary:
-        # - This block defines the active raw signal surface for policy_v2.1.
-        # Dependencies:
-        # - EntryContextGene and EntryTriggerGene depend on these features only
-        #   after they are aggregated into families.
-        # TODO: candidate for modularization
-        # - This is a natural candidate for a signal-definition registry or
-        #   factory once multiple signal sets are supported.
-        # Measures medium-term directional strength across moving-average
-        # structure.
-        # Trading meaning: trend-following feature.
-        # Interpretation: higher values suggest a more sustained directional move.
-        # Limitation: can lag during sharp reversals.
-        trend_strength_medium = self._clamp(
-            (
-                ma_distance_series[index]
-                + trend_strength_series[index]
-                + self._clamp(normalized_trend * 10.0, -1.0, 1.0)
-            )
-            / 3.0,
-            -1.0,
-            1.0,
+        """Compatibility wrapper over the active SignalPack feature builder."""
+        return self.signal_pack.build_signal_features(
+            environment=self,
+            index=index,
+            normalized_momentum=normalized_momentum,
+            normalized_trend=normalized_trend,
+            ret_short_series=ret_short_series,
+            ret_mid_series=ret_mid_series,
+            ma_distance_series=ma_distance_series,
+            range_position_series=range_position_series,
+            vol_ratio_series=vol_ratio_series,
+            trend_strength_series=trend_strength_series,
+            realized_volatility_series=realized_volatility_series,
+            trend_long_series=trend_long_series,
+            breakout_series=breakout_series,
         )
-
-        # Measures longer-horizon directional structure.
-        # Trading meaning: broad trend-alignment feature.
-        # Interpretation: higher values suggest the move persists beyond the local burst.
-        # Limitation: reacts slowly and can understate fresh reversals.
-        trend_strength_long = trend_long_series[index]
-
-        # Measures short-horizon directional impulse.
-        # Trading meaning: fast momentum feature.
-        # Interpretation: higher values suggest recent price acceleration.
-        # Limitation: noisy and sensitive to single-bar spikes.
-        momentum_short = self._clamp(
-            (
-                ret_short_series[index]
-                + self._clamp(normalized_momentum * 10.0, -1.0, 1.0)
-            )
-            / 2.0,
-            -1.0,
-            1.0,
-        )
-
-        # Measures whether momentum is persisting beyond the shortest lookback.
-        # Trading meaning: persistence feature for directional follow-through.
-        # Interpretation: higher values suggest the move is not just a one-bar shock.
-        # Limitation: still weak in choppy regimes with alternating bursts.
-        momentum_persistence = ret_mid_series[index]
-
-        # Measures distance beyond the recent trading range.
-        # Trading meaning: breakout feature.
-        # Interpretation: higher values suggest expansion beyond the medium horizon range.
-        # Limitation: false breakouts can still score strongly.
-        breakout_strength_medium = breakout_series[index]
-
-        # Measures where price sits inside the recent range.
-        # Trading meaning: contextual range feature.
-        # Interpretation: higher values suggest price is closer to the upper edge of the medium range.
-        # Limitation: weak as a standalone signal during strong trends.
-        range_position_medium = range_position_series[index]
-
-        # Measures realized volatility over the medium horizon.
-        # Trading meaning: market speed and noise feature.
-        # Interpretation: higher values suggest faster and less stable price movement.
-        # Limitation: does not distinguish favorable expansion from hostile noise.
-        realized_volatility_medium = realized_volatility_series[index]
-
-        # Measures the ratio between short and long realized volatility.
-        # Trading meaning: volatility regime-shift feature.
-        # Interpretation: higher values suggest short-term volatility is elevated versus the longer baseline.
-        # Limitation: can stay elevated after the best expansion window has already passed.
-        volatility_ratio_short_long = vol_ratio_series[index]
-
-        return {
-            "trend_strength_medium": trend_strength_medium,
-            "trend_strength_long": trend_strength_long,
-            "momentum_short": momentum_short,
-            "momentum_persistence": momentum_persistence,
-            "breakout_strength_medium": breakout_strength_medium,
-            "range_position_medium": range_position_medium,
-            "realized_volatility_medium": realized_volatility_medium,
-            "volatility_ratio_short_long": volatility_ratio_short_long,
-        }
 
     def _get_signal_families(
         self,
         *,
         signal_features: dict[str, float],
     ) -> dict[str, float]:
-        """Collapse raw features into the family scores used by EntryTriggerGene.
-
-        Invariant:
-        - Policy genes mutate family weights, not bespoke per-feature logic.
-        """
-        # Responsibility boundary:
-        # - This is the adapter between signal definitions and gene-trigger
-        #   consumption.
-        # TODO: candidate for modularization
-        # - Future modularization could make this a configuration-driven family
-        #   mapper, as long as family semantics stay stable for genomes.
-        # Trend strength measures directional structure across moving-average
-        # relationships. It is useful for avoiding flat tape, but it lags.
-        trend_score = self._clamp(
-            (
-                signal_features["trend_strength_medium"]
-                + signal_features["trend_strength_long"]
-            )
-            / 2.0,
-            -1.0,
-            1.0,
+        """Compatibility wrapper over the active SignalPack family builder."""
+        return self.signal_pack.build_signal_families(
+            environment=self,
+            signal_features=signal_features,
         )
 
-        # Momentum measures recent directional impulse. It reacts fast, but it
-        # is also the noisiest family and can overreact to single-bar spikes.
-        momentum_score = self._clamp(
-            (
-                signal_features["momentum_short"]
-                + signal_features["momentum_persistence"]
-            )
-            / 2.0,
-            -1.0,
-            1.0,
-        )
-
-        # Breakout measures distance beyond the recent range. It captures
-        # expansion, but can whipsaw badly in false breakouts.
-        breakout_score = signal_features["breakout_strength_medium"]
-
-        # Range position measures where price sits inside the recent range. It
-        # helps contextualize entries, but is weak by itself in strong trends.
-        range_score = signal_features["range_position_medium"]
-
-        # Volatility prefers calmer conditions by construction. It can reduce
-        # overtrading, but may filter out valid explosive continuation moves.
-        volatility_score = self._clamp(
-            (
-                -signal_features["realized_volatility_medium"]
-                - signal_features["volatility_ratio_short_long"]
-            )
-            / 2.0,
-            -1.0,
-            1.0,
-        )
-
-        return {
-            "trend": trend_score,
-            "momentum": momentum_score,
-            "breakout": breakout_score,
-            "range": range_score,
-            "volatility": volatility_score,
-            "realized_volatility": signal_features["realized_volatility_medium"],
-        }
-
-    @staticmethod
-    def _get_entry_trigger_score(genome, signal_families: dict[str, float]) -> float:
-        """Apply EntryTriggerGene weights to family scores.
-
-        Context:
-        - This keeps the runtime decision surface aligned with the persisted
-          gene structure instead of hidden ad hoc calculations elsewhere.
-        """
-        # Dependency note:
-        # - EntryTriggerGene depends on the exact family names produced by
-        #   `_get_signal_families`.
-        trigger = genome.entry_trigger
-        return (
-            trigger.trend_weight * signal_families["trend"]
-            + trigger.momentum_weight * signal_families["momentum"]
-            + trigger.breakout_weight * signal_families["breakout"]
-            + trigger.range_weight * signal_families["range"]
-            + trigger.volatility_weight * signal_families["volatility"]
-        )
-
-    @staticmethod
-    def _has_trigger_weights(genome) -> bool:
-        trigger = genome.entry_trigger
-
-        return any(
-            weight != 0.0
-            for weight in (
-                trigger.trend_weight,
-                trigger.momentum_weight,
-                trigger.breakout_weight,
-                trigger.range_weight,
-                trigger.volatility_weight,
-            )
+    def _get_entry_trigger_score(self, genome, signal_families: dict[str, float]) -> float:
+        """Compatibility wrapper over the active DecisionPolicy trigger score."""
+        return self.decision_policy.get_entry_trigger_score(
+            environment=self,
+            genome=genome,
+            signal_families=signal_families,
         )
 
     def _get_legacy_trigger_score(

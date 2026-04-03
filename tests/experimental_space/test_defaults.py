@@ -6,6 +6,7 @@ from evo_system.domain.genome import (
 )
 from evo_system.domain.historical_candle import HistoricalCandle
 from evo_system.environment.historical_environment import HistoricalEnvironment
+from evo_system.experimental_space.base import EntryDecision, ExitDecision, SignalPack
 from evo_system.experimental_space import (
     decision_policy_registry,
     get_decision_policy,
@@ -106,6 +107,202 @@ def test_default_signal_pack_matches_current_environment_methods() -> None:
         environment=environment,
         signal_features=features,
     ) == environment._get_signal_families(signal_features=features)
+
+
+def test_default_signal_pack_exposes_stable_feature_and_family_names() -> None:
+    signal_pack = get_default_signal_pack()
+
+    assert signal_pack.feature_names == (
+        "trend_strength_medium",
+        "trend_strength_long",
+        "momentum_short",
+        "momentum_persistence",
+        "breakout_strength_medium",
+        "range_position_medium",
+        "realized_volatility_medium",
+        "volatility_ratio_short_long",
+    )
+    assert signal_pack.family_names == (
+        "trend",
+        "momentum",
+        "breakout",
+        "range",
+        "volatility",
+        "realized_volatility",
+    )
+
+
+def test_historical_environment_routes_signal_methods_through_selected_signal_pack() -> None:
+    class FakeSignalPack:
+        name = "test_signal_pack"
+        feature_names = ("fake_feature",)
+        family_names = ("fake_family",)
+
+        def build_signal_features(self, *, environment, **kwargs):
+            return {"fake_feature": 0.25}
+
+        def build_signal_families(self, *, environment, signal_features):
+            return {"fake_family": signal_features["fake_feature"]}
+
+    signal_pack_registry.register("test_signal_pack", FakeSignalPack())
+    environment = _sample_environment()
+    environment = HistoricalEnvironment(
+        environment.candles,
+        signal_pack_name="test_signal_pack",
+    )
+
+    assert environment._get_policy_v21_signal_features(
+        index=1,
+        normalized_momentum=0.0,
+        normalized_trend=0.0,
+        ret_short_series=[0.0, 0.0],
+        ret_mid_series=[0.0, 0.0],
+        ma_distance_series=[0.0, 0.0],
+        range_position_series=[0.0, 0.0],
+        vol_ratio_series=[0.0, 0.0],
+        trend_strength_series=[0.0, 0.0],
+        realized_volatility_series=[0.0, 0.0],
+        trend_long_series=[0.0, 0.0],
+        breakout_series=[0.0, 0.0],
+    ) == {"fake_feature": 0.25}
+    assert environment._get_signal_families(
+        signal_features={"fake_feature": 0.25}
+    ) == {"fake_family": 0.25}
+
+
+def test_historical_environment_routes_decision_methods_through_selected_decision_policy() -> None:
+    class FakeDecisionPolicy:
+        name = "test_decision_policy"
+
+        def get_entry_trigger_score(self, *, environment, genome, signal_families):
+            return 0.75
+
+        def passes_entry_context(self, *, environment, genome, signal_families):
+            return True
+
+        def passes_entry_trigger(
+            self,
+            *,
+            environment,
+            genome,
+            signal_families,
+            trigger_score,
+        ):
+            return trigger_score >= 0.75
+
+        def should_enter(
+            self,
+            *,
+            environment,
+            genome,
+            signal_families,
+            trigger_score,
+            regime_filter_ok,
+        ):
+            return regime_filter_ok and trigger_score >= 0.75
+
+        def should_exit(
+            self,
+            *,
+            environment,
+            genome,
+            signal_families,
+            trigger_score,
+            normalized_momentum,
+            trade_return,
+            holding_bars,
+        ):
+            return holding_bars >= 2
+
+        def evaluate_entry(
+            self,
+            *,
+            environment,
+            genome,
+            signal_families,
+            regime_filter_ok,
+        ):
+            return EntryDecision(
+                trigger_score=0.75,
+                context_ok=True,
+                trigger_ok=True,
+                regime_filter_ok=regime_filter_ok,
+                should_enter=regime_filter_ok,
+            )
+
+        def evaluate_exit(
+            self,
+            *,
+            environment,
+            genome,
+            signal_families,
+            normalized_momentum,
+            trade_return,
+            holding_bars,
+        ):
+            return ExitDecision(
+                hit_stop_loss=False,
+                hit_take_profit=False,
+                should_close_by_score=False,
+                should_close_on_reversal=False,
+                should_close_on_holding_limit=holding_bars >= 2,
+                should_close=holding_bars >= 2,
+            )
+
+    decision_policy_registry.register("test_decision_policy", FakeDecisionPolicy())
+    environment = _sample_environment()
+    environment = HistoricalEnvironment(
+        environment.candles,
+        decision_policy_name="test_decision_policy",
+    )
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+    )
+    families = {
+        "trend": 0.0,
+        "momentum": 0.0,
+        "breakout": 0.0,
+        "range": 0.0,
+        "volatility": 0.0,
+        "realized_volatility": 0.0,
+    }
+
+    assert environment._get_entry_trigger_score(genome, families) == 0.75
+    assert environment._passes_entry_context(genome, families) is True
+    assert environment._passes_entry_trigger(genome, families, 0.75) is True
+    assert (
+        environment._evaluate_policy_v2_entry(
+            genome=genome,
+            signal_families=families,
+            regime_filter_ok=True,
+        )
+        == EntryDecision(
+            trigger_score=0.75,
+            context_ok=True,
+            trigger_ok=True,
+            regime_filter_ok=True,
+            should_enter=True,
+        )
+    )
+    assert (
+        environment._evaluate_policy_v2_exit(
+            genome=genome,
+            signal_families=families,
+            normalized_momentum=0.0,
+            trade_return=0.0,
+            holding_bars=2,
+        )
+        == ExitDecision(
+            hit_stop_loss=False,
+            hit_take_profit=False,
+            should_close_by_score=False,
+            should_close_on_reversal=False,
+            should_close_on_holding_limit=True,
+            should_close=True,
+        )
+    )
 
 
 def test_default_decision_policy_matches_current_environment_methods() -> None:

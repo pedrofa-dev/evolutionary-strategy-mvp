@@ -21,6 +21,8 @@ class SignalPack(Protocol):
     """Expose the raw features and family scores consumed by decision logic."""
 
     name: str
+    feature_names: tuple[str, ...]
+    family_names: tuple[str, ...]
 
     def build_signal_features(self, *, environment: Any, **kwargs: Any) -> dict[str, float]:
         """Build normalized raw features for the active signal set."""

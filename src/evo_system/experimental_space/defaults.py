@@ -20,7 +20,9 @@ from evo_system.experimental_space.base import (
 from evo_system.experimental_space.gene_catalog import (
     MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
 )
+from evo_system.experimental_space.decision_policies import DefaultDecisionPolicy
 from evo_system.experimental_space.registry import NamedRegistry
+from evo_system.experimental_space.signal_packs import DefaultSignalPack
 from evo_system.mutation.mutator import MutationProfile
 
 
@@ -29,22 +31,7 @@ from evo_system.mutation.mutator import MutationProfile
 # - They exist to make boundaries explicit before any deeper refactor happens.
 
 
-@dataclass(frozen=True)
-class CurrentPolicyV21SignalPack(SignalPack):
-    """Adapter over the current policy_v2.1 signal feature/family builders."""
-
-    name: str = "policy_v21_default"
-
-    def build_signal_features(self, *, environment: Any, **kwargs: Any) -> dict[str, float]:
-        return environment._get_policy_v21_signal_features(**kwargs)
-
-    def build_signal_families(
-        self,
-        *,
-        environment: Any,
-        signal_features: dict[str, float],
-    ) -> dict[str, float]:
-        return environment._get_signal_families(signal_features=signal_features)
+CurrentPolicyV21SignalPack = DefaultSignalPack
 
 
 @dataclass(frozen=True)
@@ -156,111 +143,7 @@ class ModularGenomeSchemaV1(GenomeSchema):
         )
 
 
-@dataclass(frozen=True)
-class CurrentPolicyV2DecisionPolicy(DecisionPolicy):
-    """Adapter over the current entry-context and trigger runtime logic."""
-
-    name: str = "policy_v2_default"
-
-    def get_entry_trigger_score(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-    ) -> float:
-        return environment._get_entry_trigger_score(genome, signal_families)
-
-    def passes_entry_context(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-    ) -> bool:
-        return environment._passes_entry_context(genome, signal_families)
-
-    def passes_entry_trigger(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-        trigger_score: float,
-    ) -> bool:
-        return environment._passes_entry_trigger(
-            genome,
-            signal_families,
-            trigger_score,
-        )
-
-    def should_enter(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-        trigger_score: float,
-        regime_filter_ok: bool,
-    ) -> bool:
-        return environment._should_enter_policy_v2(
-            genome=genome,
-            signal_families=signal_families,
-            trigger_score=trigger_score,
-            regime_filter_ok=regime_filter_ok,
-        )
-
-    def should_exit(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-        trigger_score: float,
-        normalized_momentum: float,
-        trade_return: float,
-        holding_bars: int,
-    ) -> bool:
-        return environment._should_exit_policy_v2(
-            genome=genome,
-            signal_families=signal_families,
-            trigger_score=trigger_score,
-            normalized_momentum=normalized_momentum,
-            trade_return=trade_return,
-            holding_bars=holding_bars,
-        )
-
-    def evaluate_entry(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-        regime_filter_ok: bool,
-    ):
-        return environment._evaluate_policy_v2_entry(
-            genome=genome,
-            signal_families=signal_families,
-            regime_filter_ok=regime_filter_ok,
-        )
-
-    def evaluate_exit(
-        self,
-        *,
-        environment: Any,
-        genome: Genome,
-        signal_families: dict[str, float],
-        normalized_momentum: float,
-        trade_return: float,
-        holding_bars: int,
-    ):
-        return environment._evaluate_policy_v2_exit(
-            genome=genome,
-            signal_families=signal_families,
-            normalized_momentum=normalized_momentum,
-            trade_return=trade_return,
-            holding_bars=holding_bars,
-        )
+CurrentPolicyV2DecisionPolicy = DefaultDecisionPolicy
 
 
 @dataclass(frozen=True)
