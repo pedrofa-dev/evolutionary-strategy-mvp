@@ -1,5 +1,6 @@
 import CategoryList from "../components/CategoryList";
 import CatalogItemCard from "../components/CatalogItemCard";
+import { getCategoryDescription } from "../content/catalogMetadata";
 import type { CatalogItem } from "../types/catalog";
 
 type CategoryPageProps = {
@@ -19,6 +20,8 @@ export default function CategoryPage({
   onSelectCategory,
   onOpenItem,
 }: CategoryPageProps) {
+  const description = getCategoryDescription(selectedCategory);
+
   return (
     <div className="page-grid category-layout">
       <CategoryList
@@ -28,7 +31,16 @@ export default function CategoryPage({
       />
 
       <div className="panel">
-        <h2>{selectedCategory}</h2>
+        <h2>{description.title}</h2>
+        <p className="category-id">{selectedCategory}</p>
+        <div className="category-explainer">
+          <p>
+            <strong>What is it?</strong> {description.whatIsIt}
+          </p>
+          <p>
+            <strong>What is it for?</strong> {description.whatIsItFor}
+          </p>
+        </div>
         {isLoading ? (
           <p className="loading-text">Loading category items...</p>
         ) : items.length === 0 ? (

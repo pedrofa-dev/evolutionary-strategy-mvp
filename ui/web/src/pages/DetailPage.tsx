@@ -1,8 +1,10 @@
 import CatalogItemDetail from "../components/CatalogItemDetail";
+import { formatHumanLabel } from "../content/catalogMetadata";
 import type { CatalogItem } from "../types/catalog";
 
 type DetailPageProps = {
   item: CatalogItem | null;
+  category: string;
   isLoading: boolean;
   missingItemId?: string | null;
   onBackToCategory: (category: string) => void;
@@ -11,6 +13,7 @@ type DetailPageProps = {
 
 export default function DetailPage({
   item,
+  category,
   isLoading,
   missingItemId = null,
   onBackToCategory,
@@ -28,10 +31,10 @@ export default function DetailPage({
           <div className="nav-actions">
             <button
               className="link-button"
-              onClick={() => onBackToCategory(item?.category ?? "")}
+              onClick={() => onBackToCategory(category)}
               type="button"
             >
-              Back to category
+              Back to {formatHumanLabel(category)}
             </button>
             <button className="link-button secondary" onClick={onBackToOverview} type="button">
               Back to overview

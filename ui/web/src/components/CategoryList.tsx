@@ -1,3 +1,5 @@
+import { getCategoryDescription } from "../content/catalogMetadata";
+
 type CategoryListProps = {
   categories: string[];
   selectedCategory: string | null;
@@ -23,7 +25,10 @@ export default function CategoryList({
                 onClick={() => onSelectCategory(category)}
                 type="button"
               >
-                {category}
+                <span className="category-button-label">
+                  {getCategoryDescription(category).title}
+                </span>
+                <span className="category-button-id">{category}</span>
               </button>
             </li>
           ))}

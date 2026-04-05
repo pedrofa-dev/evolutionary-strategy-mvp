@@ -6,10 +6,13 @@ import CategoryPage from "./pages/CategoryPage";
 import DetailPage from "./pages/DetailPage";
 import OverviewPage from "./pages/OverviewPage";
 
+type Theme = "light" | "dark";
 type Route =
   | { kind: "overview" }
   | { kind: "category"; category: string }
   | { kind: "detail"; category: string; itemId: string };
+
+const THEME_STORAGE_KEY = "catalog-ui-theme";
 
 function parseRoute(pathname: string): Route {
   const cleanPath = pathname.replace(/\/+$/, "") || "/";
@@ -43,8 +46,22 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function getSystemTheme(): Theme {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function getStoredThemePreference(): Theme | null {
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+  return null;
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
+  const [themePreference, setThemePreference] = useState<Theme | null>(() => getStoredThemePreference());
+  const [systemTheme, setSystemTheme] = useState<Theme>(() => getSystemTheme());
   const [healthStatus, setHealthStatus] = useState("checking");
   const [catalog, setCatalog] = useState<CatalogPayload>({});
   const [categoryItems, setCategoryItems] = useState<Record<string, CatalogItem[]>>({});
@@ -59,6 +76,31 @@ export default function App() {
 
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const theme = themePreference ?? systemTheme;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("light", "dark");
+    root.classList.add(theme);
+    document.body.classList.remove("light", "dark");
+    document.body.classList.add(theme);
+    if (themePreference) {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
+    } else {
+      window.localStorage.removeItem(THEME_STORAGE_KEY);
+    }
+  }, [theme, themePreference]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      setSystemTheme(mediaQuery.matches ? "dark" : "light");
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
   useEffect(() => {
@@ -147,9 +189,18 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <button className="brand-button" onClick={() => navigate("/")} type="button">
-          Experimental Catalog UI
-        </button>
+        <div className="app-header-content">
+          <button className="brand-button" onClick={() => navigate("/")} type="button">
+            Experimental Catalog UI
+          </button>
+          <button
+            className="theme-toggle"
+            onClick={() => setThemePreference(theme === "dark" ? "light" : "dark")}
+            type="button"
+          >
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
@@ -182,6 +233,7 @@ export default function App() {
         {route.kind === "detail" ? (
           <DetailPage
             item={selectedItem}
+            category={route.category}
             isLoading={isCategoryLoading}
             missingItemId={selectedItem ? null : route.itemId}
             onBackToCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}

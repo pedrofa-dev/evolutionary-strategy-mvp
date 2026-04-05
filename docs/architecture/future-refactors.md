@@ -219,3 +219,64 @@ transitional defaults.
 - accessibility review
 - stronger design system or shared component layer
 - UX patterns for empty/loading/error states beyond the current minimal tool
+
+## UI/UX And Productization
+
+If the catalog browser evolves into a more serious UI, several product-facing
+concerns will need explicit treatment instead of the current lightweight
+frontend helpers.
+
+### User-Oriented Naming Versus Internal Naming
+
+- separate technical IDs from user-facing labels
+- define naming rules for what can stay internal versus what should be shown to
+  users
+- reduce direct exposure of raw snake_case identifiers in primary UI surfaces
+
+### Descriptions Owned By The Backend
+
+- move category and item descriptions toward backend- or asset-owned metadata
+- avoid hardcoding explanatory copy in the frontend long term
+- define which descriptions are canonical and where they should live
+
+### Asset Hygiene And Classification
+
+- clean up experimental assets that are too raw for user-facing browsing
+- add tagging or classification such as `test`, `prod`, `experimental`
+- make presets easier to understand by intent, not only by technical id
+
+### Guided Navigation And Onboarding
+
+- add better onboarding copy, tooltips, and help surfaces
+- provide guided browsing paths for users who do not know the system vocabulary
+- reduce reliance on prior domain knowledge
+
+### Dark Mode And Visual System
+
+- evolve from basic `prefers-color-scheme` support to a fuller dark mode design
+- define a more stable design system
+- improve visual hierarchy for technical versus human-facing information
+
+### Accessibility And Internationalization
+
+- review keyboard navigation and screen-reader behavior
+- improve semantic labeling and accessible states
+- consider i18n if the UI grows beyond internal use
+
+## Design System & Theming
+
+The current catalog UI uses a deliberately small theming layer based on CSS
+variables and a manual dark-mode override. That is enough for local exploration,
+but it is not yet a full product-facing design system.
+
+Future work should define:
+
+- a stable set of design tokens for colors, spacing, typography, borders, and
+  elevation
+- a more complete dark mode strategy across all screens and states
+- stronger visual consistency between overview, category, detail, and future
+  run/reporting surfaces
+- accessibility review for contrast ratios and interactive states
+- clear rules for when technical metadata should be visually secondary
+- backend-supported labels and descriptions instead of frontend-only display
+  helpers

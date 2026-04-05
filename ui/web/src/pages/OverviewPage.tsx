@@ -1,3 +1,5 @@
+import { getCategoryDescription } from "../content/catalogMetadata";
+
 type OverviewPageProps = {
   healthStatus: string;
   categories: string[];
@@ -32,14 +34,11 @@ export default function OverviewPage({
         ) : (
           <div className="overview-cards">
             {categories.map((category) => (
-              <button
-                key={category}
-                className="overview-card"
-                onClick={() => onOpenCategory(category)}
-                type="button"
-              >
-                <strong>{category}</strong>
-                <span>Open category</span>
+              <button key={category} className="overview-card" onClick={() => onOpenCategory(category)} type="button">
+                <strong className="primary-label">{getCategoryDescription(category).title}</strong>
+                <span className="overview-card-id">{category}</span>
+                <span>{getCategoryDescription(category).whatIsIt}</span>
+                <span className="muted">{getCategoryDescription(category).whatIsItFor}</span>
               </button>
             ))}
           </div>

@@ -11,6 +11,11 @@ It is intentionally simple and focused on:
 - listing catalog categories
 - browsing category items
 - viewing basic item details and raw payload JSON
+- making technical catalog entries easier for humans to scan
+
+This UI is exploratory rather than productized. Many labels still reflect
+internal naming from the current system, and the frontend adds small human
+descriptions only to make exploration easier.
 
 ## Project Location
 
@@ -83,6 +88,27 @@ The UI includes three minimal views:
    - shows items for one category
 3. Detail view
    - shows id, category, origin, description, file path, and payload JSON
+   - explains what the selected item is and why it exists
+
+## Labels And Dark Mode
+
+The UI applies a lightweight presentation layer to improve readability without
+changing the underlying API payloads.
+
+- primary labels are rendered in a humanized Title Case format
+- technical IDs stay visible as secondary metadata
+- category descriptions add quick context for people who do not know the
+  internal vocabulary yet
+
+Dark mode is intentionally simple and local to the frontend:
+
+- it uses `prefers-color-scheme` as the default
+- it provides a manual light/dark toggle in the header
+- the manual preference is stored in `localStorage`
+- colors are driven by CSS variables so text, backgrounds, cards, borders, and
+  technical panels stay in sync
+
+This is still a minimal theming layer, not a full design system.
 
 ## Limitations
 
@@ -97,6 +123,9 @@ Current limitations are intentional:
 - no SSR
 - no UI framework
 - no product-level frontend architecture yet
+- many names still originate from internal IDs and experimental metadata
+- category explanations are currently frontend-side helpers, not backend-owned descriptions
+- dark mode is still a local UI concern, not a backend-owned theming system
 
 This is an exploration tool, not a polished product UI.
 
