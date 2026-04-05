@@ -10,10 +10,27 @@ const API_BASE_URL =
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, init);
+  const contentType = response.headers.get("content-type") ?? "";
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Request failed (${response.status}): ${errorBody}`);
+    let detail = errorBody;
+
+    try {
+      const parsed = JSON.parse(errorBody) as { message?: string; error?: string };
+      detail = parsed.message ?? parsed.error ?? errorBody;
+    } catch {
+      detail = errorBody;
+    }
+
+    throw new Error(`Request failed (${response.status}): ${detail}`);
+  }
+
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const unexpectedBody = await response.text();
+    throw new Error(
+      `Expected JSON from ${path}, received ${contentType || "unknown content-type"}: ${unexpectedBody.slice(0, 160)}`,
+    );
   }
 
   return (await response.json()) as T;

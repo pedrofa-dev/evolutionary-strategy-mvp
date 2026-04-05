@@ -109,6 +109,7 @@ export default function RunLabPage({ onOpenCatalog }: RunLabPageProps) {
   const [form, setForm] = useState<FormState | null>(null);
   const [advancedMode, setAdvancedMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
   const [actionState, setActionState] = useState<ActionState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [savedResult, setSavedResult] = useState<SavedRunConfigResult | null>(null);
@@ -121,6 +122,8 @@ export default function RunLabPage({ onOpenCatalog }: RunLabPageProps) {
       try {
         setIsLoading(true);
         setError(null);
+        setBootstrap(null);
+        setForm(null);
         const nextBootstrap = await getRunLabBootstrap();
         if (!cancelled) {
           setBootstrap(nextBootstrap);
@@ -141,7 +144,7 @@ export default function RunLabPage({ onOpenCatalog }: RunLabPageProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const selectedDataset = useMemo(
     () => (bootstrap && form ? findDataset(bootstrap.dataset_catalogs, form.dataset_catalog_id) : null),
@@ -264,13 +267,40 @@ export default function RunLabPage({ onOpenCatalog }: RunLabPageProps) {
     }
   }
 
-  if (isLoading || !bootstrap || !form) {
+  if (isLoading) {
     return (
       <div className="page-grid">
         <div className="panel hero-panel">
           <p className="eyebrow">Run Lab</p>
           <h1>Prepare and launch a canonical multiseed run</h1>
           <p className="loading-text">Loading Run Lab bootstrap...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !bootstrap || !form) {
+    return (
+      <div className="page-grid">
+        <div className="panel hero-panel">
+          <p className="eyebrow">Run Lab</p>
+          <h1>Prepare and launch a canonical run</h1>
+          <p className="muted">Run Lab bootstrap failed.</p>
+          <div className="error-banner">
+            {error ?? "Run Lab could not load its bootstrap data."}
+          </div>
+          <div className="nav-actions">
+            <button
+              className="link-button"
+              onClick={() => setReloadKey((current) => current + 1)}
+              type="button"
+            >
+              Retry bootstrap
+            </button>
+            <button className="link-button secondary" onClick={onOpenCatalog} type="button">
+              Back to catalog
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -368,7 +398,7 @@ export default function RunLabPage({ onOpenCatalog }: RunLabPageProps) {
                 <dd>{selectedDataset.timeframe}</dd>
                 <dt>Date range</dt>
                 <dd>
-                  {selectedDataset.date_range_start} -> {selectedDataset.date_range_end}
+                  {selectedDataset.date_range_start} → {selectedDataset.date_range_end}
                 </dd>
                 <dt>Splits</dt>
                 <dd>{renderSplitSummary(selectedDataset.split_summary)}</dd>
