@@ -6,7 +6,7 @@ from typing import Any
 
 from evo_system.experimental_space.identity import (
     format_experimental_space_stack_label,
-    normalize_experimental_space_snapshot,
+    resolve_persisted_experimental_space_snapshot,
 )
 from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH, PersistenceStore
 
@@ -90,6 +90,13 @@ def build_normalized_metrics(champion_row: dict[str, Any]) -> dict[str, Any]:
     return metrics
 
 
+def resolve_experimental_space_snapshot(champion_row: dict[str, Any]) -> dict[str, Any] | None:
+    return resolve_persisted_experimental_space_snapshot(
+        experimental_space_snapshot=champion_row.get("experimental_space_snapshot_json"),
+        config_json_snapshot=champion_row.get("config_json_snapshot"),
+    )
+
+
 def load_champions(
     db_path: Path = DEFAULT_PERSISTENCE_DB_PATH,
     run_id: str | None = None,
@@ -120,8 +127,8 @@ def load_champions(
                 config_snapshot=dict(champion_row.get("config_json_snapshot") or {}),
                 dataset_catalog_id=champion_row.get("dataset_catalog_id"),
                 dataset_signature=champion_row.get("dataset_signature"),
-                experimental_space_snapshot=normalize_experimental_space_snapshot(
-                    champion_row.get("experimental_space_snapshot_json")
+                experimental_space_snapshot=resolve_experimental_space_snapshot(
+                    champion_row
                 ),
             )
         )
@@ -167,8 +174,9 @@ def resolve_champion_type(champion: ChampionRow) -> str | None:
 
 def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
     stored_config_name = resolve_config_name(champion)
-    normalized_snapshot = normalize_experimental_space_snapshot(
-        champion.experimental_space_snapshot
+    normalized_snapshot = resolve_persisted_experimental_space_snapshot(
+        experimental_space_snapshot=champion.experimental_space_snapshot,
+        config_json_snapshot=champion.config_snapshot,
     )
 
     return {

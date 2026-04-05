@@ -53,6 +53,7 @@ def seed_champion(
     run_id: str,
     config_name: str,
     experimental_space_snapshot_json: dict | None = None,
+    config_snapshot_overrides: dict | None = None,
 ) -> int:
     store = PersistenceStore(database_path)
     store.initialize()
@@ -79,6 +80,8 @@ def seed_champion(
         "generations_planned": 25,
         "dataset_catalog_id": "core_1h_spot",
     }
+    if config_snapshot_overrides:
+        config_snapshot.update(config_snapshot_overrides)
     run_execution_id = store.save_run_execution(
         run_execution_uid=f"execution-{run_id}",
         multiseed_run_id=multiseed_run_id,
@@ -237,3 +240,37 @@ def test_analyze_champions_surfaces_modular_identity_and_legacy_fallback(
         "signal_pack=policy_v21_default | genome_schema=modular_genome_v1 | gene_catalog=modular_genome_v1_gene_catalog | decision_policy=policy_v2_default | mutation_profile=default_runtime_profile | market_mode=spot | leverage=1.0 | preset=standard",
         "unknown",
     }
+
+
+def test_analyze_champions_reconstructs_modular_identity_from_explicit_config_snapshot(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "evolution_v2.db"
+    output_dir = tmp_path / "analysis"
+    seed_champion(
+        database_path,
+        run_id="run-config-fallback",
+        config_name="config_c.json",
+        experimental_space_snapshot_json=None,
+        config_snapshot_overrides={
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "modular_genome_v1",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "market_mode_name": "spot",
+            "leverage": 1.0,
+        },
+    )
+
+    result = analyze_champions(
+        db_path=database_path,
+        output_dir=output_dir,
+        run_id="run-config-fallback",
+        persist_analysis=False,
+    )
+
+    assert result is not None
+    champion_card = result["champion_card"]
+    assert champion_card["modular_identity"]["stack_label"].startswith(
+        "signal_pack=policy_v21_default | genome_schema=modular_genome_v1"
+    )

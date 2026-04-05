@@ -75,6 +75,15 @@ class ExperimentalSpaceSnapshot:
 
 
 UNKNOWN_MODULAR_COMPONENT = "unknown"
+PERSISTED_EXPERIMENTAL_SPACE_CONFIG_KEYS = (
+    "signal_pack_name",
+    "genome_schema_name",
+    "decision_policy_name",
+    "mutation_profile_name",
+    "market_mode_name",
+    "leverage",
+    "experiment_preset_name",
+)
 
 
 def normalize_experimental_space_snapshot(
@@ -115,6 +124,44 @@ def normalize_experimental_space_snapshot(
         ),
     }
     return normalized
+
+
+def resolve_persisted_experimental_space_snapshot(
+    *,
+    experimental_space_snapshot: dict[str, Any] | ExperimentalSpaceSnapshot | None,
+    config_json_snapshot: dict[str, Any] | None,
+    experiment_preset_name: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve persisted modular identity without inventing it for truly legacy rows.
+
+    Resolution rule:
+    - Prefer the explicit persisted experimental-space snapshot.
+    - Fall back to config-based reconstruction only when the persisted config
+      already carries explicit modular identity fields.
+    - Return None for older rows that lack both, so reporting can keep showing
+      ``unknown`` instead of silently assigning modern defaults retroactively.
+    """
+    normalized_snapshot = normalize_experimental_space_snapshot(
+        experimental_space_snapshot
+    )
+    if normalized_snapshot is not None:
+        return normalized_snapshot
+
+    if not config_json_snapshot or not any(
+        key in config_json_snapshot
+        for key in PERSISTED_EXPERIMENTAL_SPACE_CONFIG_KEYS
+    ):
+        return None
+
+    try:
+        return normalize_experimental_space_snapshot(
+            build_experimental_space_snapshot_from_config_snapshot(
+                config_json_snapshot,
+                experiment_preset_name=experiment_preset_name,
+            )
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def format_experimental_space_stack_label(

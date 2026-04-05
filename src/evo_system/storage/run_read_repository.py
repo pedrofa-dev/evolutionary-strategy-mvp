@@ -9,13 +9,12 @@ from typing import Any, Iterator
 
 from evo_system.experimental_space.identity import (
     format_experimental_space_stack_label,
-    normalize_experimental_space_snapshot,
+    resolve_persisted_experimental_space_snapshot,
 )
 from evo_system.storage.persistence_store import (
     CHAMPIONS_JSON_COLUMNS,
     DEFAULT_PERSISTENCE_DB_PATH,
     RUN_EXECUTIONS_JSON_COLUMNS,
-    PersistenceStore,
 )
 
 
@@ -92,7 +91,7 @@ class PersistedRunSummaryView:
     dataset_signature: str | None
     dataset_context: dict[str, Any]
     summary_payload: dict[str, Any]
-    experimental_space_snapshot: dict[str, Any]
+    experimental_space_snapshot: dict[str, Any] | None
     market_mode_name: str | None
     leverage: float | None
     stack_label: str
@@ -169,6 +168,20 @@ def _build_breakdown(metrics: dict[str, Any] | None) -> PersistedEvaluationBreak
     )
 
 
+def _resolve_snapshot(
+    config_snapshot: dict[str, Any] | None,
+    *candidate_snapshots: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    for snapshot in candidate_snapshots:
+        normalized_snapshot = resolve_persisted_experimental_space_snapshot(
+            experimental_space_snapshot=snapshot,
+            config_json_snapshot=config_snapshot,
+        )
+        if normalized_snapshot is not None:
+            return normalized_snapshot
+    return None
+
+
 class RunReadRepository:
     """Read-only access layer for persisted runs.
 
@@ -182,7 +195,6 @@ class RunReadRepository:
     """
 
     def __init__(self, database_path: str | Path = DEFAULT_PERSISTENCE_DB_PATH) -> None:
-        self.store = PersistenceStore(database_path)
         self.database_path = Path(database_path)
 
     @contextmanager
@@ -267,6 +279,7 @@ class RunReadRepository:
                     re.dataset_signature,
                     re.started_at,
                     re.completed_at,
+                    re.config_json_snapshot,
                     re.summary_json,
                     re.experimental_space_snapshot_json,
                     re.runtime_component_fingerprint,
@@ -287,9 +300,10 @@ class RunReadRepository:
         for row in rows:
             payload = _row_to_dict(row, RUN_EXECUTIONS_JSON_COLUMNS)
             summary_payload = payload.get("summary_json") or {}
-            snapshot = normalize_experimental_space_snapshot(
-                payload.get("experimental_space_snapshot_json")
-                or summary_payload.get("experimental_space_snapshot")
+            snapshot = _resolve_snapshot(
+                payload.get("config_json_snapshot"),
+                payload.get("experimental_space_snapshot_json"),
+                summary_payload.get("experimental_space_snapshot"),
             )
             items.append(
                 PersistedRunListItem(
@@ -334,10 +348,11 @@ class RunReadRepository:
             run_id=run_id,
         )
         summary_payload = dict(run_row.get("summary_json") or {})
-        normalized_snapshot = normalize_experimental_space_snapshot(
-            run_row.get("experimental_space_snapshot_json")
-            or summary_payload.get("experimental_space_snapshot")
-            or (champion_row or {}).get("experimental_space_snapshot_json")
+        normalized_snapshot = _resolve_snapshot(
+            run_row.get("config_json_snapshot"),
+            run_row.get("experimental_space_snapshot_json"),
+            summary_payload.get("experimental_space_snapshot"),
+            (champion_row or {}).get("experimental_space_snapshot_json"),
         )
 
         best_genome = self.get_best_genome(run_id)

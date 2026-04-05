@@ -51,6 +51,8 @@ def seed_run(
     run_id: str,
     with_champion: bool = True,
     include_snapshot: bool = True,
+    include_modular_config_fields: bool = True,
+    config_snapshot_overrides: dict | None = None,
 ) -> None:
     store = PersistenceStore(database_path)
     store.initialize()
@@ -77,6 +79,11 @@ def seed_run(
         "generations_planned": 25,
         "dataset_catalog_id": "core_1h_spot",
     }
+    if include_modular_config_fields:
+        config_snapshot["market_mode_name"] = "spot"
+        config_snapshot["leverage"] = 1.0
+    if config_snapshot_overrides:
+        config_snapshot.update(config_snapshot_overrides)
     experimental_space_snapshot = (
         {
             "signal_pack_name": "policy_v21_default",
@@ -190,7 +197,13 @@ def test_run_read_repository_lists_and_reads_runs(tmp_path: Path) -> None:
 
 def test_run_read_repository_handles_missing_optional_metadata_safely(tmp_path: Path) -> None:
     database_path = tmp_path / "evolution_v2.db"
-    seed_run(database_path, run_id="run-legacy", with_champion=False, include_snapshot=False)
+    seed_run(
+        database_path,
+        run_id="run-legacy",
+        with_champion=False,
+        include_snapshot=False,
+        include_modular_config_fields=False,
+    )
 
     repository = RunReadRepository(database_path)
     summary = repository.get_run_summary("run-legacy")
@@ -200,9 +213,66 @@ def test_run_read_repository_handles_missing_optional_metadata_safely(tmp_path: 
     assert summary.best_genome is not None
     assert summary.best_genome.genome_snapshot is None
     assert summary.best_genome.genome_repr == "Genome(...)"
+    assert summary.experimental_space_snapshot is None
     train_breakdown, validation_breakdown = repository.get_train_validation_breakdowns("run-legacy")
     assert train_breakdown is None
     assert validation_breakdown is None
+
+
+def test_run_read_repository_list_runs_reconstructs_stack_when_modular_config_fields_are_explicit(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "evolution_v2.db"
+    seed_run(
+        database_path,
+        run_id="run-futures-legacy",
+        with_champion=False,
+        include_snapshot=False,
+        include_modular_config_fields=False,
+        config_snapshot_overrides={
+            "market_mode_name": "futures",
+            "leverage": 1.0,
+        },
+    )
+
+    repository = RunReadRepository(database_path)
+    runs = repository.list_runs(limit=5)
+
+    assert len(runs) == 1
+    assert runs[0].run_id == "run-futures-legacy"
+    assert runs[0].market_mode_name == "futures"
+    assert runs[0].leverage == 1.0
+    assert runs[0].stack_label.startswith(
+        "signal_pack=policy_v21_default | genome_schema=policy_v2_default"
+    )
+
+
+def test_run_read_repository_reconstructs_stack_from_explicit_modular_config_snapshot(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "evolution_v2.db"
+    seed_run(
+        database_path,
+        run_id="run-modular-config",
+        with_champion=False,
+        include_snapshot=False,
+        config_snapshot_overrides={
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "modular_genome_v1",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "market_mode_name": "spot",
+            "leverage": 1.0,
+        },
+    )
+
+    repository = RunReadRepository(database_path)
+    summary = repository.get_run_summary("run-modular-config")
+
+    assert summary is not None
+    assert summary.experimental_space_snapshot is not None
+    assert summary.experimental_space_snapshot["signal_pack_name"] == "policy_v21_default"
+    assert summary.stack_label.startswith("signal_pack=policy_v21_default")
 
 
 def test_run_read_cli_lists_and_shows_run_summary(tmp_path: Path, monkeypatch, capsys) -> None:
