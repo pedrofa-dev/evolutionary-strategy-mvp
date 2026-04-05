@@ -14,6 +14,7 @@ from evo_system.domain.genome import (
 from evo_system.experimental_space.base import (
     DecisionPolicy,
     GenomeSchema,
+    MarketMode,
     MutationProfileDefinition,
     SignalPack,
 )
@@ -21,6 +22,10 @@ from evo_system.experimental_space.gene_catalog import (
     MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
 )
 from evo_system.experimental_space.decision_policies import DefaultDecisionPolicy
+from evo_system.experimental_space.market_modes import (
+    FuturesMarketMode,
+    SpotMarketMode,
+)
 from evo_system.experimental_space.registry import NamedRegistry
 from evo_system.experimental_space.signal_packs import DefaultSignalPack
 from evo_system.mutation.mutator import MutationProfile
@@ -165,6 +170,7 @@ signal_pack_registry: NamedRegistry[SignalPack] = NamedRegistry()
 genome_schema_registry: NamedRegistry[GenomeSchema] = NamedRegistry()
 decision_policy_registry: NamedRegistry[DecisionPolicy] = NamedRegistry()
 mutation_profile_registry: NamedRegistry[MutationProfileDefinition] = NamedRegistry()
+market_mode_registry: NamedRegistry[MarketMode] = NamedRegistry()
 
 
 signal_pack_registry.register(
@@ -190,6 +196,15 @@ mutation_profile_registry.register(
     "default_runtime_profile",
     CurrentMutationProfileDefinition(),
     default=True,
+)
+market_mode_registry.register(
+    "spot",
+    SpotMarketMode(),
+    default=True,
+)
+market_mode_registry.register(
+    "futures",
+    FuturesMarketMode(),
 )
 
 
@@ -223,3 +238,11 @@ def get_default_mutation_profile_definition() -> MutationProfileDefinition:
 
 def get_mutation_profile_definition(name: str) -> MutationProfileDefinition:
     return mutation_profile_registry.get(name)
+
+
+def get_default_market_mode() -> MarketMode:
+    return market_mode_registry.get_default()
+
+
+def get_market_mode(name: str) -> MarketMode:
+    return market_mode_registry.get(name)

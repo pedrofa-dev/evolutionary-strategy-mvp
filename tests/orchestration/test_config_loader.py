@@ -42,6 +42,8 @@ def test_load_run_config_reads_required_and_optional_fields(tmp_path) -> None:
     assert config.genome_schema_name == "policy_v2_default"
     assert config.decision_policy_name == "policy_v2_default"
     assert config.mutation_profile_name == "default_runtime_profile"
+    assert config.market_mode_name == "spot"
+    assert config.leverage == 1.0
 
 
 def test_load_run_config_uses_defaults_for_optional_fields(tmp_path) -> None:
@@ -281,6 +283,8 @@ def test_load_run_config_reads_explicit_modular_component_names(tmp_path) -> Non
                 "genome_schema_name": "modular_genome_v1",
                 "decision_policy_name": "policy_v2_default",
                 "mutation_profile_name": "default_runtime_profile",
+                "market_mode_name": "spot",
+                "leverage": 1.0,
             }
         ),
         encoding="utf-8",
@@ -292,6 +296,8 @@ def test_load_run_config_reads_explicit_modular_component_names(tmp_path) -> Non
     assert config.genome_schema_name == "modular_genome_v1"
     assert config.decision_policy_name == "policy_v2_default"
     assert config.mutation_profile_name == "default_runtime_profile"
+    assert config.market_mode_name == "spot"
+    assert config.leverage == 1.0
 
 
 def test_load_run_config_reads_explicit_seeds(tmp_path) -> None:

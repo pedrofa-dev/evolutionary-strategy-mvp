@@ -90,6 +90,15 @@ def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
             "positive_datasets": positive_datasets,
             "negative_datasets": negative_datasets,
         },
+        "modular_identity": {
+            "signal_pack_name": row.get("signal_pack_name") or "unknown",
+            "genome_schema_name": row.get("genome_schema_name") or "unknown",
+            "gene_type_catalog_name": row.get("gene_type_catalog_name") or "unknown",
+            "decision_policy_name": row.get("decision_policy_name") or "unknown",
+            "mutation_profile_name": row.get("mutation_profile_name") or "unknown",
+            "experiment_preset_name": row.get("experiment_preset_name"),
+            "stack_label": row.get("modular_stack_label") or "unknown",
+        },
         "genome_summary": build_genome_summary(row),
     }
 

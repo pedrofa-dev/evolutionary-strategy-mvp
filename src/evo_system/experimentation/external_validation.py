@@ -20,6 +20,8 @@ def build_environment(
     max_realized_volatility_for_entry: float | None = None,
     signal_pack_name: str | None = None,
     decision_policy_name: str | None = None,
+    market_mode_name: str | None = None,
+    leverage: float = 1.0,
 ) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
     return HistoricalEnvironment(
@@ -31,6 +33,8 @@ def build_environment(
         max_realized_volatility_for_entry=max_realized_volatility_for_entry,
         signal_pack_name=signal_pack_name,
         decision_policy_name=decision_policy_name,
+        market_mode_name=market_mode_name,
+        leverage=leverage,
     )
 
 
@@ -46,6 +50,8 @@ def run_external_validation(
     max_realized_volatility_for_entry: float | None = None,
     signal_pack_name: str | None = None,
     decision_policy_name: str | None = None,
+    market_mode_name: str | None = None,
+    leverage: float = 1.0,
 ) -> AgentEvaluation:
     """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
 
@@ -77,6 +83,8 @@ def run_external_validation(
             max_realized_volatility_for_entry=max_realized_volatility_for_entry,
             signal_pack_name=signal_pack_name,
             decision_policy_name=decision_policy_name,
+            market_mode_name=market_mode_name,
+            leverage=leverage,
         )
         for path in external_dataset_paths
     ]

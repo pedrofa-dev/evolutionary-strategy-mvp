@@ -32,6 +32,8 @@ def test_run_config_builds_valid_instance() -> None:
     assert config.genome_schema_name == "policy_v2_default"
     assert config.decision_policy_name == "policy_v2_default"
     assert config.mutation_profile_name == "default_runtime_profile"
+    assert config.market_mode_name == "spot"
+    assert config.leverage == 1.0
 
 
 def test_run_config_accepts_required_dataset_catalog_id() -> None:
@@ -241,12 +243,16 @@ def test_run_config_accepts_explicit_modular_component_names() -> None:
         genome_schema_name="modular_genome_v1",
         decision_policy_name="policy_v2_default",
         mutation_profile_name="default_runtime_profile",
+        market_mode_name="spot",
+        leverage=1.0,
     )
 
     assert config.signal_pack_name == "policy_v21_default"
     assert config.genome_schema_name == "modular_genome_v1"
     assert config.decision_policy_name == "policy_v2_default"
     assert config.mutation_profile_name == "default_runtime_profile"
+    assert config.market_mode_name == "spot"
+    assert config.leverage == 1.0
 
 
 def test_run_config_to_dict_serializes_mutation_profile_and_component_names() -> None:
@@ -264,6 +270,51 @@ def test_run_config_to_dict_serializes_mutation_profile_and_component_names() ->
     assert payload["mutation_profile"] == config.mutation_profile.to_dict()
     assert payload["signal_pack_name"] == "policy_v21_default"
     assert payload["genome_schema_name"] == "policy_v2_default"
+    assert payload["market_mode_name"] == "spot"
+    assert payload["leverage"] == 1.0
+
+
+def test_run_config_accepts_futures_mode_with_unit_leverage() -> None:
+    config = RunConfig(
+        mutation_seed=42,
+        population_size=12,
+        target_population_size=12,
+        survivors_count=4,
+        generations_planned=25,
+        dataset_catalog_id="core_1h_spot",
+        market_mode_name="futures",
+        leverage=1.0,
+    )
+
+    assert config.market_mode_name == "futures"
+    assert config.leverage == 1.0
+
+
+def test_run_config_rejects_non_unit_futures_leverage_in_v1() -> None:
+    with pytest.raises(ValueError, match="supports leverage=1.0 only"):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
+            market_mode_name="futures",
+            leverage=2.0,
+        )
+
+
+def test_run_config_rejects_unknown_market_mode() -> None:
+    with pytest.raises(KeyError, match="Unknown registry item: invalid_mode"):
+        RunConfig(
+            mutation_seed=42,
+            population_size=12,
+            target_population_size=12,
+            survivors_count=4,
+            generations_planned=25,
+            dataset_catalog_id="core_1h_spot",
+            market_mode_name="invalid_mode",
+        )
 
 
 def test_run_config_requires_dataset_catalog_id() -> None:

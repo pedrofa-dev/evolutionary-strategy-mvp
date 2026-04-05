@@ -16,6 +16,14 @@ Current canonical database:
 
 - `data/evolution_v2.db`
 
+There is no parallel legacy SQLite writer in the active runtime. New runs,
+champions, analyses, and reevaluations persist through the canonical
+`PersistenceStore` only.
+
+Direct SQLite writes are intentionally centralized there. Runtime,
+experimentation, reevaluation, and reporting layers should call
+`PersistenceStore` rather than opening alternative write paths.
+
 Canonical tables:
 
 - `multiseed_runs`
@@ -85,7 +93,7 @@ Old rows may remain stored for history, but they should not be treated as reusab
 
 Current runtime value:
 
-- `CURRENT_LOGIC_VERSION = "v13"`
+- `CURRENT_LOGIC_VERSION = "v15"`
 
 This value is bumped deliberately whenever runtime semantics change in a way
 that would make execution reuse unsafe.
@@ -118,6 +126,8 @@ At minimum, canonical run persistence can record:
 - `gene_type_catalog`
 - `decision_policy`
 - `mutation_profile`
+- `market_mode`
+- `leverage`
 - `experiment_preset` when applicable
 
 This identity appears in:
@@ -126,6 +136,18 @@ This identity appears in:
 - `champions.experimental_space_snapshot_json`
 - `run_executions.summary_json.experimental_space_snapshot`
 - multiseed environment snapshots and top-level reporting summaries
+
+Reporting and artifact generation should surface this identity through a stable
+human-readable modular stack label. Older persisted rows that do not carry the
+snapshot must degrade gracefully to `unknown` labels instead of failing
+analysis or summary paths.
+
+This same canonical stack label is now reused across:
+
+- run logs
+- run summary payloads
+- multiseed summaries
+- champion analysis reports and champion cards
 
 This is additive metadata for traceability. In this phase it does not replace
 the canonical execution fingerprint, which remains:
@@ -140,6 +162,28 @@ In other words:
 - `execution_fingerprint` answers whether two executions are reusable
 - `logic_version` answers whether runtime semantics stayed compatible
 - `experimental_space_snapshot` answers which modular components were used
+
+The runtime can also persist a derived `runtime_component_fingerprint` built
+from the active modular stack:
+
+- `signal_pack`
+- `genome_schema`
+- `gene_type_catalog`
+- `decision_policy`
+- `mutation_profile`
+- `market_mode`
+- `leverage`
+
+This is traceability metadata for runtime composition. It does not replace
+`execution_fingerprint`, and it does not change reuse semantics by itself.
+
+For reporting, the primary modular stack is selected deterministically:
+
+- prefer the most frequent normalized stack in the input set
+- break ties by canonical stack-label lexical order
+
+This keeps summaries stable even when equivalent rows are loaded in a
+different incidental order.
 
 ## Champion Self-Containment
 
@@ -176,6 +220,17 @@ Manual tools still write into the same canonical model:
 - `scripts/evaluate_persisted_champions.py`
 
 That means manual and automatic workflows now share the same source of truth.
+
+## Read Layer
+
+The repository now also exposes a read-only run repository on top of the same
+canonical database:
+
+- `RunReadRepository`
+
+It reconstructs persisted run summaries, champion-backed genomes, and
+train/validation breakdowns from stored rows only. It does not re-execute
+evaluation logic and it does not mutate persistence state.
 
 ## Artifact Paths
 

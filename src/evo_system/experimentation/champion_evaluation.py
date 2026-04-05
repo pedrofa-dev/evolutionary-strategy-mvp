@@ -90,12 +90,16 @@ def evaluate_genome_on_datasets(
     dataset_paths: list[Path],
     cost_penalty_weight: float,
     trade_cost_rate: float,
+    market_mode_name: str | None = None,
+    leverage: float = 1.0,
 ) -> AgentEvaluation:
     return run_external_validation(
         agent=Agent.create(genome),
         external_dataset_paths=dataset_paths,
         cost_penalty_weight=cost_penalty_weight,
         trade_cost_rate=trade_cost_rate,
+        market_mode_name=market_mode_name,
+        leverage=leverage,
     )
 
 

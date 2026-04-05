@@ -37,6 +37,55 @@ class SignalPack(Protocol):
 
 
 @runtime_checkable
+class MarketMode(Protocol):
+    """Define runtime position semantics and PnL interpretation.
+
+    Why it exists:
+    - Spot and futures-style execution share the same evaluator loop but not
+      the same position transitions or return sign semantics.
+    - This seam keeps market semantics out of the generic environment loop.
+
+    Constraints:
+    - MarketMode must not redefine scoring or decision-policy logic.
+    - Unsupported market/leverage combinations must fail here, not be guessed
+      later by reporting or persistence layers.
+    """
+
+    name: str
+    flat_position: str
+    supported_positions: tuple[str, ...]
+
+    def get_default_entry_position(self) -> str:
+        """Return the canonical entry-side used by the active mode."""
+
+    def can_transition(self, current_position: str, next_position: str) -> bool:
+        """Return whether one position-state transition is allowed."""
+
+    def validate_runtime_config(self, *, leverage: float) -> None:
+        """Validate the runtime settings supported by this market mode."""
+
+    def calculate_trade_return(
+        self,
+        *,
+        entry_price: float,
+        current_price: float,
+        position: str,
+    ) -> float:
+        """Return normalized trade return for the given position state."""
+
+    def close_trade(
+        self,
+        *,
+        trade_return: float,
+        position_size: float,
+        trade_cost_rate: float,
+        position: str,
+        leverage: float,
+    ) -> tuple[float, float]:
+        """Return net trade profit plus explicit trade cost."""
+
+
+@runtime_checkable
 class GenomeSchema(Protocol):
     """Describe how active genomes are composed for a given policy schema."""
 

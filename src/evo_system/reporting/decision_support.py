@@ -4,7 +4,10 @@ from statistics import mean, pstdev
 from typing import Any
 
 from evo_system.domain.run_summary import HistoricalRunSummary
-from evo_system.experimental_space.identity import summarize_experimental_space_snapshots
+from evo_system.experimental_space.identity import (
+    format_experimental_space_summary_label,
+    summarize_experimental_space_snapshots,
+)
 
 
 NO_EDGE_DETECTED = "NO_EDGE_DETECTED"
@@ -265,6 +268,9 @@ def build_multiseed_decision_payload(
         "audit_summary": audit_summary,
         "pattern_highlights": pattern_highlights,
         "experimental_space_summary": experimental_space_summary,
+        "experimental_space_label": format_experimental_space_summary_label(
+            experimental_space_summary
+        ),
         "top_examples": top_examples,
         "verdict": verdict["verdict"],
         "likely_limit": verdict["likely_limit"],

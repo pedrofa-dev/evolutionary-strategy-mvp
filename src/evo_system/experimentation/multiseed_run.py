@@ -29,6 +29,10 @@ from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.reporting.decision_support import build_multiseed_decision_payload
 from evo_system.experimental_space.identity import (
     build_experimental_space_snapshot_from_config_snapshot,
+    build_runtime_component_fingerprint,
+    format_experimental_space_summary_label,
+    format_experimental_space_stack_label,
+    list_experimental_space_stack_labels,
     summarize_experimental_space_snapshots,
 )
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
@@ -551,6 +555,7 @@ def build_configs_dir_snapshot(config_paths: list[Path]) -> dict:
 
 
 def build_run_summary_payload(summary: HistoricalRunSummary) -> dict:
+    experimental_space_snapshot = getattr(summary, "experimental_space_snapshot", None)
     return {
         "run_id": summary.run_id,
         "config_name": summary.config_name,
@@ -567,7 +572,13 @@ def build_run_summary_payload(summary: HistoricalRunSummary) -> dict:
         "log_file_path": str(summary.log_file_path),
         "config_path": str(summary.config_path) if summary.config_path is not None else None,
         "execution_status": summary.execution_status,
-        "experimental_space_snapshot": getattr(summary, "experimental_space_snapshot", None),
+        "experimental_space_snapshot": experimental_space_snapshot,
+        "experimental_space_stack_label": format_experimental_space_stack_label(
+            experimental_space_snapshot
+        ),
+        "runtime_component_fingerprint": build_runtime_component_fingerprint(
+            experimental_space_snapshot
+        ),
     }
 
 
@@ -1177,6 +1188,12 @@ def write_multiseed_summary(
 ) -> Path:
     summary_path = output_dir / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME
     summary_path.parent.mkdir(parents=True, exist_ok=True)
+    experimental_space_summary = summarize_experimental_space_snapshots(
+        [
+            getattr(summary, "experimental_space_snapshot", None)
+            for summary in summaries
+        ]
+    )
     unique_seed_lists = {tuple(seeds) for seeds in seed_map.values()}
     seed_count_label = (
         str(len(next(iter(unique_seed_lists))))
@@ -1197,6 +1214,8 @@ def write_multiseed_summary(
         f"Runs executed: {runs_executed}",
         f"Runs reused: {runs_reused}",
         f"Runs failed: {runs_failed}",
+        f"Modules: {format_experimental_space_summary_label(experimental_space_summary)}",
+        "Active modular components:",
         "",
         "Champion criteria:",
         " robust -> validation_selection >= 1.5 | validation_profit >= 0.02 | validation_drawdown <= 0.03 | validation_trades >= 10.0 | abs(selection_gap) <= 1.5",
@@ -1204,6 +1223,11 @@ def write_multiseed_summary(
         " rejected -> everything else",
         "",
     ]
+
+    for label in list_experimental_space_stack_labels(experimental_space_summary):
+        lines.append(f"  {label}")
+
+    lines.append("")
 
     lines.extend(build_grouped_summary_lines(summaries))
     summary_path.write_text("\n".join(lines), encoding="utf-8")

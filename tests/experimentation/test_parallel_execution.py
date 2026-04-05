@@ -21,6 +21,7 @@ from evo_system.experimentation.multiseed_run import (
     MULTISEED_RUN_SUMMARY_NAME,
     MultiseedExecutionOutcome,
     MultiseedJob,
+    build_run_summary_payload,
     build_default_multiseed_seeds,
     build_multiseed_jobs,
     calculate_effective_parallel_workers,
@@ -69,6 +70,44 @@ def write_config(
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def write_runtime_dataset(dataset_root: Path, catalog_id: str = "core_1h_spot") -> None:
+    train_dir = dataset_root / catalog_id / "train" / "set_a"
+    validation_dir = dataset_root / catalog_id / "validation" / "set_b"
+    train_dir.mkdir(parents=True, exist_ok=True)
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    candle_rows = "\n".join(
+        [
+            "timestamp,open,high,low,close",
+            "1,100,100,100,100",
+            "2,100,104,99,103",
+            "3,103,108,102,107",
+            "4,107,111,106,110",
+            "5,110,115,109,114",
+            "6,114,118,113,117",
+            "7,117,119,112,113",
+            "8,113,116,110,115",
+        ]
+    )
+    (train_dir / "candles.csv").write_text(candle_rows, encoding="utf-8")
+    (validation_dir / "candles.csv").write_text(candle_rows, encoding="utf-8")
+
+
+def normalize_runtime_log_for_reproducibility(log_text: str) -> list[str]:
+    ignored_prefixes = (
+        "Run ID:",
+        "Writing log to ",
+        "Timing -> ",
+        "Total run time:",
+        "Average generation time:",
+        "Detailed run log saved to ",
+    )
+    return [
+        line
+        for line in log_text.splitlines()
+        if line and not line.startswith(ignored_prefixes)
+    ]
+
+
 def build_summary(config_path: Path, *, seed: int, run_id: str):
     return type(
         "Summary",
@@ -89,6 +128,17 @@ def build_summary(config_path: Path, *, seed: int, run_id: str):
             "train_validation_profit_gap": 0.01,
             "config_path": config_path,
             "execution_status": "executed",
+            "experimental_space_snapshot": {
+                "signal_pack_name": "policy_v21_default",
+                "genome_schema_name": "modular_genome_v1",
+                "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
+                "decision_policy_name": "policy_v2_default",
+                "mutation_profile_name": "default_runtime_profile",
+                "mutation_profile": {},
+                "market_mode_name": "spot",
+                "leverage": 1.0,
+                "experiment_preset_name": "standard",
+            },
         },
     )()
 
@@ -361,7 +411,8 @@ def test_execute_historical_run_persists_champion_in_new_store(
                 champion_type,
                 dataset_catalog_id,
                 dataset_signature,
-                config_json_snapshot
+                config_json_snapshot,
+                experimental_space_snapshot_json
             FROM champions
             """
         ).fetchone()
@@ -375,6 +426,13 @@ def test_execute_historical_run_persists_champion_in_new_store(
     assert row[5] == "core_1h_spot"
     assert row[6]
     assert '"dataset_catalog_id":"core_1h_spot"' in row[7]
+    assert '"signal_pack_name":"policy_v21_default"' in row[8]
+
+    log_text = (tmp_path / "out" / "run_manifest.txt").read_text(encoding="utf-8")
+    assert "Experimental space stack: signal_pack=policy_v21_default" in log_text
+    assert "Mutation profile payload:" in log_text
+    assert "'strong_mutation_probability': 0.1" in log_text
+    assert "Final summary" in log_text
 
 
 def test_build_initial_population_applies_entry_trigger_overrides() -> None:
@@ -1097,6 +1155,7 @@ def test_run_multiseed_experiment_skip_post_analysis_keeps_real_summaries(
     summary_text = (multiseed_dir / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME).read_text(encoding="utf-8")
     quick_text = (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).read_text(encoding="utf-8")
     assert "Ranking by champion rate and mean validation selection score" in summary_text
+    assert "Modules: single_stack | signal_pack=policy_v21_default" in summary_text
     assert "Runs: planned=6 | completed=1 | executed=1 | reused=0 | failed=1" in quick_text
     assert "Champions found:" in quick_text
     assert "Final verdict:" in quick_text
@@ -1250,6 +1309,83 @@ def test_run_multiseed_experiment_reuses_completed_matching_execution(
     )
     assert "Final verdict: WEAK_PROMISING" in quick_text
     assert "Next action:" in quick_text
+
+
+def test_build_run_summary_payload_includes_modular_stack_label(tmp_path: Path) -> None:
+    config_path = tmp_path / "run_a.json"
+    summary = build_summary(config_path, seed=101, run_id="run-001")
+
+    payload = build_run_summary_payload(summary)
+
+    assert payload["experimental_space_snapshot"]["signal_pack_name"] == "policy_v21_default"
+    assert payload["experimental_space_snapshot"]["market_mode_name"] == "spot"
+    assert payload["experimental_space_snapshot"]["leverage"] == 1.0
+    assert payload["experimental_space_stack_label"].startswith(
+        "signal_pack=policy_v21_default | genome_schema=modular_genome_v1"
+    )
+    assert payload["runtime_component_fingerprint"]
+
+
+def test_execute_historical_run_is_reproducible_for_identical_spot_runs(
+    tmp_path: Path,
+) -> None:
+    dataset_root = tmp_path / "datasets"
+    write_runtime_dataset(dataset_root)
+    config_path = tmp_path / "spot_repro.json"
+    write_config(
+        config_path,
+        extra_fields={
+            "population_size": 4,
+            "target_population_size": 4,
+            "survivors_count": 2,
+            "generations_planned": 2,
+            "market_mode_name": "spot",
+            "leverage": 1.0,
+            "trade_cost_rate": 0.0,
+        },
+    )
+
+    first_summary = execute_historical_run(
+        config_path=config_path,
+        output_dir=tmp_path / "out_a",
+        log_name="run_manifest.txt",
+        config_name_override=config_path.name,
+        dataset_root=dataset_root,
+        external_validation_dir=tmp_path / "missing_external",
+        persistence_db_path=tmp_path / "run_a.db",
+    )
+    second_summary = execute_historical_run(
+        config_path=config_path,
+        output_dir=tmp_path / "out_b",
+        log_name="run_manifest.txt",
+        config_name_override=config_path.name,
+        dataset_root=dataset_root,
+        external_validation_dir=tmp_path / "missing_external",
+        persistence_db_path=tmp_path / "run_b.db",
+    )
+
+    comparable_fields = (
+        "best_genome_repr",
+        "generation_of_best",
+        "best_train_selection_score",
+        "final_validation_selection_score",
+        "final_validation_profit",
+        "final_validation_drawdown",
+        "final_validation_trades",
+        "train_validation_selection_gap",
+        "train_validation_profit_gap",
+        "experimental_space_snapshot",
+    )
+
+    for field_name in comparable_fields:
+        assert getattr(first_summary, field_name) == getattr(second_summary, field_name)
+
+    first_log = (tmp_path / "out_a" / "run_manifest.txt").read_text(encoding="utf-8")
+    second_log = (tmp_path / "out_b" / "run_manifest.txt").read_text(encoding="utf-8")
+
+    assert normalize_runtime_log_for_reproducibility(first_log) == normalize_runtime_log_for_reproducibility(
+        second_log
+    )
 
 
 def test_failed_execution_is_not_reused_and_creates_fresh_attempt(

@@ -276,6 +276,8 @@ def evaluate_with_config_snapshot(
         max_realized_volatility_for_entry=config_snapshot.get(
             "max_realized_volatility_for_entry"
         ),
+        market_mode_name=str(config_snapshot.get("market_mode_name", "spot")),
+        leverage=float(config_snapshot.get("leverage", 1.0)),
     )
 
 

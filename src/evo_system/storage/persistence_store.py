@@ -13,9 +13,34 @@ from typing import Any, Iterator
 # This token is part of reusable execution identity. Changing it casually
 # breaks comparability across campaigns; failing to change it when runtime
 # semantics change can incorrectly reuse incompatible executions.
-CURRENT_LOGIC_VERSION = "v13"
+CURRENT_LOGIC_VERSION = "v15"
 DEFAULT_PERSISTENCE_DB_PATH = Path("data/evolution_v2.db")
 REPO_ROOT = Path(__file__).resolve().parents[3]
+CANONICAL_TABLE_NAMES = (
+    "multiseed_runs",
+    "run_executions",
+    "champions",
+    "champion_analyses",
+    "champion_analysis_members",
+    "champion_evaluations",
+    "champion_evaluation_members",
+)
+CANONICAL_INDEX_NAMES = (
+    "idx_run_executions_execution_fingerprint",
+    "idx_run_executions_run_id",
+    "idx_run_executions_config_hash",
+    "idx_run_executions_logic_version",
+    "idx_run_executions_multiseed_run_id",
+    "idx_champions_run_execution_id",
+    "idx_champions_run_id",
+    "idx_champions_champion_type",
+    "idx_champions_config_hash",
+    "idx_champions_logic_version",
+    "idx_champion_analyses_multiseed_run_id",
+    "idx_champion_evaluations_multiseed_run_id",
+    "idx_champion_analysis_members_champion_id",
+    "idx_champion_evaluation_members_champion_id",
+)
 
 MULTISEED_RUNS_JSON_COLUMNS = {
     "configs_dir_snapshot_json",
@@ -141,6 +166,8 @@ class PersistenceStore:
     Why:
     - This store is the canonical source of truth for run, champion, analysis,
       and reevaluation persistence.
+    - There is no parallel legacy SQLite writer in the active runtime. New
+      campaigns must persist only through this schema.
 
     Invariants:
     - Stored snapshots must stay self-contained and queryable.
@@ -229,6 +256,7 @@ class PersistenceStore:
                     context_name TEXT,
                     preset_name TEXT,
                     experimental_space_snapshot_json TEXT,
+                    runtime_component_fingerprint TEXT,
                     requested_dataset_root TEXT,
                     resolved_dataset_root TEXT,
                     failure_reason TEXT,
@@ -378,6 +406,10 @@ class PersistenceStore:
             if "experimental_space_snapshot_json" not in run_execution_columns:
                 connection.execute(
                     "ALTER TABLE run_executions ADD COLUMN experimental_space_snapshot_json TEXT"
+                )
+            if "runtime_component_fingerprint" not in run_execution_columns:
+                connection.execute(
+                    "ALTER TABLE run_executions ADD COLUMN runtime_component_fingerprint TEXT"
                 )
             champion_columns = {
                 row["name"]
@@ -564,6 +596,7 @@ class PersistenceStore:
         context_name: str | None = None,
         preset_name: str | None = None,
         experimental_space_snapshot_json: dict[str, Any] | None = None,
+        runtime_component_fingerprint: str | None = None,
         requested_dataset_root: str | Path | None = None,
         resolved_dataset_root: str | Path | None = None,
         failure_reason: str | None = None,
@@ -572,6 +605,15 @@ class PersistenceStore:
         per_run_summary_artifact_path: str | Path | None = None,
         summary_json: dict[str, Any] | None = None,
     ) -> int:
+        if runtime_component_fingerprint is None and experimental_space_snapshot_json is not None:
+            from evo_system.experimental_space.identity import (
+                build_runtime_component_fingerprint,
+            )
+
+            runtime_component_fingerprint = build_runtime_component_fingerprint(
+                experimental_space_snapshot_json
+            )
+
         config_hash = hash_config_snapshot(config_json_snapshot)
         execution_fingerprint = build_execution_fingerprint(
             config_hash=config_hash,
@@ -602,6 +644,7 @@ class PersistenceStore:
                     context_name,
                     preset_name,
                     experimental_space_snapshot_json,
+                    runtime_component_fingerprint,
                     requested_dataset_root,
                     resolved_dataset_root,
                     failure_reason,
@@ -609,7 +652,7 @@ class PersistenceStore:
                     progress_snapshot_artifact_path,
                     per_run_summary_artifact_path,
                     summary_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_execution_uid,
@@ -632,6 +675,7 @@ class PersistenceStore:
                     serialize_json(experimental_space_snapshot_json)
                     if experimental_space_snapshot_json is not None
                     else None,
+                    runtime_component_fingerprint,
                     to_repo_relative_path(requested_dataset_root),
                     to_repo_relative_path(resolved_dataset_root),
                     failure_reason,
@@ -655,8 +699,18 @@ class PersistenceStore:
         progress_snapshot_artifact_path: str | Path | None = None,
         per_run_summary_artifact_path: str | Path | None = None,
         experimental_space_snapshot_json: dict[str, Any] | None = None,
+        runtime_component_fingerprint: str | None = None,
         summary_json: dict[str, Any] | None = None,
     ) -> None:
+        if runtime_component_fingerprint is None and experimental_space_snapshot_json is not None:
+            from evo_system.experimental_space.identity import (
+                build_runtime_component_fingerprint,
+            )
+
+            runtime_component_fingerprint = build_runtime_component_fingerprint(
+                experimental_space_snapshot_json
+            )
+
         assignments = ["status = ?", "completed_at = ?"]
         parameters: list[Any] = [status, completed_at or utc_now_iso()]
 
@@ -671,6 +725,7 @@ class PersistenceStore:
                 if experimental_space_snapshot_json is not None
                 else None
             ),
+            "runtime_component_fingerprint": runtime_component_fingerprint,
             "summary_json": serialize_json(summary_json) if summary_json is not None else None,
         }
 

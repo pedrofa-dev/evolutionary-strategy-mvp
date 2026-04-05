@@ -30,7 +30,10 @@ from evo_system.domain.run_summary import HistoricalRunSummary
 from evo_system.environment.csv_loader import load_historical_candles
 from evo_system.environment.dataset_pool_loader import DatasetPoolLoader
 from evo_system.environment.historical_environment import HistoricalEnvironment
-from evo_system.experimental_space.identity import build_experimental_space_snapshot
+from evo_system.experimental_space.identity import (
+    build_experimental_space_snapshot,
+    format_experimental_space_stack_label,
+)
 from evo_system.evaluation import (
     AgentEvaluator,
     INVALID_VALIDATION_PENALTY,
@@ -462,6 +465,8 @@ def build_environment(
     max_realized_volatility_for_entry: float | None = None,
     signal_pack_name: str | None = None,
     decision_policy_name: str | None = None,
+    market_mode_name: str | None = None,
+    leverage: float = 1.0,
 ) -> HistoricalEnvironment:
     candles = load_historical_candles(dataset_path)
     return HistoricalEnvironment(
@@ -473,6 +478,8 @@ def build_environment(
         max_realized_volatility_for_entry=max_realized_volatility_for_entry,
         signal_pack_name=signal_pack_name,
         decision_policy_name=decision_policy_name,
+        market_mode_name=market_mode_name,
+        leverage=leverage,
     )
 
 
@@ -526,6 +533,25 @@ def build_dataset_breakdown_lines(
 def append_lines(log_file_path: Path, lines: list[str]) -> None:
     with log_file_path.open("a", encoding="utf-8") as log_file:
         log_file.write("\n".join(lines) + "\n")
+
+
+def build_experimental_space_log_lines(
+    *,
+    experimental_space_snapshot,
+    mutation_profile: Any,
+) -> list[str]:
+    stack_label = format_experimental_space_stack_label(
+        experimental_space_snapshot.to_dict()
+    )
+    mutation_profile_payload = (
+        mutation_profile.to_dict()
+        if hasattr(mutation_profile, "to_dict")
+        else dict(mutation_profile or {})
+    )
+    return [
+        f"Mutation profile payload: {mutation_profile_payload}",
+        f"Experimental space stack: {stack_label}",
+    ]
 
 
 def serialize_agent_evaluation(evaluation: AgentEvaluation) -> dict:
@@ -634,16 +660,6 @@ def execute_historical_run(
         f"Dataset root: {effective_dataset_root}",
         f"Dataset signature: {dataset_signature}",
         f"Mutation seed: {config.mutation_seed}",
-        f"Mutation profile: {config.mutation_profile}",
-        (
-            "Experimental space -> "
-            f"signal_pack={experimental_space_snapshot.signal_pack_name} | "
-            f"genome_schema={experimental_space_snapshot.genome_schema_name} | "
-            f"gene_catalog={experimental_space_snapshot.gene_type_catalog_name} | "
-            f"decision_policy={experimental_space_snapshot.decision_policy_name} | "
-            f"mutation_profile_definition={experimental_space_snapshot.mutation_profile_name} | "
-            f"preset={experimental_space_snapshot.experiment_preset_name or 'none'}"
-        ),
         f"Population size: {config.population_size}",
         f"Target population size: {config.target_population_size}",
         f"Survivors count: {config.survivors_count}",
@@ -674,6 +690,10 @@ def execute_historical_run(
         ),
         "",
     ]
+    header_lines[8:8] = build_experimental_space_log_lines(
+        experimental_space_snapshot=experimental_space_snapshot,
+        mutation_profile=config.mutation_profile,
+    )
     append_lines(log_file_path, header_lines)
 
     print(f"Run ID: {run_id}")
@@ -684,15 +704,15 @@ def execute_historical_run(
         print(f"Dataset catalog: {config.dataset_catalog_id}")
     print(f"Dataset root: {effective_dataset_root}")
     print(f"Dataset signature: {dataset_signature}")
-    print(f"Mutation profile: {config.mutation_profile}")
+    mutation_profile_payload = (
+        config.mutation_profile.to_dict()
+        if hasattr(config.mutation_profile, "to_dict")
+        else dict(config.mutation_profile or {})
+    )
+    print(f"Mutation profile payload: {mutation_profile_payload}")
     print(
-        "Experimental space: "
-        f"signal_pack={experimental_space_snapshot.signal_pack_name} | "
-        f"genome_schema={experimental_space_snapshot.genome_schema_name} | "
-        f"gene_catalog={experimental_space_snapshot.gene_type_catalog_name} | "
-        f"decision_policy={experimental_space_snapshot.decision_policy_name} | "
-        f"mutation_profile_definition={experimental_space_snapshot.mutation_profile_name} | "
-        f"preset={experimental_space_snapshot.experiment_preset_name or 'none'}"
+        "Experimental space stack: "
+        f"{format_experimental_space_stack_label(experimental_space_snapshot.to_dict())}"
     )
     print(
         f"Datasets -> train={len(train_dataset_paths)} | "
@@ -756,6 +776,8 @@ def execute_historical_run(
                 max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
                 signal_pack_name=config.signal_pack_name,
                 decision_policy_name=config.decision_policy_name,
+                market_mode_name=config.market_mode_name,
+                leverage=config.leverage,
             )
             for path in sampled_train_paths
         ]
@@ -769,6 +791,8 @@ def execute_historical_run(
                 max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
                 signal_pack_name=config.signal_pack_name,
                 decision_policy_name=config.decision_policy_name,
+                market_mode_name=config.market_mode_name,
+                leverage=config.leverage,
             )
             for path in validation_dataset_paths
         ]
@@ -1116,6 +1140,8 @@ def execute_historical_run(
                     max_realized_volatility_for_entry=config.max_realized_volatility_for_entry,
                     signal_pack_name=config.signal_pack_name,
                     decision_policy_name=config.decision_policy_name,
+                    market_mode_name=config.market_mode_name,
+                    leverage=config.leverage,
                 )
                 external_validation_metrics = build_external_validation_metrics(
                     evaluation=external_validation_evaluation,
@@ -1181,6 +1207,10 @@ def execute_historical_run(
     summary_lines = [
         "",
         "Final summary",
+        (
+            "Experimental space stack: "
+            f"{format_experimental_space_stack_label(experimental_space_snapshot.to_dict())}"
+        ),
         f"Best train selection score: {best_train_selection_score:.4f}",
         f"Best train profit: {best_train_profit:.4f}",
         f"Final validation selection score: {final_validation_selection_score:.4f}",

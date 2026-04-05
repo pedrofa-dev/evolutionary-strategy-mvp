@@ -1,14 +1,20 @@
 import sqlite3
 from pathlib import Path
 
+from evo_system.experimental_space.identity import build_runtime_component_fingerprint
 from evo_system.storage.persistence_store import (
+    CANONICAL_INDEX_NAMES,
+    CANONICAL_TABLE_NAMES,
     CURRENT_LOGIC_VERSION,
+    DEFAULT_PERSISTENCE_DB_PATH,
     PersistenceStore,
     build_execution_fingerprint,
     hash_config_snapshot,
     hash_genome_snapshot,
     utc_now_iso,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_config_snapshot(seed: int = 101) -> dict:
@@ -58,27 +64,44 @@ def test_initialize_creates_redesigned_tables_and_indexes(tmp_path: Path) -> Non
     table_names = {row[0] for row in table_rows}
     index_names = {row[0] for row in index_rows}
 
-    assert {
-        "multiseed_runs",
-        "run_executions",
-        "champions",
-        "champion_analyses",
-        "champion_analysis_members",
-        "champion_evaluations",
-        "champion_evaluation_members",
-    }.issubset(table_names)
+    assert set(CANONICAL_TABLE_NAMES).issubset(table_names)
+    assert set(CANONICAL_INDEX_NAMES).issubset(index_names)
 
-    assert "idx_run_executions_execution_fingerprint" in index_names
-    assert "idx_run_executions_run_id" in index_names
-    assert "idx_run_executions_config_hash" in index_names
-    assert "idx_run_executions_logic_version" in index_names
-    assert "idx_champions_run_execution_id" in index_names
-    assert "idx_champions_run_id" in index_names
-    assert "idx_champions_champion_type" in index_names
-    assert "idx_champions_config_hash" in index_names
-    assert "idx_champions_logic_version" in index_names
-    assert "idx_champion_analyses_multiseed_run_id" in index_names
-    assert "idx_champion_evaluations_multiseed_run_id" in index_names
+
+def test_default_persistence_path_and_no_parallel_legacy_store() -> None:
+    assert DEFAULT_PERSISTENCE_DB_PATH == Path("data/evolution_v2.db")
+    assert not Path("src/evo_system/storage/sqlite_store.py").exists()
+
+
+def test_no_parallel_sqlite_writer_exists_in_src_tree() -> None:
+    python_files = list((REPO_ROOT / "src").rglob("*.py"))
+
+    sqlite_write_connect_users = []
+    direct_sql_writers = []
+
+    for file_path in python_files:
+        relative_path = file_path.relative_to(REPO_ROOT).as_posix()
+        text = file_path.read_text(encoding="utf-8")
+
+        if "sqlite3.connect(" in text and relative_path not in {
+            "src/evo_system/storage/persistence_store.py",
+            "src/evo_system/storage/run_read_repository.py",
+        }:
+            sqlite_write_connect_users.append(relative_path)
+
+        if relative_path != "src/evo_system/storage/persistence_store.py" and any(
+            token in text
+            for token in (
+                "INSERT INTO ",
+                "UPDATE run_executions",
+                "UPDATE champions",
+                "CREATE TABLE IF NOT EXISTS ",
+            )
+        ):
+            direct_sql_writers.append(relative_path)
+
+    assert sqlite_write_connect_users == []
+    assert direct_sql_writers == []
 
 
 def test_save_multiseed_run_stores_no_champion_status_fields(tmp_path: Path) -> None:
@@ -164,6 +187,8 @@ def test_save_run_execution_and_find_by_fingerprint(tmp_path: Path) -> None:
             "decision_policy_name": "policy_v2_default",
             "mutation_profile_name": "default_runtime_profile",
             "mutation_profile": {},
+            "market_mode_name": "spot",
+            "leverage": 1.0,
             "experiment_preset_name": "standard",
         },
         resolved_dataset_root="data/datasets",
@@ -185,7 +210,36 @@ def test_save_run_execution_and_find_by_fingerprint(tmp_path: Path) -> None:
     assert loaded["config_json_snapshot"]["dataset_catalog_id"] == "core_1h_spot"
     assert loaded["dataset_context_json"]["train_count"] == 1
     assert loaded["experimental_space_snapshot_json"]["signal_pack_name"] == "policy_v21_default"
+    assert loaded["experimental_space_snapshot_json"]["leverage"] == 1.0
     assert loaded["resolved_dataset_root"] == "data/datasets"
+
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT
+                config_hash,
+                effective_seed,
+                dataset_catalog_id,
+                dataset_signature,
+                logic_version,
+                execution_fingerprint,
+                runtime_component_fingerprint
+            FROM run_executions
+            WHERE id = ?
+            """,
+            (execution_id,),
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] == hash_config_snapshot(config_snapshot)
+    assert row[1] == 101
+    assert row[2] == "core_1h_spot"
+    assert row[3] == "sig-001"
+    assert row[4] == CURRENT_LOGIC_VERSION
+    assert row[5] == fingerprint
+    assert row[6] == build_runtime_component_fingerprint(
+        loaded["experimental_space_snapshot_json"]
+    )
 
 
 def test_save_champion_persists_snapshots_and_hashes(tmp_path: Path) -> None:
@@ -240,6 +294,8 @@ def test_save_champion_persists_snapshots_and_hashes(tmp_path: Path) -> None:
             "decision_policy_name": "policy_v2_default",
             "mutation_profile_name": "default_runtime_profile",
             "mutation_profile": {},
+            "market_mode_name": "spot",
+            "leverage": 1.0,
             "experiment_preset_name": "standard",
         },
         dataset_catalog_id="core_1h_spot",
@@ -444,7 +500,7 @@ def test_execution_fingerprint_changes_when_logic_version_changes() -> None:
         logic_version=CURRENT_LOGIC_VERSION,
     )
 
-    assert CURRENT_LOGIC_VERSION == "v13"
+    assert CURRENT_LOGIC_VERSION == "v15"
     assert previous_fingerprint != current_fingerprint
 
 
@@ -485,6 +541,8 @@ def test_execution_fingerprint_is_not_affected_by_modular_identity_metadata(
             experimental_space_snapshot_json={
                 "signal_pack_name": "policy_v21_default",
                 "decision_policy_name": "policy_v2_default",
+                "market_mode_name": "spot",
+                "leverage": 1.0,
             },
         )
         second_id = store.save_run_execution(
@@ -501,6 +559,8 @@ def test_execution_fingerprint_is_not_affected_by_modular_identity_metadata(
             experimental_space_snapshot_json={
                 "signal_pack_name": "other_signal_pack",
                 "decision_policy_name": "other_decision_policy",
+                "market_mode_name": "futures",
+                "leverage": 1.0,
             },
         )
 

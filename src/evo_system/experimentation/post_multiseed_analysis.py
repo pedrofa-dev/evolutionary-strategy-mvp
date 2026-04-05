@@ -8,6 +8,10 @@ from typing import Any
 import uuid
 
 from evo_system.domain.run_summary import HistoricalRunSummary
+from evo_system.experimental_space.identity import (
+    format_experimental_space_summary_label,
+    list_experimental_space_stack_labels,
+)
 from evo_system.experimentation.dataset_roots import DEFAULT_DATASET_ROOT
 from evo_system.experimentation.persisted_champion_reevaluation import (
     build_reevaluation_rows,
@@ -65,7 +69,6 @@ def build_multiseed_quick_summary_lines(
     audit_summary = decision_payload["audit_summary"]
     best_candidate = decision_payload.get("best_candidate") or {}
     experimental_space_summary = decision_payload.get("experimental_space_summary") or {}
-    stack_labels = experimental_space_summary.get("stack_labels") or []
 
     lines = [
         f"Multiseed: {multiseed_dir.name}",
@@ -78,11 +81,7 @@ def build_multiseed_quick_summary_lines(
             f"failed={decision_payload['runs_failed']}"
         ),
         f"Dataset root: {dataset_root_label}",
-        (
-            "Modules: "
-            f"{experimental_space_summary.get('stack_mode', 'unknown')} | "
-            f"{stack_labels[0] if stack_labels else 'unknown'}"
-        ),
+        f"Modules: {format_experimental_space_summary_label(experimental_space_summary)}",
         f"Champions found: {decision_payload['champion_count']}",
         (
             "Best champion: "
@@ -668,14 +667,12 @@ def write_multiseed_champions_summary(
         "Active modular components",
     ]
 
-    stack_labels = (
-        (decision_payload.get("experimental_space_summary") or {}).get("stack_labels") or []
+    stack_labels = list_experimental_space_stack_labels(
+        decision_payload.get("experimental_space_summary")
     )
     if stack_labels:
         for label in stack_labels:
             lines.append(f"  {label}")
-    else:
-        lines.append("  unknown")
 
     lines.extend([
         "",

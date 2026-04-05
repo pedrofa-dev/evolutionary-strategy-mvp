@@ -7,6 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from evo_system.experimental_space.identity import (
+    format_experimental_space_summary_label,
+    list_experimental_space_stack_labels,
+    summarize_experimental_space_snapshots,
+)
 from evo_system.reporting.champion_card import build_champion_card
 from evo_system.reporting.champion_loader import flatten_champion, load_champions
 from evo_system.reporting.champion_queries import (
@@ -285,6 +290,31 @@ def format_context_warning_block(warnings: list[str]) -> list[str]:
     return lines
 
 
+def build_modular_identity_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return summarize_experimental_space_snapshots(
+        [
+            {
+                "signal_pack_name": row.get("signal_pack_name"),
+                "genome_schema_name": row.get("genome_schema_name"),
+                "gene_type_catalog_name": row.get("gene_type_catalog_name"),
+                "decision_policy_name": row.get("decision_policy_name"),
+                "mutation_profile_name": row.get("mutation_profile_name"),
+                "experiment_preset_name": row.get("experiment_preset_name"),
+            }
+            for row in rows
+        ]
+    )
+
+
+def format_modular_identity_block(summary: dict[str, Any]) -> list[str]:
+    lines = ["Modular identity summary"]
+    lines.append(f"  modules={format_experimental_space_summary_label(summary)}")
+    for label in list_experimental_space_stack_labels(summary):
+        lines.append(f"  {label}")
+    lines.append("")
+    return lines
+
+
 def format_patterns_block(patterns: dict[str, Any]) -> list[str]:
     lines = ["Recurrent patterns"]
 
@@ -378,6 +408,7 @@ def write_report(
     context_summary = build_context_summary(rows)
     context_config_summary = build_context_config_summary(rows)
     config_summary = build_config_summary(rows)
+    modular_identity_summary = build_modular_identity_summary(rows)
     context_warnings = build_context_mix_warnings(rows)
     patterns = detect_recurrent_patterns(
         rows,
@@ -395,6 +426,7 @@ def write_report(
         f"Champion type filter: {champion_type or 'none'}",
         "",
     ]
+    lines.extend(format_modular_identity_block(modular_identity_summary))
     lines.extend(format_context_warning_block(context_warnings))
     lines.extend(format_context_summary_block(context_summary))
     lines.extend(format_context_config_summary_block(context_config_summary))
@@ -416,6 +448,7 @@ def write_report(
         "signal_pair_summary": pair_summary,
         "context_summary": context_summary,
         "context_config_summary": context_config_summary,
+        "modular_identity_summary": modular_identity_summary,
         "context_warnings": context_warnings,
         "config_summary": config_summary,
         "patterns": patterns,

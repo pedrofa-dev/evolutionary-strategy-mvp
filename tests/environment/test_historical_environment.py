@@ -773,3 +773,79 @@ def test_historical_environment_explicit_default_decision_policy_preserves_resul
     )
 
     assert default_environment.get_episode_diagnostics(agent) == explicit_environment.get_episode_diagnostics(agent)
+
+
+def test_historical_environment_explicit_spot_market_mode_preserves_results() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 104, 99, 103),
+        HistoricalCandle("3", 103, 108, 102, 107),
+        HistoricalCandle("4", 107, 111, 106, 110),
+        HistoricalCandle("5", 110, 115, 109, 114),
+        HistoricalCandle("6", 114, 118, 113, 117),
+    ]
+    agent = _agent(
+        policy_v2_enabled=True,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=1.0,
+            momentum_weight=0.5,
+            breakout_weight=0.25,
+            range_weight=0.0,
+            volatility_weight=-0.5,
+            entry_score_threshold=0.2,
+            min_positive_families=1,
+            require_trend_or_breakout=True,
+        ),
+        exit_policy=ExitPolicyGene(
+            exit_score_threshold=-0.1,
+            stop_loss_pct=0.05,
+            take_profit_pct=0.10,
+        ),
+        trade_control=TradeControlGene(),
+    )
+
+    default_environment = HistoricalEnvironment(candles)
+    explicit_environment = HistoricalEnvironment(
+        candles,
+        market_mode_name="spot",
+        leverage=1.0,
+    )
+
+    assert default_environment.get_episode_diagnostics(agent) == explicit_environment.get_episode_diagnostics(agent)
+
+
+def test_historical_environment_accepts_futures_mode_with_unit_leverage() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 104, 99, 103),
+        HistoricalCandle("3", 103, 108, 102, 107),
+    ]
+
+    environment = HistoricalEnvironment(
+        candles,
+        market_mode_name="futures",
+        leverage=1.0,
+    )
+
+    assert environment.market_mode.name == "futures"
+    assert environment.leverage == 1.0
+
+
+def test_historical_environment_rejects_non_unit_futures_leverage_in_v1() -> None:
+    candles = [
+        HistoricalCandle("1", 100, 100, 100, 100),
+        HistoricalCandle("2", 100, 104, 99, 103),
+        HistoricalCandle("3", 103, 108, 102, 107),
+    ]
+
+    try:
+        HistoricalEnvironment(
+            candles,
+            market_mode_name="futures",
+            leverage=2.0,
+        )
+    except ValueError as exc:
+        assert "supports leverage=1.0 only" in str(exc)
+    else:
+        raise AssertionError("Expected futures leverage validation to fail.")

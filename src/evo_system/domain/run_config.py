@@ -32,6 +32,8 @@ class RunConfig:
     genome_schema_name: str = "policy_v2_default"
     decision_policy_name: str = "policy_v2_default"
     mutation_profile_name: str = "default_runtime_profile"
+    market_mode_name: str = "spot"
+    leverage: float = 1.0
     seeds: list[int] | None = None
     seed_start: int | None = None
     seed_count: int | None = None
@@ -98,9 +100,18 @@ class RunConfig:
             ("genome_schema_name", self.genome_schema_name),
             ("decision_policy_name", self.decision_policy_name),
             ("mutation_profile_name", self.mutation_profile_name),
+            ("market_mode_name", self.market_mode_name),
         ):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{field_name} is required")
+
+        if not math.isfinite(self.leverage) or self.leverage <= 0.0:
+            raise ValueError("leverage must be a finite number greater than 0.0")
+
+        from evo_system.experimental_space import get_market_mode
+
+        market_mode = get_market_mode(self.market_mode_name)
+        market_mode.validate_runtime_config(leverage=self.leverage)
 
         if self.seeds is not None:
             if not self.seeds:

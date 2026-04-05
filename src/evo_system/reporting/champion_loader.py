@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from evo_system.experimental_space.identity import (
+    format_experimental_space_stack_label,
+    normalize_experimental_space_snapshot,
+)
 from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH, PersistenceStore
 
 
@@ -21,6 +25,7 @@ class ChampionRow:
     config_snapshot: dict[str, Any]
     dataset_catalog_id: str | None
     dataset_signature: str | None
+    experimental_space_snapshot: dict[str, Any] | None
 
 
 def build_normalized_metrics(champion_row: dict[str, Any]) -> dict[str, Any]:
@@ -115,6 +120,9 @@ def load_champions(
                 config_snapshot=dict(champion_row.get("config_json_snapshot") or {}),
                 dataset_catalog_id=champion_row.get("dataset_catalog_id"),
                 dataset_signature=champion_row.get("dataset_signature"),
+                experimental_space_snapshot=normalize_experimental_space_snapshot(
+                    champion_row.get("experimental_space_snapshot_json")
+                ),
             )
         )
     return rows
@@ -159,6 +167,9 @@ def resolve_champion_type(champion: ChampionRow) -> str | None:
 
 def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
     stored_config_name = resolve_config_name(champion)
+    normalized_snapshot = normalize_experimental_space_snapshot(
+        champion.experimental_space_snapshot
+    )
 
     return {
         "id": champion.id,
@@ -225,5 +236,36 @@ def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
         "validation_violations": champion.metrics.get("validation_violations", []),
         "train_is_valid": champion.metrics.get("train_is_valid"),
         "validation_is_valid": champion.metrics.get("validation_is_valid"),
+        "signal_pack_name": (
+            normalized_snapshot["signal_pack_name"]
+            if normalized_snapshot is not None
+            else "unknown"
+        ),
+        "genome_schema_name": (
+            normalized_snapshot["genome_schema_name"]
+            if normalized_snapshot is not None
+            else "unknown"
+        ),
+        "gene_type_catalog_name": (
+            normalized_snapshot["gene_type_catalog_name"]
+            if normalized_snapshot is not None
+            else "unknown"
+        ),
+        "decision_policy_name": (
+            normalized_snapshot["decision_policy_name"]
+            if normalized_snapshot is not None
+            else "unknown"
+        ),
+        "mutation_profile_name": (
+            normalized_snapshot["mutation_profile_name"]
+            if normalized_snapshot is not None
+            else "unknown"
+        ),
+        "experiment_preset_name": (
+            normalized_snapshot.get("experiment_preset_name")
+            if normalized_snapshot is not None
+            else None
+        ),
+        "modular_stack_label": format_experimental_space_stack_label(normalized_snapshot),
         **champion.genome,
     }

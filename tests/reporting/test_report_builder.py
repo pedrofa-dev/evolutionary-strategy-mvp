@@ -1,4 +1,5 @@
 import csv
+import json
 import sqlite3
 from pathlib import Path
 
@@ -46,7 +47,13 @@ def test_export_flat_csv_supports_rows_with_new_genome_weights(tmp_path) -> None
     assert exported_rows[1]["weight_breakout"] == "-0.4"
 
 
-def seed_champion(database_path: Path, *, run_id: str, config_name: str) -> int:
+def seed_champion(
+    database_path: Path,
+    *,
+    run_id: str,
+    config_name: str,
+    experimental_space_snapshot_json: dict | None = None,
+) -> int:
     store = PersistenceStore(database_path)
     store.initialize()
     multiseed_run_id = store.save_multiseed_run(
@@ -123,6 +130,7 @@ def seed_champion(database_path: Path, *, run_id: str, config_name: str) -> int:
             "validation_trades": 12,
             "selection_gap": 0.2,
         },
+        experimental_space_snapshot_json=experimental_space_snapshot_json,
     )
 
 
@@ -178,3 +186,54 @@ def test_analyze_champions_supports_multiple_run_ids_and_champion_type(
 
     assert result is not None
     assert result["champion_count"] == 2
+
+
+def test_analyze_champions_surfaces_modular_identity_and_legacy_fallback(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "evolution_v2.db"
+    output_dir = tmp_path / "analysis"
+    seed_champion(
+        database_path,
+        run_id="run-001",
+        config_name="config_a.json",
+        experimental_space_snapshot_json={
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "modular_genome_v1",
+            "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "mutation_profile": {},
+            "market_mode_name": "spot",
+            "leverage": 1.0,
+            "experiment_preset_name": "standard",
+        },
+    )
+    seed_champion(
+        database_path,
+        run_id="run-002",
+        config_name="config_b.json",
+        experimental_space_snapshot_json=None,
+    )
+
+    result = analyze_champions(
+        db_path=database_path,
+        output_dir=output_dir,
+        run_ids=["run-001", "run-002"],
+        persist_analysis=False,
+    )
+
+    assert result is not None
+    report_text = result["report_path"].read_text(encoding="utf-8")
+    champion_card = result["champion_card"]
+    csv_text = result["csv_path"].read_text(encoding="utf-8")
+
+    assert "Modular identity summary" in report_text
+    assert "modules=mixed_stacks | signal_pack=policy_v21_default" in report_text
+    assert "signal_pack_name" in csv_text
+    assert "modular_stack_label" in csv_text
+    assert "primary_stack_label" in json.dumps(result["report_data"]["modular_identity_summary"])
+    assert champion_card["modular_identity"]["stack_label"] in {
+        "signal_pack=policy_v21_default | genome_schema=modular_genome_v1 | gene_catalog=modular_genome_v1_gene_catalog | decision_policy=policy_v2_default | mutation_profile=default_runtime_profile | market_mode=spot | leverage=1.0 | preset=standard",
+        "unknown",
+    }

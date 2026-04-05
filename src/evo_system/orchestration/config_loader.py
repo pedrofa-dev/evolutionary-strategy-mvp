@@ -62,6 +62,8 @@ def load_run_config(config_path: str) -> RunConfig:
         mutation_profile_name=str(
             data.get("mutation_profile_name", "default_runtime_profile")
         ),
+        market_mode_name=str(data.get("market_mode_name", "spot")),
+        leverage=float(data.get("leverage", 1.0)),
         mutation_profile=mutation_profile,
         dataset_catalog_id=data["dataset_catalog_id"],
         seeds=(

@@ -25,7 +25,23 @@ def build_summary(
     run_id: str,
     selection: float,
     profit: float,
+    experimental_space_snapshot=...,
 ) -> HistoricalRunSummary:
+    resolved_snapshot = (
+        {
+            "signal_pack_name": "policy_v21_default",
+            "genome_schema_name": "modular_genome_v1",
+            "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
+            "decision_policy_name": "policy_v2_default",
+            "mutation_profile_name": "default_runtime_profile",
+            "mutation_profile": {},
+            "market_mode_name": "spot",
+            "leverage": 1.0,
+            "experiment_preset_name": "standard",
+        }
+        if experimental_space_snapshot is ...
+        else experimental_space_snapshot
+    )
     return HistoricalRunSummary(
         config_name=config_name,
         run_id=run_id,
@@ -41,15 +57,7 @@ def build_summary(
         train_validation_selection_gap=0.1,
         train_validation_profit_gap=0.01,
         config_path=tmp_path / config_name,
-        experimental_space_snapshot={
-            "signal_pack_name": "policy_v21_default",
-            "genome_schema_name": "modular_genome_v1",
-            "gene_type_catalog_name": "modular_genome_v1_gene_catalog",
-            "decision_policy_name": "policy_v2_default",
-            "mutation_profile_name": "default_runtime_profile",
-            "mutation_profile": {},
-            "experiment_preset_name": "standard",
-        },
+        experimental_space_snapshot=resolved_snapshot,
     )
 
 
@@ -324,6 +332,44 @@ def test_run_post_multiseed_analysis_generates_expected_artifacts(tmp_path: Path
     assert analysis_member_count == 1
     assert [row[0] for row in evaluation_rows] == ["audit", "external"]
     assert evaluation_member_count == 2
+
+
+def test_run_post_multiseed_analysis_reports_unknown_modules_for_legacy_summaries(
+    tmp_path: Path,
+) -> None:
+    multiseed_dir = tmp_path / "multiseed_20260330_120500"
+    multiseed_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = multiseed_dir / "multiseed_run_summary.txt"
+    summary_path.write_text("summary", encoding="utf-8")
+
+    run_post_multiseed_analysis(
+        multiseed_dir=multiseed_dir,
+        summary_path=summary_path,
+        run_summaries=[
+            build_summary(
+                tmp_path,
+                config_name="run_a.json",
+                run_id="run-legacy",
+                selection=1.0,
+                profit=0.01,
+                experimental_space_snapshot=None,
+            )
+        ],
+        dataset_root_label="data\\datasets",
+        persistence_db_path=tmp_path / "empty.db",
+        failures=[],
+        seeds_planned=1,
+        seeds_executed=1,
+        seeds_reused=0,
+    )
+
+    quick_summary = (multiseed_dir / MULTISEED_QUICK_SUMMARY_NAME).read_text(encoding="utf-8")
+    champions_summary = (
+        multiseed_dir / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME
+    ).read_text(encoding="utf-8")
+
+    assert "Modules: unknown | unknown" in quick_summary
+    assert "  unknown" in champions_summary
 
 
 def test_run_post_multiseed_analysis_handles_no_champions_and_missing_datasets(tmp_path: Path) -> None:

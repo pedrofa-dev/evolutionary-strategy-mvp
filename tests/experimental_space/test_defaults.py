@@ -1,3 +1,5 @@
+import pytest
+
 from evo_system.domain.genome import (
     EntryContextGene,
     EntryTriggerGene,
@@ -13,11 +15,14 @@ from evo_system.experimental_space import (
     genome_schema_registry,
     get_default_decision_policy,
     get_default_genome_schema,
+    get_default_market_mode,
     get_default_mutation_profile_definition,
     get_default_signal_pack,
     get_genome_schema,
+    get_market_mode,
     get_mutation_profile_definition,
     get_signal_pack,
+    market_mode_registry,
     mutation_profile_registry,
     signal_pack_registry,
 )
@@ -42,6 +47,7 @@ def test_default_registries_expose_phase_one_components() -> None:
     assert genome_schema_registry.default_name == "policy_v2_default"
     assert decision_policy_registry.default_name == "policy_v2_default"
     assert mutation_profile_registry.default_name == "default_runtime_profile"
+    assert market_mode_registry.default_name == "spot"
     assert "modular_genome_v1" in genome_schema_registry.list_names()
 
 
@@ -49,6 +55,7 @@ def test_component_registries_resolve_named_defaults_explicitly() -> None:
     assert get_signal_pack("policy_v21_default").name == "policy_v21_default"
     assert get_genome_schema("modular_genome_v1").name == "modular_genome_v1"
     assert get_decision_policy("policy_v2_default").name == "policy_v2_default"
+    assert get_market_mode("spot").name == "spot"
     assert (
         get_mutation_profile_definition("default_runtime_profile").name
         == "default_runtime_profile"
@@ -373,8 +380,82 @@ def test_runner_and_environment_expose_default_modular_components() -> None:
 
     assert environment.signal_pack.name == "policy_v21_default"
     assert environment.decision_policy.name == "policy_v2_default"
+    assert environment.market_mode.name == "spot"
     assert runner.genome_schema.name == "policy_v2_default"
     assert runner.mutation_profile_definition.name == "default_runtime_profile"
+
+
+def test_default_market_mode_preserves_current_runtime_mode() -> None:
+    market_mode = get_default_market_mode()
+
+    assert market_mode.name == "spot"
+    assert market_mode.flat_position == "flat"
+    assert market_mode.get_default_entry_position() == "long"
+    assert market_mode.can_transition("flat", "long") is True
+    assert market_mode.can_transition("long", "flat") is True
+    assert market_mode.can_transition("flat", "short") is False
+
+
+def test_futures_market_mode_supports_long_and_short_with_v1_leverage_only() -> None:
+    market_mode = get_market_mode("futures")
+
+    market_mode.validate_runtime_config(leverage=1.0)
+
+    assert market_mode.can_transition("flat", "long") is True
+    assert market_mode.can_transition("flat", "short") is True
+    assert market_mode.can_transition("short", "flat") is True
+    assert market_mode.calculate_trade_return(
+        entry_price=100.0,
+        current_price=90.0,
+        position="short",
+    ) == 0.1
+    assert market_mode.calculate_trade_return(
+        entry_price=100.0,
+        current_price=110.0,
+        position="short",
+    ) == -0.1
+    net_profit, trade_cost = market_mode.close_trade(
+        trade_return=0.1,
+        position_size=1.0,
+        trade_cost_rate=0.01,
+        position="short",
+        leverage=1.0,
+    )
+    assert net_profit == pytest.approx(0.09)
+    assert trade_cost == pytest.approx(0.01)
+
+    with pytest.raises(ValueError, match="supports leverage=1.0 only"):
+        market_mode.validate_runtime_config(leverage=2.0)
+
+
+def test_spot_market_mode_rejects_short_and_non_unit_leverage() -> None:
+    market_mode = get_market_mode("spot")
+
+    assert market_mode.can_transition("flat", "short") is False
+    assert market_mode.calculate_trade_return(
+        entry_price=100.0,
+        current_price=110.0,
+        position="long",
+    ) == 0.1
+    net_profit, trade_cost = market_mode.close_trade(
+        trade_return=0.1,
+        position_size=1.0,
+        trade_cost_rate=0.01,
+        position="long",
+        leverage=1.0,
+    )
+    assert net_profit == pytest.approx(0.09)
+    assert trade_cost == pytest.approx(0.01)
+
+    with pytest.raises(ValueError, match="supports leverage=1.0 only"):
+        market_mode.validate_runtime_config(leverage=2.0)
+
+    with pytest.raises(ValueError, match="spot does not support short positions"):
+        market_mode.calculate_trade_return(
+            entry_price=100.0,
+            current_price=90.0,
+            position="short",
+        )
 
 
 def test_default_genome_schema_builds_active_policy_v2_genomes() -> None:

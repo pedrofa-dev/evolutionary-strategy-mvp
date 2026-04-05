@@ -7,9 +7,11 @@ from evo_system.domain.episode_result import EpisodeResult
 from evo_system.domain.historical_candle import HistoricalCandle
 from evo_system.experimental_space.base import EntryDecision, ExitDecision
 from evo_system.experimental_space import (
+    get_default_market_mode,
     get_decision_policy,
     get_default_decision_policy,
     get_default_signal_pack,
+    get_market_mode,
     get_signal_pack,
 )
 
@@ -44,6 +46,8 @@ class HistoricalEnvironment:
         max_realized_volatility_for_entry: float | None = None,
         signal_pack_name: str | None = None,
         decision_policy_name: str | None = None,
+        market_mode_name: str | None = None,
+        leverage: float = 1.0,
     ) -> None:
         if not candles:
             raise ValueError("candles cannot be empty")
@@ -67,6 +71,13 @@ class HistoricalEnvironment:
             if decision_policy_name is not None
             else get_default_decision_policy()
         )
+        self.market_mode = (
+            get_market_mode(market_mode_name)
+            if market_mode_name is not None
+            else get_default_market_mode()
+        )
+        self.market_mode.validate_runtime_config(leverage=leverage)
+        self.leverage = leverage
 
         self._closes = [candle.close for candle in candles]
         self._highs = [candle.high for candle in candles]
@@ -113,7 +124,7 @@ class HistoricalEnvironment:
         # - It delegates signal derivation to SignalPack and policy semantics
         #   to DecisionPolicy, then applies the resulting decisions in a
         #   deterministic market replay.
-        in_position = False
+        position_state = self.market_mode.flat_position
         entry_price = 0.0
         entry_index: int | None = None
         last_closed_index: int | None = None
@@ -215,6 +226,7 @@ class HistoricalEnvironment:
                 entry_signal_ok = setup_ok and trigger_ok
                 required_confirmation_bars = genome.entry_confirmation_bars
 
+            in_position = position_state != self.market_mode.flat_position
             if not in_position:
                 if entry_signal_ok:
                     consecutive_entry_signal_bars += 1
@@ -234,7 +246,10 @@ class HistoricalEnvironment:
                 )
 
                 if should_open:
-                    in_position = True
+                    next_position = self.market_mode.get_default_entry_position()
+                    if not self.market_mode.can_transition(position_state, next_position):
+                        continue
+                    position_state = next_position
                     entry_price = candle.close
                     entry_index = index
                     trades += 1
@@ -242,7 +257,11 @@ class HistoricalEnvironment:
 
             else:
                 consecutive_entry_signal_bars = 0
-                trade_return = self._get_trade_return(entry_price, candle.close)
+                trade_return = self.market_mode.calculate_trade_return(
+                    entry_price=entry_price,
+                    current_price=candle.close,
+                    position=position_state,
+                )
                 holding_bars = 0 if entry_index is None else index - entry_index
 
                 if genome.policy_v2_enabled:
@@ -271,18 +290,23 @@ class HistoricalEnvironment:
                     net_trade_profit, trade_cost = self._close_trade(
                         trade_return=trade_return,
                         position_size=genome.position_size,
+                        position=position_state,
                     )
                     profit += net_trade_profit
                     total_cost += trade_cost
-                    in_position = False
+                    position_state = self.market_mode.flat_position
                     entry_price = 0.0
                     entry_index = None
                     last_closed_index = index
 
             unrealized = 0.0
-            if in_position:
+            if position_state != self.market_mode.flat_position:
                 unrealized = (
-                    self._get_trade_return(entry_price, candle.close)
+                    self.market_mode.calculate_trade_return(
+                        entry_price=entry_price,
+                        current_price=candle.close,
+                        position=position_state,
+                    )
                     * genome.position_size
                 )
 
@@ -290,12 +314,17 @@ class HistoricalEnvironment:
             peak_equity = max(peak_equity, equity)
             max_drawdown = max(max_drawdown, peak_equity - equity)
 
-        if in_position:
+        if position_state != self.market_mode.flat_position:
             final_close = self.candles[-1].close
-            final_return = self._get_trade_return(entry_price, final_close)
+            final_return = self.market_mode.calculate_trade_return(
+                entry_price=entry_price,
+                current_price=final_close,
+                position=position_state,
+            )
             net_trade_profit, trade_cost = self._close_trade(
                 trade_return=final_return,
                 position_size=genome.position_size,
+                position=position_state,
             )
             profit += net_trade_profit
             total_cost += trade_cost
@@ -307,11 +336,19 @@ class HistoricalEnvironment:
             "cost": total_cost,
         }
 
-    def _close_trade(self, trade_return: float, position_size: float) -> tuple[float, float]:
-        gross_profit = trade_return * position_size
-        trade_cost = self.trade_cost_rate * position_size
-        net_profit = gross_profit - trade_cost
-        return net_profit, trade_cost
+    def _close_trade(
+        self,
+        trade_return: float,
+        position_size: float,
+        position: str,
+    ) -> tuple[float, float]:
+        return self.market_mode.close_trade(
+            trade_return=trade_return,
+            position_size=position_size,
+            trade_cost_rate=self.trade_cost_rate,
+            position=position,
+            leverage=self.leverage,
+        )
 
     @staticmethod
     def _passes_entry_cooldown(
@@ -867,13 +904,6 @@ class HistoricalEnvironment:
 
         start = max(1, index - window + 1)
         return returns_series[start : index + 1]
-
-    @staticmethod
-    def _get_trade_return(entry_price: float, current_price: float) -> float:
-        if entry_price <= 0.0:
-            return 0.0
-
-        return (current_price - entry_price) / entry_price
 
     @staticmethod
     def _safe_ratio(numerator: float, denominator: float) -> float:
