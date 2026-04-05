@@ -1,0 +1,30 @@
+{
+  "id": "core_policy_v21_signals_v1",
+  "signals": [
+    {
+      "signal_id": "trend_strength_medium_v1",
+      "params": {
+        "source": "trend_strength_medium"
+      }
+    },
+    {
+      "signal_id": "trend_strength_long_v1",
+      "params": {
+        "source": "trend_strength_long"
+      }
+    },
+    {
+      "signal_id": "momentum_short_v1",
+      "params": {
+        "source": "momentum_short"
+      }
+    },
+    {
+      "signal_id": "breakout_strength_medium_v1",
+      "params": {
+        "source": "breakout_strength_medium"
+      },
+      "alias": "breakout_core"
+    }
+  ]
+}

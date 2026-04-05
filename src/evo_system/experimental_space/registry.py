@@ -9,10 +9,20 @@ T = TypeVar("T")
 
 @dataclass
 class NamedRegistry(Generic[T]):
-    """Minimal registry used by phase-1 modularization defaults.
+    """Minimal typed registry for modular experimental-space components.
 
-    The goal is to make future modular selection explicit without changing the
-    effective runtime behavior in the current phase.
+    Why it exists:
+    - The core already selects schemas, policies, signal packs, and presets by
+      name.
+    - A shared registry keeps that selection explicit and prepares the codebase
+      for future plugin-style registration without changing runtime semantics.
+
+    Compatibility:
+    - ``list()`` returns registered names in sorted order.
+    - ``list_names()`` is kept as an explicit alias for existing callers and
+      for code that wants the intent spelled out.
+    - ``has()`` provides a non-throwing existence check for future loading
+      paths.
     """
 
     _items: dict[str, T] = field(default_factory=dict)
@@ -38,8 +48,16 @@ class NamedRegistry(Generic[T]):
 
         return self._items[self._default_name]
 
-    def list_names(self) -> list[str]:
+    def list(self) -> list[str]:
+        """Return registered names in sorted order."""
         return sorted(self._items)
+
+    def list_names(self) -> list[str]:
+        """Explicit alias for ``list()`` kept for compatibility/readability."""
+        return self.list()
+
+    def has(self, name: str) -> bool:
+        return name in self._items
 
     @property
     def default_name(self) -> str | None:

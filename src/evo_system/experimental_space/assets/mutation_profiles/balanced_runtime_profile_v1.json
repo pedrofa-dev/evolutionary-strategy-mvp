@@ -1,0 +1,10 @@
+{
+  "id": "balanced_runtime_profile_v1",
+  "profile": {
+    "strong_mutation_probability": 0.1,
+    "numeric_delta_scale": 1.0,
+    "flag_flip_probability": 0.05,
+    "weight_delta": 0.2,
+    "window_step_mode": "default"
+  }
+}

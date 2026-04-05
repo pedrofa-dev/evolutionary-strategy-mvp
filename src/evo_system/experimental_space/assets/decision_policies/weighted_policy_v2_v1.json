@@ -1,0 +1,25 @@
+{
+  "id": "weighted_policy_v2_v1",
+  "engine": "policy_v2_default_engine",
+  "entry": {
+    "trigger_gene": "entry_trigger",
+    "signals": [
+      {
+        "signal": "trend",
+        "weight_gene_field": "trend_weight"
+      },
+      {
+        "signal": "momentum",
+        "weight_gene_field": "momentum_weight"
+      },
+      {
+        "signal": "breakout",
+        "weight_gene_field": "breakout_weight"
+      }
+    ]
+  },
+  "exit": {
+    "policy_gene": "exit_policy",
+    "trade_control_gene": "trade_control"
+  }
+}

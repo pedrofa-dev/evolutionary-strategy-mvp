@@ -1,0 +1,11 @@
+{
+  "id": "btc_1h_probe_v1",
+  "signal_pack": "core_policy_v21_signals_v1",
+  "genome_schema": "modular_policy_v2_schema_v1",
+  "decision_policy": "weighted_policy_v2_v1",
+  "mutation_profile": "balanced_runtime_profile_v1",
+  "dataset": {
+    "asset": "BTC",
+    "timeframe": "1h"
+  }
+}

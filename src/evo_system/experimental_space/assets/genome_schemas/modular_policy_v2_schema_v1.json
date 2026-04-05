@@ -1,0 +1,25 @@
+{
+  "id": "modular_policy_v2_schema_v1",
+  "modules": [
+    {
+      "name": "entry_context",
+      "gene_type": "entry_context",
+      "required": true
+    },
+    {
+      "name": "entry_trigger",
+      "gene_type": "entry_trigger",
+      "required": true
+    },
+    {
+      "name": "exit_policy",
+      "gene_type": "exit_policy",
+      "required": true
+    },
+    {
+      "name": "trade_control",
+      "gene_type": "trade_control",
+      "required": true
+    }
+  ]
+}

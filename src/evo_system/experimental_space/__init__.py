@@ -5,16 +5,21 @@ from evo_system.experimental_space.base import (
     MutationProfileDefinition,
     SignalPack,
 )
+from evo_system.experimental_space.policy_engines import PolicyEngine
+from evo_system.experimental_space.registry import NamedRegistry
 
 __all__ = [
     "DecisionPolicy",
     "GenomeSchema",
     "MarketMode",
     "MutationProfileDefinition",
+    "NamedRegistry",
+    "PolicyEngine",
     "SignalPack",
     "decision_policy_registry",
     "genome_schema_registry",
     "get_default_market_mode",
+    "get_default_policy_engine",
     "build_runtime_component_fingerprint",
     "get_default_decision_policy",
     "get_default_genome_schema",
@@ -24,9 +29,11 @@ __all__ = [
     "get_genome_schema",
     "get_market_mode",
     "get_mutation_profile_definition",
+    "get_policy_engine",
     "get_signal_pack",
     "market_mode_registry",
     "mutation_profile_registry",
+    "policy_engine_registry",
     "signal_pack_registry",
 ]
 
@@ -37,6 +44,7 @@ def __getattr__(name: str):
         "decision_policy_registry",
         "genome_schema_registry",
         "get_default_market_mode",
+        "get_default_policy_engine",
         "get_default_decision_policy",
         "get_default_genome_schema",
         "get_default_mutation_profile_definition",
@@ -45,9 +53,11 @@ def __getattr__(name: str):
         "get_genome_schema",
         "get_market_mode",
         "get_mutation_profile_definition",
+        "get_policy_engine",
         "get_signal_pack",
         "market_mode_registry",
         "mutation_profile_registry",
+        "policy_engine_registry",
         "signal_pack_registry",
     }:
         if name == "build_runtime_component_fingerprint":

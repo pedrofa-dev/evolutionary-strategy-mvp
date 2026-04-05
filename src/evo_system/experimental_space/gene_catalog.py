@@ -39,6 +39,23 @@ class GeneFieldSpec:
     strong_choices: tuple[int, ...] | None = None
     small_choices: tuple[int, ...] | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "field_name": self.field_name,
+            "mutation_kind": self.mutation_kind,
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "delta_kind": self.delta_kind,
+            "strong_min": self.strong_min,
+            "strong_max": self.strong_max,
+            "strong_choices": list(self.strong_choices)
+            if self.strong_choices is not None
+            else None,
+            "small_choices": list(self.small_choices)
+            if self.small_choices is not None
+            else None,
+        }
+
 
 @dataclass(frozen=True)
 class GeneTypeSpec:
@@ -55,6 +72,19 @@ class GeneTypeSpec:
     normalizer: Callable[[dict[str, Any]], dict[str, Any]]
     constraint_applier: Callable[[dict[str, Any], dict[str, float]], dict[str, Any]] | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "builder": _callable_label(self.builder),
+            "field_specs": [field_spec.to_dict() for field_spec in self.field_specs],
+            "normalizer": _callable_label(self.normalizer),
+            "constraint_applier": (
+                _callable_label(self.constraint_applier)
+                if self.constraint_applier is not None
+                else None
+            ),
+        }
+
 
 @dataclass(frozen=True)
 class SchemaFieldSpec:
@@ -64,6 +94,88 @@ class SchemaFieldSpec:
     mutation_kind: str
     minimum: int
     maximum: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "field_name": self.field_name,
+            "mutation_kind": self.mutation_kind,
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+        }
+
+
+@dataclass(frozen=True)
+class GeneTypeDefinition:
+    """Serializable structural metadata for one gene block.
+
+    This DTO is intentionally descriptive only. It is derived from the active
+    ``GeneTypeCatalog`` and exists to expose stable structural metadata for
+    inspection, reporting, and future declarative/UI work.
+
+    It does not own runtime behavior, mutation execution, or decision
+    semantics, and it is not yet the canonical runtime source of truth.
+    """
+
+    name: str
+    builder_name: str
+    field_specs: tuple[GeneFieldSpec, ...]
+    supports_constraints: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "builder_name": self.builder_name,
+            "field_specs": [field_spec.to_dict() for field_spec in self.field_specs],
+            "supports_constraints": self.supports_constraints,
+        }
+
+
+@dataclass(frozen=True)
+class GenomeSchemaSlot:
+    """Serializable structural description of one schema-owned slot/module.
+
+    This is a derived structural view of schema composition. In the current
+    runtime, all active slots are required single-instance gene blocks; those
+    defaults are made explicit here so future declarative schemas can evolve
+    without changing the current behavior.
+    """
+
+    name: str
+    slot_kind: str
+    field_names: tuple[str, ...]
+    required: bool = True
+    cardinality_min: int = 1
+    cardinality_max: int = 1
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "slot_kind": self.slot_kind,
+            "field_names": list(self.field_names),
+            "required": self.required,
+            "cardinality_min": self.cardinality_min,
+            "cardinality_max": self.cardinality_max,
+        }
+
+
+@dataclass(frozen=True)
+class StructuralCompatibility:
+    """Describe minimal structural compatibility between schema and catalog."""
+
+    schema_name: str
+    gene_catalog_name: str
+    module_names: tuple[str, ...]
+    schema_field_names: tuple[str, ...]
+    policy_v2_enabled_required: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_name": self.schema_name,
+            "gene_catalog_name": self.gene_catalog_name,
+            "module_names": list(self.module_names),
+            "schema_field_names": list(self.schema_field_names),
+            "policy_v2_enabled_required": self.policy_v2_enabled_required,
+        }
 
 
 @dataclass(frozen=True)
@@ -77,6 +189,13 @@ class GeneTypeCatalog:
     Constraints:
     - The catalog describes mutation space and structural normalization only.
     - It must not become a second home for policy logic.
+
+    Source of truth:
+    - In the current architecture, the runtime source of truth still lives in
+      this catalog plus the active ``GenomeSchema`` implementation.
+    - Serializable DTOs such as ``GeneTypeDefinition`` and
+      ``GenomeSchemaSlot`` are derived compatibility views, not independent
+      runtime authorities yet.
     """
 
     name: str
@@ -96,6 +215,60 @@ class GeneTypeCatalog:
 
     def list_schema_field_names(self) -> list[str]:
         return [field.field_name for field in self.schema_fields]
+
+    def describe_gene_types(self) -> tuple[GeneTypeDefinition, ...]:
+        """Return descriptive DTOs derived from the active runtime catalog."""
+        return tuple(
+            GeneTypeDefinition(
+                name=gene_type.name,
+                builder_name=_callable_label(gene_type.builder),
+                field_specs=gene_type.field_specs,
+                supports_constraints=gene_type.constraint_applier is not None,
+            )
+            for gene_type in self.gene_types
+        )
+
+    def describe_schema_slots(self) -> tuple[GenomeSchemaSlot, ...]:
+        """Return a structural view of schema-owned slots for external use."""
+        return tuple(
+            GenomeSchemaSlot(
+                name=gene_type.name,
+                slot_kind="gene_block",
+                field_names=tuple(
+                    field_spec.field_name for field_spec in gene_type.field_specs
+                ),
+            )
+            for gene_type in self.gene_types
+        )
+
+    def describe_structural_compatibility(
+        self,
+        *,
+        schema_name: str,
+    ) -> StructuralCompatibility:
+        return StructuralCompatibility(
+            schema_name=schema_name,
+            gene_catalog_name=self.name,
+            module_names=tuple(self.list_gene_type_names()),
+            schema_field_names=tuple(self.list_schema_field_names()),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize catalog metadata using stable, descriptive field names."""
+        return {
+            "name": self.name,
+            "gene_types": [gene_type.to_dict() for gene_type in self.gene_types],
+            "schema_fields": [
+                schema_field.to_dict() for schema_field in self.schema_fields
+            ],
+            "gene_type_definitions": [
+                definition.to_dict()
+                for definition in self.describe_gene_types()
+            ],
+            "schema_slots": [
+                slot.to_dict() for slot in self.describe_schema_slots()
+            ],
+        }
 
     def build_module(
         self,
@@ -136,6 +309,10 @@ class GeneTypeCatalog:
 
 def _identity_normalizer(data: dict[str, Any]) -> dict[str, Any]:
     return dict(data)
+
+
+def _callable_label(callable_obj: Callable[..., Any]) -> str:
+    return getattr(callable_obj, "__name__", callable_obj.__class__.__name__)
 
 
 def _apply_entry_trigger_constraints(

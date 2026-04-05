@@ -16,14 +16,17 @@ from evo_system.experimental_space import (
     get_default_decision_policy,
     get_default_genome_schema,
     get_default_market_mode,
+    get_default_policy_engine,
     get_default_mutation_profile_definition,
     get_default_signal_pack,
     get_genome_schema,
     get_market_mode,
     get_mutation_profile_definition,
+    get_policy_engine,
     get_signal_pack,
     market_mode_registry,
     mutation_profile_registry,
+    policy_engine_registry,
     signal_pack_registry,
 )
 from evo_system.mutation.mutator import MutationProfile
@@ -45,6 +48,7 @@ def _sample_environment() -> HistoricalEnvironment:
 def test_default_registries_expose_phase_one_components() -> None:
     assert signal_pack_registry.default_name == "policy_v21_default"
     assert genome_schema_registry.default_name == "policy_v2_default"
+    assert policy_engine_registry.default_name == "policy_v2_default_engine"
     assert decision_policy_registry.default_name == "policy_v2_default"
     assert mutation_profile_registry.default_name == "default_runtime_profile"
     assert market_mode_registry.default_name == "spot"
@@ -54,12 +58,21 @@ def test_default_registries_expose_phase_one_components() -> None:
 def test_component_registries_resolve_named_defaults_explicitly() -> None:
     assert get_signal_pack("policy_v21_default").name == "policy_v21_default"
     assert get_genome_schema("modular_genome_v1").name == "modular_genome_v1"
+    assert get_policy_engine("policy_v2_default_engine").name == "policy_v2_default_engine"
     assert get_decision_policy("policy_v2_default").name == "policy_v2_default"
     assert get_market_mode("spot").name == "spot"
     assert (
         get_mutation_profile_definition("default_runtime_profile").name
         == "default_runtime_profile"
     )
+
+
+def test_default_policy_engine_builds_runtime_compatible_decision_policy() -> None:
+    engine = get_default_policy_engine()
+    decision_policy = engine.build_decision_policy()
+
+    assert engine.name == "policy_v2_default_engine"
+    assert decision_policy.name == get_default_decision_policy().name
 
 
 def test_default_signal_pack_matches_current_environment_methods() -> None:
@@ -364,6 +377,33 @@ def test_default_decision_policy_matches_current_environment_methods() -> None:
         signal_families=families,
         trigger_score=score,
     ) == environment._passes_entry_trigger(genome, families, score)
+    engine_policy = get_default_policy_engine().build_decision_policy()
+    assert engine_policy.evaluate_entry(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        regime_filter_ok=True,
+    ) == decision_policy.evaluate_entry(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        regime_filter_ok=True,
+    )
+    assert engine_policy.evaluate_exit(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        normalized_momentum=0.0,
+        trade_return=0.03,
+        holding_bars=2,
+    ) == decision_policy.evaluate_exit(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+        normalized_momentum=0.0,
+        trade_return=0.03,
+        holding_bars=2,
+    )
 
 
 def test_default_mutation_profile_definition_preserves_current_runtime_profile() -> None:

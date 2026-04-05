@@ -26,6 +26,10 @@ from evo_system.experimental_space.market_modes import (
     FuturesMarketMode,
     SpotMarketMode,
 )
+from evo_system.experimental_space.policy_engines import (
+    DefaultPolicyEngine,
+    PolicyEngine,
+)
 from evo_system.experimental_space.registry import NamedRegistry
 from evo_system.experimental_space.signal_packs import DefaultSignalPack
 from evo_system.mutation.mutator import MutationProfile
@@ -168,6 +172,7 @@ class CurrentMutationProfileDefinition(MutationProfileDefinition):
 
 signal_pack_registry: NamedRegistry[SignalPack] = NamedRegistry()
 genome_schema_registry: NamedRegistry[GenomeSchema] = NamedRegistry()
+policy_engine_registry: NamedRegistry[PolicyEngine] = NamedRegistry()
 decision_policy_registry: NamedRegistry[DecisionPolicy] = NamedRegistry()
 mutation_profile_registry: NamedRegistry[MutationProfileDefinition] = NamedRegistry()
 market_mode_registry: NamedRegistry[MarketMode] = NamedRegistry()
@@ -187,9 +192,14 @@ genome_schema_registry.register(
     "modular_genome_v1",
     ModularGenomeSchemaV1(),
 )
+policy_engine_registry.register(
+    "policy_v2_default_engine",
+    DefaultPolicyEngine(),
+    default=True,
+)
 decision_policy_registry.register(
     "policy_v2_default",
-    CurrentPolicyV2DecisionPolicy(),
+    policy_engine_registry.get_default().build_decision_policy(),
     default=True,
 )
 mutation_profile_registry.register(
@@ -230,6 +240,14 @@ def get_default_decision_policy() -> DecisionPolicy:
 
 def get_decision_policy(name: str) -> DecisionPolicy:
     return decision_policy_registry.get(name)
+
+
+def get_default_policy_engine() -> PolicyEngine:
+    return policy_engine_registry.get_default()
+
+
+def get_policy_engine(name: str) -> PolicyEngine:
+    return policy_engine_registry.get(name)
 
 
 def get_default_mutation_profile_definition() -> MutationProfileDefinition:
