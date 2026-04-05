@@ -132,3 +132,90 @@ Future work should expand toward:
 
 The key principle is to add those tests when the corresponding surface becomes
 real, not before.
+
+## Future SaaS Considerations
+
+If this repository evolves toward a real SaaS or externally exposed product,
+the following areas will need explicit design instead of the current
+transitional defaults.
+
+### HTTP Framework And API Formalization
+
+- adopt a more complete HTTP framework such as FastAPI or equivalent
+- formalize route composition and dependency injection
+- define stable external response models
+- introduce explicit API versioning
+
+### Authentication, Authorization, And Exposure Boundaries
+
+- user authentication
+- role-based or scope-based authorization
+- multi-tenant boundaries if needed
+- separation between internal research APIs and externally exposed APIs
+
+### Frontend / Backend Separation
+
+- CORS policy
+- separate deployment of frontend and backend
+- environment-aware API base URLs
+- stricter transport contracts between UI and backend
+
+### Richer API Behavior
+
+- consistent error envelopes
+- richer status code strategy
+- pagination
+- query parameters and filters
+- sorting and search behavior
+
+### Deeper Asset And Composition Validation
+
+- compatibility checks across assets
+- user-facing diagnostics for invalid combinations
+- validation paths shared across UI, API, and execution
+
+### Observability And Logging
+
+- structured request logging
+- correlation/request ids
+- metrics
+- health/readiness strategy beyond the current minimal `/health`
+- error monitoring
+
+### Environment Configuration
+
+- dev/staging/prod configuration strategy
+- secret management
+- runtime feature flags where justified
+- explicit API/UI environment separation
+
+### Deployment And CI/CD
+
+- frontend build pipeline
+- backend packaging and serving strategy
+- automated checks for API/application compatibility
+- deployment automation and rollback strategy
+
+### Persistence And Traceability Productization
+
+- product-facing traceability views
+- stronger lineage between assets, runs, and published results
+- more ergonomic querying over persisted metadata
+- externally visible compatibility/versioning strategy
+
+### Basic Security For An Exposed App
+
+- request size limits
+- input validation hardening
+- dependency review and update process
+- secure default headers
+- handling of untrusted asset/plugin references if exposure grows
+
+### Frontend Maturity
+
+- formal routing
+- more mature state handling only if proven necessary
+- frontend testing strategy
+- accessibility review
+- stronger design system or shared component layer
+- UX patterns for empty/loading/error states beyond the current minimal tool

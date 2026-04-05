@@ -48,6 +48,8 @@ export default function App() {
   const [healthStatus, setHealthStatus] = useState("checking");
   const [catalog, setCatalog] = useState<CatalogPayload>({});
   const [categoryItems, setCategoryItems] = useState<Record<string, CatalogItem[]>>({});
+  const [isOverviewLoading, setIsOverviewLoading] = useState(true);
+  const [loadingCategory, setLoadingCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export default function App() {
 
     async function loadOverview() {
       try {
+        setIsOverviewLoading(true);
         setError(null);
         const [health, nextCatalog] = await Promise.all([getHealth(), getCatalog()]);
         if (!cancelled) {
@@ -74,6 +77,10 @@ export default function App() {
         if (!cancelled) {
           setHealthStatus("error");
           setError(loadError instanceof Error ? loadError.message : "Unknown error");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsOverviewLoading(false);
         }
       }
     }
@@ -93,6 +100,7 @@ export default function App() {
       }
 
       try {
+        setLoadingCategory(category);
         setError(null);
         const response = await getCatalogCategory(category);
         if (!cancelled) {
@@ -104,6 +112,10 @@ export default function App() {
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Unknown error");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCategory((current) => (current === category ? null : current));
         }
       }
     }
@@ -129,6 +141,9 @@ export default function App() {
       ? currentItems.find((item) => item.id === route.itemId) ?? null
       : null;
 
+  const isCategoryLoading =
+    (route.kind === "category" || route.kind === "detail") && loadingCategory === route.category;
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -144,6 +159,7 @@ export default function App() {
           <OverviewPage
             healthStatus={healthStatus}
             categories={categories}
+            isLoading={isOverviewLoading}
             onOpenCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}
           />
         ) : null}
@@ -153,6 +169,7 @@ export default function App() {
             categories={categories}
             selectedCategory={route.category}
             items={currentItems}
+            isLoading={isCategoryLoading}
             onSelectCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}
             onOpenItem={(item) =>
               navigate(
@@ -165,7 +182,10 @@ export default function App() {
         {route.kind === "detail" ? (
           <DetailPage
             item={selectedItem}
+            isLoading={isCategoryLoading}
+            missingItemId={selectedItem ? null : route.itemId}
             onBackToCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}
+            onBackToOverview={() => navigate("/")}
           />
         ) : null}
       </main>

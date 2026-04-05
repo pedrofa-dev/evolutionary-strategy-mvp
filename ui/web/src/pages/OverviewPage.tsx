@@ -1,12 +1,14 @@
 type OverviewPageProps = {
   healthStatus: string;
   categories: string[];
+  isLoading: boolean;
   onOpenCategory: (category: string) => void;
 };
 
 export default function OverviewPage({
   healthStatus,
   categories,
+  isLoading,
   onOpenCategory,
 }: OverviewPageProps) {
   return (
@@ -25,19 +27,23 @@ export default function OverviewPage({
 
       <div className="panel">
         <h2>Categories</h2>
-        <div className="overview-cards">
-          {categories.map((category) => (
-            <button
-              key={category}
-              className="overview-card"
-              onClick={() => onOpenCategory(category)}
-              type="button"
-            >
-              <strong>{category}</strong>
-              <span>Open category</span>
-            </button>
-          ))}
-        </div>
+        {isLoading ? (
+          <p className="loading-text">Loading catalog overview...</p>
+        ) : (
+          <div className="overview-cards">
+            {categories.map((category) => (
+              <button
+                key={category}
+                className="overview-card"
+                onClick={() => onOpenCategory(category)}
+                type="button"
+              >
+                <strong>{category}</strong>
+                <span>Open category</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

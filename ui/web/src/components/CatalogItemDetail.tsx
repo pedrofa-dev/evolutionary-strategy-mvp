@@ -2,14 +2,20 @@ import type { CatalogItem } from "../types/catalog";
 
 type CatalogItemDetailProps = {
   item: CatalogItem | null;
+  notFoundMessage?: string | null;
 };
 
-export default function CatalogItemDetail({ item }: CatalogItemDetailProps) {
+export default function CatalogItemDetail({
+  item,
+  notFoundMessage = null,
+}: CatalogItemDetailProps) {
   if (!item) {
     return (
       <div className="panel detail-panel">
         <h2>Detail</h2>
-        <p className="muted">Select an item to inspect its metadata.</p>
+        <p className="muted">
+          {notFoundMessage ?? "Select an item to inspect its metadata."}
+        </p>
       </div>
     );
   }
@@ -26,9 +32,11 @@ export default function CatalogItemDetail({ item }: CatalogItemDetailProps) {
         <dd>{item.origin}</dd>
         <dt>Description</dt>
         <dd>{item.description ?? "No description"}</dd>
-        <dt>File Path</dt>
-        <dd>{item.file_path ?? "No file path"}</dd>
       </dl>
+      <div className="technical-meta">
+        <span className="technical-meta-label">Technical metadata</span>
+        <code>{item.file_path ?? "No file path"}</code>
+      </div>
       <h3>Payload</h3>
       <pre className="json-block">{JSON.stringify(item.payload, null, 2)}</pre>
     </div>

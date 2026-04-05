@@ -16,6 +16,44 @@ It is intentionally simple and focused on:
 
 - `ui/web/`
 
+## How To Run It Locally
+
+From the repository root:
+
+```powershell
+python src/api/main.py
+cd ui/web
+npm install
+npm run dev
+```
+
+If the API is already running elsewhere, you can keep the same UI commands and
+set `VITE_API_BASE_URL` instead.
+
+Equivalent split steps:
+
+```powershell
+python src/api/main.py
+```
+
+```powershell
+cd ui/web
+npm install
+npm run dev
+```
+
+Optional production build:
+
+```powershell
+cd ui/web
+npm run build
+```
+
+Expected local setup:
+
+- the catalog API running on `http://localhost:8000`
+- or `VITE_API_BASE_URL` configured to another base URL
+
 ## Endpoints Used
 
 The UI consumes only these endpoints:
@@ -55,6 +93,7 @@ Current limitations are intentional:
 - no pagination
 - no write operations
 - no state library
+- no React Router
 - no SSR
 - no UI framework
 - no product-level frontend architecture yet
@@ -68,6 +107,7 @@ Future phases can improve:
 - formal routing
 - richer error handling
 - category filters/search
+- loading skeletons or more polished loading states if the UI grows
 - response typing aligned with a more mature API
 - stronger visual hierarchy
 - better detail rendering for known asset/module types

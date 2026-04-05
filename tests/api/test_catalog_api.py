@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from wsgiref.util import setup_testing_defaults
 
+import api.main
 from api.main import create_app
 
 
@@ -60,3 +61,25 @@ def test_api_rejects_non_get_methods() -> None:
 
     assert status_code == 405
     assert payload["error"] == "method_not_allowed"
+
+
+def test_create_dev_server_uses_localhost_8000_by_default(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class DummyServer:
+        pass
+
+    def fake_make_server(host: str, port: int, application):
+        captured["host"] = host
+        captured["port"] = port
+        captured["application"] = application
+        return DummyServer()
+
+    monkeypatch.setattr(api.main, "make_server", fake_make_server)
+
+    server = api.main.create_dev_server()
+
+    assert isinstance(server, DummyServer)
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 8000
+    assert captured["application"] is api.main.app

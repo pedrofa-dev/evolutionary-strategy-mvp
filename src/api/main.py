@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse
 import json
 from http import HTTPStatus
 from typing import Any, Callable
+from wsgiref.simple_server import WSGIServer, make_server
 
 from application.catalog import ExperimentalCatalogApplicationService
 from api.routes.catalog import (
@@ -73,3 +81,33 @@ def create_app() -> CatalogApiApp:
 
 
 app = create_app()
+
+
+def create_dev_server(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> WSGIServer:
+    """Create the local development server for the transitional catalog API."""
+    return make_server(host, port, app)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the minimal catalog HTTP API for local development."
+    )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    with create_dev_server(host=args.host, port=args.port) as server:
+        print(f"Serving catalog API on http://{args.host}:{args.port}")
+        server.serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

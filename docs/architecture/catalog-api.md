@@ -19,6 +19,27 @@ The current HTTP surface exposes:
 These endpoints return JSON only and cover the experimental catalog prepared in
 earlier phases.
 
+## Local Development Server
+
+The API can now be started locally with the standard library server built into
+the current transitional app.
+
+From the repository root:
+
+```powershell
+python src/api/main.py
+```
+
+By default it listens on:
+
+- `127.0.0.1:8000`
+
+Optional overrides:
+
+```powershell
+python src/api/main.py --host 127.0.0.1 --port 8000
+```
+
 ## Why It Consumes The `application` Layer
 
 The HTTP layer should consume `application`, not `experimental_space`

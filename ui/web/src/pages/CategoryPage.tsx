@@ -6,6 +6,7 @@ type CategoryPageProps = {
   categories: string[];
   selectedCategory: string;
   items: CatalogItem[];
+  isLoading: boolean;
   onSelectCategory: (category: string) => void;
   onOpenItem: (item: CatalogItem) => void;
 };
@@ -14,6 +15,7 @@ export default function CategoryPage({
   categories,
   selectedCategory,
   items,
+  isLoading,
   onSelectCategory,
   onOpenItem,
 }: CategoryPageProps) {
@@ -27,7 +29,9 @@ export default function CategoryPage({
 
       <div className="panel">
         <h2>{selectedCategory}</h2>
-        {items.length === 0 ? (
+        {isLoading ? (
+          <p className="loading-text">Loading category items...</p>
+        ) : items.length === 0 ? (
           <p className="muted">This category is empty.</p>
         ) : (
           <div className="item-list">
