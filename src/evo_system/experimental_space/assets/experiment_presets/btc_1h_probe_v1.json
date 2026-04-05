@@ -1,5 +1,6 @@
 {
   "id": "btc_1h_probe_v1",
+  "description": "Example declarative experiment preset for a small BTC 1h composition probe.",
   "signal_pack": "core_policy_v21_signals_v1",
   "genome_schema": "modular_policy_v2_schema_v1",
   "decision_policy": "weighted_policy_v2_v1",

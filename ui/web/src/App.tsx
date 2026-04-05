@@ -5,10 +5,12 @@ import type { CatalogItem, CatalogPayload } from "./types/catalog";
 import CategoryPage from "./pages/CategoryPage";
 import DetailPage from "./pages/DetailPage";
 import OverviewPage from "./pages/OverviewPage";
+import RunLabPage from "./pages/RunLabPage";
 
 type Theme = "light" | "dark";
 type Route =
   | { kind: "overview" }
+  | { kind: "run-lab" }
   | { kind: "category"; category: string }
   | { kind: "detail"; category: string; itemId: string };
 
@@ -20,6 +22,10 @@ function parseRoute(pathname: string): Route {
 
   if (parts.length === 0) {
     return { kind: "overview" };
+  }
+
+  if (parts[0] === "run-lab") {
+    return { kind: "run-lab" };
   }
 
   if (parts[0] !== "catalog") {
@@ -190,9 +196,27 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-content">
-          <button className="brand-button" onClick={() => navigate("/")} type="button">
-            Experimental Catalog UI
-          </button>
+          <div className="app-header-left">
+            <button className="brand-button" onClick={() => navigate("/run-lab")} type="button">
+              Experimental Lab UI
+            </button>
+            <nav className="top-nav" aria-label="Primary">
+              <button
+                className={route.kind === "run-lab" ? "top-nav-button active" : "top-nav-button"}
+                onClick={() => navigate("/run-lab")}
+                type="button"
+              >
+                Run Lab
+              </button>
+              <button
+                className={route.kind === "overview" || route.kind === "category" || route.kind === "detail" ? "top-nav-button active" : "top-nav-button"}
+                onClick={() => navigate("/")}
+                type="button"
+              >
+                Catalog
+              </button>
+            </nav>
+          </div>
           <button
             className="theme-toggle"
             onClick={() => setThemePreference(theme === "dark" ? "light" : "dark")}
@@ -212,8 +236,11 @@ export default function App() {
             categories={categories}
             isLoading={isOverviewLoading}
             onOpenCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}
+            onOpenRunLab={() => navigate("/run-lab")}
           />
         ) : null}
+
+        {route.kind === "run-lab" ? <RunLabPage onOpenCatalog={() => navigate("/")} /> : null}
 
         {route.kind === "category" ? (
           <CategoryPage

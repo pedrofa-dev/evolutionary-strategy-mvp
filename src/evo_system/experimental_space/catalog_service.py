@@ -19,6 +19,7 @@ from evo_system.experimental_space.defaults import (
 )
 from evo_system.experimental_space.gene_catalog import GeneTypeDefinition
 from evo_system.experimentation.presets import PRESET_REGISTRY
+from evo_system.experimentation.presets import describe_preset
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -94,6 +95,10 @@ class CatalogService:
             registry=policy_engine_registry,
             entry_type="policy_engine",
             origin="plugin",
+            payload_builder=lambda item: {
+                "name": item.name,
+                "builds_decision_policy": item.build_decision_policy().name,
+            },
         )
 
     def list_gene_type_definitions(self) -> list[CatalogEntry]:
@@ -181,6 +186,7 @@ class CatalogService:
                 registry=PRESET_REGISTRY,
                 entry_type="experiment_preset",
                 origin="runtime",
+                description_builder=lambda item_name, item: describe_preset(item_name),
                 payload_builder=lambda item: {
                     "name": item.name,
                     "generations": item.generations,
@@ -223,19 +229,25 @@ class CatalogService:
         registry: Any,
         entry_type: str,
         origin: str,
+        description_builder: Any = None,
         payload_builder: Any = None,
     ) -> list[CatalogEntry]:
         entries: list[CatalogEntry] = []
         for item_name in registry.list():
             item = registry.get(item_name)
             payload = payload_builder(item) if payload_builder is not None else None
+            description = (
+                description_builder(item_name, item)
+                if description_builder is not None
+                else _docstring_summary(item)
+            )
             entries.append(
                 CatalogEntry(
                     id=item_name,
                     type=entry_type,
                     origin=origin,
                     file_path=_relative_source_path(item),
-                    description=_docstring_summary(item),
+                    description=description,
                     payload=payload,
                 )
             )

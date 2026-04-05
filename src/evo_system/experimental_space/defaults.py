@@ -42,11 +42,8 @@ from evo_system.mutation.mutator import MutationProfile
 #   DecisionPolicy now own the active modular semantics directly.
 
 
-CurrentPolicyV21SignalPack = DefaultSignalPack
-
-
 @dataclass(frozen=True)
-class CurrentPolicyV2GenomeSchema(GenomeSchema):
+class PolicyV2CompatibilityGenomeSchema(GenomeSchema):
     """Adapter over the current block-based genome construction helper."""
 
     name: str = "policy_v2_default"
@@ -153,12 +150,8 @@ class ModularGenomeSchemaV1(GenomeSchema):
             trade_control=trade_control or self.build_trade_control(),
         )
 
-
-CurrentPolicyV2DecisionPolicy = DefaultDecisionPolicy
-
-
 @dataclass(frozen=True)
-class CurrentMutationProfileDefinition(MutationProfileDefinition):
+class RuntimeMutationProfileAdapter(MutationProfileDefinition):
     """Adapter that resolves the current runtime mutation profile dataclass."""
 
     name: str = "default_runtime_profile"
@@ -180,12 +173,12 @@ market_mode_registry: NamedRegistry[MarketMode] = NamedRegistry()
 
 signal_pack_registry.register(
     "policy_v21_default",
-    CurrentPolicyV21SignalPack(),
+    DefaultSignalPack(),
     default=True,
 )
 genome_schema_registry.register(
     "policy_v2_default",
-    CurrentPolicyV2GenomeSchema(),
+    PolicyV2CompatibilityGenomeSchema(),
     default=True,
 )
 genome_schema_registry.register(
@@ -204,7 +197,7 @@ decision_policy_registry.register(
 )
 mutation_profile_registry.register(
     "default_runtime_profile",
-    CurrentMutationProfileDefinition(),
+    RuntimeMutationProfileAdapter(),
     default=True,
 )
 market_mode_registry.register(

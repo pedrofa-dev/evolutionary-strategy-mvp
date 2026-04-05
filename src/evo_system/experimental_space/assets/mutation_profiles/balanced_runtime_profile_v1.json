@@ -1,5 +1,6 @@
 {
   "id": "balanced_runtime_profile_v1",
+  "description": "Example declarative mutation profile approximating the current balanced runtime mutation behavior.",
   "profile": {
     "strong_mutation_probability": 0.1,
     "numeric_delta_scale": 1.0,

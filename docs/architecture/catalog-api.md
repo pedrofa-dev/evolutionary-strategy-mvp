@@ -15,9 +15,14 @@ The current HTTP surface exposes:
 - `GET /health`
 - `GET /catalog`
 - `GET /catalog/{category}`
+- `GET /run-lab`
+- `POST /run-lab/configs`
+- `POST /run-lab/executions`
 
-These endpoints return JSON only and cover the experimental catalog prepared in
-earlier phases.
+These endpoints return JSON only and cover:
+
+- the experimental catalog prepared in earlier phases
+- the first canonical Run Lab bootstrap/save/launch flow
 
 ## Local Development Server
 
@@ -67,7 +72,8 @@ This API does not expose:
 - evaluator/scoring behavior
 - authentication or authorization
 
-It is a read-only catalog API only.
+The current write surface is intentionally narrow and limited to Run Lab config
+save plus canonical launch orchestration.
 
 ## Why This Helps A Future UI
 
@@ -76,6 +82,9 @@ The future UI can already rely on a real HTTP surface for:
 - health checks
 - listing experimental catalog categories
 - loading one catalog category at a time
+- loading the canonical Run Lab bootstrap
+- saving canonical run configs
+- launching the existing multiseed entrypoint through a thin HTTP bridge
 
 That is enough to start frontend integration work without forcing premature
 productization of the rest of the platform.

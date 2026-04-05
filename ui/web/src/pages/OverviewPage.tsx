@@ -5,6 +5,7 @@ type OverviewPageProps = {
   categories: string[];
   isLoading: boolean;
   onOpenCategory: (category: string) => void;
+  onOpenRunLab: () => void;
 };
 
 export default function OverviewPage({
@@ -12,6 +13,7 @@ export default function OverviewPage({
   categories,
   isLoading,
   onOpenCategory,
+  onOpenRunLab,
 }: OverviewPageProps) {
   return (
     <div className="page-grid">
@@ -24,6 +26,11 @@ export default function OverviewPage({
         <div className="health-row">
           <span className="health-label">API health</span>
           <span className={`health-badge health-${healthStatus}`}>{healthStatus}</span>
+        </div>
+        <div className="nav-actions">
+          <button className="link-button" onClick={onOpenRunLab} type="button">
+            Open Run Lab
+          </button>
         </div>
       </div>
 

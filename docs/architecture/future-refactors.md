@@ -280,3 +280,21 @@ Future work should define:
 - clear rules for when technical metadata should be visually secondary
 - backend-supported labels and descriptions instead of frontend-only display
   helpers
+
+## Catalog Cleanup And Role Classification
+
+The current catalog intentionally exposes a mixture of active runtime entries,
+adapters, declarative examples, and future-facing categories.
+
+Future cleanup should decide:
+
+- which catalog entries are first-class for normal UI users versus
+  internal/advanced inspection only
+- whether entry classification such as `active`, `legacy`, `adapter`, or
+  `example` should become explicit backend metadata
+- whether runtime execution-budget presets and declarative composition presets
+  should remain in one category or be separated
+- whether built-in code engines should keep the current `plugin` origin label or
+  gain a more precise origin type
+- how empty future-facing categories such as `signal_plugins` should be
+  explained or filtered in a production UI

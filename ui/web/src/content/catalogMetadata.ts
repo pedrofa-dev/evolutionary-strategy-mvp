@@ -9,13 +9,13 @@ type CatalogPayloadLike = Record<string, unknown> | null | undefined;
 export const CATEGORY_DESCRIPTIONS: Record<string, CategoryDescription> = {
   decision_policies: {
     title: "Decision Policies",
-    whatIsIt: "Rules that interpret signals and genes into entry and exit decisions.",
-    whatIsItFor: "They define how the system turns market context into trading actions."
+    whatIsIt: "Runtime policies, plus declarative examples that describe policy composition.",
+    whatIsItFor: "They define how the system turns market context into trading actions, while assets show how future policy composition could look."
   },
   policy_engines: {
     title: "Policy Engines",
-    whatIsIt: "Code engines that build or provide runtime decision policies.",
-    whatIsItFor: "They keep complex policy behavior in code while declarative policies stay lightweight."
+    whatIsIt: "Code engines that build runtime decision policies.",
+    whatIsItFor: "They keep policy behavior in code while declarative policies stay lightweight. In the current system they are mainly compatibility seams."
   },
   genome_schemas: {
     title: "Genome Schemas",
@@ -29,13 +29,13 @@ export const CATEGORY_DESCRIPTIONS: Record<string, CategoryDescription> = {
   },
   signal_packs: {
     title: "Signal Packs",
-    whatIsIt: "Bundles of signals or signal metadata used by a strategy configuration.",
+    whatIsIt: "Runtime signal bundles, plus declarative examples of signal composition.",
     whatIsItFor: "They describe the signal inputs available to policy logic and experiments."
   },
   signal_plugins: {
     title: "Signal Plugins",
     whatIsIt: "Code-side extension points for signal-related behavior.",
-    whatIsItFor: "They would allow the system to add signal implementations without changing the protected core."
+    whatIsItFor: "They would allow the system to add signal implementations without changing the protected core. This category is currently future-facing and may be empty."
   },
   mutation_profiles: {
     title: "Mutation Profiles",
@@ -44,8 +44,8 @@ export const CATEGORY_DESCRIPTIONS: Record<string, CategoryDescription> = {
   },
   experiment_presets: {
     title: "Experiment Presets",
-    whatIsIt: "Named compositions of assets used as a starting point for experiments.",
-    whatIsItFor: "They bundle together a coherent setup so experiments are easier to inspect and reuse."
+    whatIsIt: "A mixed category of runtime execution presets and declarative experiment examples.",
+    whatIsItFor: "Runtime presets shape generation and seed budgets, while asset presets bundle together reusable experiment compositions."
   }
 };
 
@@ -89,10 +89,10 @@ export function getDisplayLabel(id: string, payload?: CatalogPayloadLike): strin
 
 export function describeOrigin(origin: "runtime" | "asset" | "plugin"): string {
   if (origin === "runtime") {
-    return "Generated at runtime";
+    return "Provided by active runtime code";
   }
   if (origin === "asset") {
-    return "Loaded from declarative asset";
+    return "Loaded from declarative asset file";
   }
-  return "Provided by plugin code";
+  return "Provided by plugin-style code";
 }

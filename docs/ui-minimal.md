@@ -2,8 +2,10 @@
 
 ## What This UI Does
 
-This UI is a small React + TypeScript + Vite frontend for exploring the
-experimental catalog exposed by the current HTTP API.
+This UI is a small React + TypeScript + Vite frontend for:
+
+- exploring the experimental catalog exposed by the current HTTP API
+- operating the first canonical Run Lab flow with lower friction
 
 It is intentionally simple and focused on:
 
@@ -12,6 +14,9 @@ It is intentionally simple and focused on:
 - browsing category items
 - viewing basic item details and raw payload JSON
 - making technical catalog entries easier for humans to scan
+- forming a canonical run config from the current active workflow
+- saving that config under `configs/runs/`
+- launching the existing multiseed execution path from the UI
 
 This UI is exploratory rather than productized. Many labels still reflect
 internal naming from the current system, and the frontend adds small human
@@ -66,6 +71,9 @@ The UI consumes only these endpoints:
 - `GET /health`
 - `GET /catalog`
 - `GET /catalog/{category}`
+- `GET /run-lab`
+- `POST /run-lab/configs`
+- `POST /run-lab/executions`
 
 By default, the Vite dev server proxies those paths to:
 
@@ -89,6 +97,15 @@ The UI includes three minimal views:
 3. Detail view
    - shows id, category, origin, description, file path, and payload JSON
    - explains what the selected item is and why it exists
+
+It also includes a first operational tab:
+
+4. Run Lab
+   - selects a dataset catalog
+   - selects signal pack, genome schema, mutation profile, and decision policy
+   - chooses a runtime experiment preset
+   - saves a canonical config file
+   - can save and launch the canonical multiseed script
 
 ## Labels And Dark Mode
 
@@ -126,6 +143,9 @@ Current limitations are intentional:
 - many names still originate from internal IDs and experimental metadata
 - category explanations are currently frontend-side helpers, not backend-owned descriptions
 - dark mode is still a local UI concern, not a backend-owned theming system
+- Run Lab still depends on active template configs already present in `configs/runs/`
+- execution launch is intentionally simple and does not yet provide live run monitoring
+- results and analysis are not yet integrated into the UI
 
 This is an exploration tool, not a polished product UI.
 

@@ -12,6 +12,10 @@ def test_catalog_service_lists_policy_engines_and_assets_from_repo() -> None:
     experiment_presets = service.list_experiment_presets()
 
     assert [entry.id for entry in policy_engines] == ["policy_v2_default_engine"]
+    assert policy_engines[0].payload == {
+        "name": "policy_v2_default_engine",
+        "builds_decision_policy": "policy_v2_default",
+    }
     assert any(entry.origin == "asset" and entry.id == "core_policy_v21_signals_v1" for entry in signal_packs)
     assert any(entry.origin == "runtime" and entry.id == "quick" for entry in experiment_presets)
     assert any(entry.origin == "asset" and entry.id == "btc_1h_probe_v1" for entry in experiment_presets)
@@ -75,3 +79,24 @@ def test_catalog_service_lists_expected_runtime_decision_policy_and_mutation_pro
         entry.origin == "runtime" and entry.id == "default_runtime_profile"
         for entry in mutation_profiles
     )
+
+
+def test_catalog_service_exposes_descriptions_for_example_assets() -> None:
+    service = CatalogService()
+
+    decision_policies = {entry.id: entry for entry in service.list_decision_policies()}
+    signal_packs = {entry.id: entry for entry in service.list_signal_packs()}
+    presets = {entry.id: entry for entry in service.list_experiment_presets()}
+
+    assert decision_policies["weighted_policy_v2_v1"].description is not None
+    assert signal_packs["core_policy_v21_signals_v1"].description is not None
+    assert presets["btc_1h_probe_v1"].description is not None
+
+
+def test_catalog_service_exposes_runtime_preset_descriptions_for_ui_clarity() -> None:
+    service = CatalogService()
+
+    presets = {entry.id: entry for entry in service.list_experiment_presets()}
+
+    assert presets["quick"].description == "Runtime multiseed preset for very fast local iteration."
+    assert presets["full"].description == "Runtime multiseed preset for the heaviest built-in evaluation budget."

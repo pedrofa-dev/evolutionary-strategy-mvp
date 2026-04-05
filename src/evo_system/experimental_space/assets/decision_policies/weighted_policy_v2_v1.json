@@ -1,5 +1,6 @@
 {
   "id": "weighted_policy_v2_v1",
+  "description": "Example declarative decision policy that references the built-in policy_v2 engine.",
   "engine": "policy_v2_default_engine",
   "entry": {
     "trigger_gene": "entry_trigger",

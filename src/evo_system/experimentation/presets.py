@@ -51,9 +51,24 @@ PRESET_REGISTRY.register(PRESET_STANDARD.name, PRESET_STANDARD)
 PRESET_REGISTRY.register(PRESET_EXTENDED.name, PRESET_EXTENDED)
 PRESET_REGISTRY.register(PRESET_FULL.name, PRESET_FULL)
 
+PRESET_DESCRIPTIONS = {
+    "quick": "Runtime multiseed preset for very fast local iteration.",
+    "screening": "Runtime multiseed preset for lightweight candidate screening.",
+    "standard": "Runtime multiseed preset for balanced day-to-day evaluation.",
+    "extended": "Runtime multiseed preset for broader evaluation before promotion.",
+    "full": "Runtime multiseed preset for the heaviest built-in evaluation budget.",
+}
+
 
 def get_available_preset_names() -> list[str]:
     return PRESET_REGISTRY.list_names()
+
+
+def describe_preset(name: str) -> str:
+    return PRESET_DESCRIPTIONS.get(
+        name,
+        "Runtime multiseed preset used to shape generation and seed budgets.",
+    )
 
 
 def get_preset_by_name(name: str | None) -> ExperimentPreset | None:

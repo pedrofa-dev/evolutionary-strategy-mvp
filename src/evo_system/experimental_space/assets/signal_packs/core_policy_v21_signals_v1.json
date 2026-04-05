@@ -1,5 +1,6 @@
 {
   "id": "core_policy_v21_signals_v1",
+  "description": "Example declarative signal pack aligned with the current policy_v2 signal vocabulary.",
   "signals": [
     {
       "signal_id": "trend_strength_medium_v1",
