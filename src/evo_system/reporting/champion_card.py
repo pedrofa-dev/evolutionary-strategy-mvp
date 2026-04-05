@@ -96,8 +96,16 @@ def build_champion_card(row: dict[str, Any]) -> dict[str, Any]:
             "gene_type_catalog_name": row.get("gene_type_catalog_name") or "unknown",
             "decision_policy_name": row.get("decision_policy_name") or "unknown",
             "mutation_profile_name": row.get("mutation_profile_name") or "unknown",
+            "market_mode_name": row.get("market_mode_name") or "unknown",
+            "leverage": row.get("leverage"),
             "experiment_preset_name": row.get("experiment_preset_name"),
             "stack_label": row.get("modular_stack_label") or "unknown",
+        },
+        "traceability": {
+            "logic_version": row.get("logic_version"),
+            "config_hash": row.get("config_hash"),
+            "config_json_snapshot": row.get("config_json_snapshot"),
+            "experimental_space_snapshot": row.get("experimental_space_snapshot"),
         },
         "genome_summary": build_genome_summary(row),
     }

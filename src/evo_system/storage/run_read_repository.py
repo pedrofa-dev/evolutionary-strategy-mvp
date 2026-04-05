@@ -90,6 +90,7 @@ class PersistedRunSummaryView:
     dataset_catalog_id: str | None
     dataset_signature: str | None
     dataset_context: dict[str, Any]
+    config_json_snapshot: dict[str, Any]
     summary_payload: dict[str, Any]
     experimental_space_snapshot: dict[str, Any] | None
     market_mode_name: str | None
@@ -370,6 +371,7 @@ class RunReadRepository:
             dataset_catalog_id=run_row.get("dataset_catalog_id"),
             dataset_signature=run_row.get("dataset_signature"),
             dataset_context=dict(run_row.get("dataset_context_json") or {}),
+            config_json_snapshot=dict(run_row.get("config_json_snapshot") or {}),
             summary_payload=summary_payload,
             experimental_space_snapshot=normalized_snapshot,
             market_mode_name=_resolve_market_mode_name(

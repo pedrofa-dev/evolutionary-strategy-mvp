@@ -15,6 +15,8 @@ from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH, PersistenceStore
 class ChampionRow:
     id: int
     run_id: str
+    config_hash: str | None
+    logic_version: str | None
     generation_number: int | None
     mutation_seed: int | None
     config_name: str | None
@@ -117,6 +119,8 @@ def load_champions(
             ChampionRow(
                 id=int(champion_row["id"]),
                 run_id=str(champion_row["run_id"]),
+                config_hash=champion_row.get("config_hash"),
+                logic_version=champion_row.get("logic_version"),
                 generation_number=champion_row.get("generation_number"),
                 mutation_seed=champion_row.get("mutation_seed"),
                 config_name=champion_row.get("config_name"),
@@ -182,9 +186,13 @@ def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
     return {
         "id": champion.id,
         "run_id": champion.run_id,
+        "config_hash": champion.config_hash,
+        "logic_version": champion.logic_version,
         "generation_number": champion.generation_number,
         "mutation_seed": champion.mutation_seed,
         "config_name": stored_config_name,
+        "config_json_snapshot": champion.config_snapshot,
+        "experimental_space_snapshot": normalized_snapshot,
         "champion_type": resolve_champion_type(champion),
         "stored_config_name": champion.config_name,
         "created_at": champion.created_at,
@@ -268,6 +276,16 @@ def flatten_champion(champion: ChampionRow) -> dict[str, Any]:
             normalized_snapshot["mutation_profile_name"]
             if normalized_snapshot is not None
             else "unknown"
+        ),
+        "market_mode_name": (
+            normalized_snapshot["market_mode_name"]
+            if normalized_snapshot is not None
+            else "unknown"
+        ),
+        "leverage": (
+            normalized_snapshot["leverage"]
+            if normalized_snapshot is not None
+            else 1.0
         ),
         "experiment_preset_name": (
             normalized_snapshot.get("experiment_preset_name")

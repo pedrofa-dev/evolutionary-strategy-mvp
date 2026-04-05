@@ -181,6 +181,7 @@ def test_run_read_repository_lists_and_reads_runs(tmp_path: Path) -> None:
     assert summary.run_id == "run-001"
     assert summary.config_name == "run_a.json"
     assert summary.dataset_catalog_id == "core_1h_spot"
+    assert summary.config_json_snapshot["dataset_catalog_id"] == "core_1h_spot"
     assert summary.final_validation_selection_score == 1.55
     assert summary.best_genome_generation == 5
     assert summary.champion_persisted is True
@@ -296,6 +297,7 @@ def test_run_read_cli_lists_and_shows_run_summary(tmp_path: Path, monkeypatch, c
     assert "Run ID: run-001" in output
     assert "Execution fingerprint:" in output
     assert "Runtime component fingerprint:" in output
+    assert "Logic version:" in output
     assert "Market mode: spot" in output
     assert "Leverage: 1.0" in output
     assert "Champion persisted: True" in output

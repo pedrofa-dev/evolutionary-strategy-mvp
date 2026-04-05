@@ -232,10 +232,22 @@ def test_analyze_champions_surfaces_modular_identity_and_legacy_fallback(
     csv_text = result["csv_path"].read_text(encoding="utf-8")
 
     assert "Modular identity summary" in report_text
-    assert "modules=mixed_stacks | signal_pack=policy_v21_default" in report_text
+    assert (
+        "modules=mixed_stacks | signal_pack=policy_v21_default | genome_schema=modular_genome_v1 "
+        "| gene_catalog=modular_genome_v1_gene_catalog | decision_policy=policy_v2_default "
+        "| mutation_profile=default_runtime_profile | market_mode=spot | leverage=1.0 | preset=standard"
+    ) in report_text
     assert "signal_pack_name" in csv_text
+    assert "market_mode_name" in csv_text
+    assert "leverage" in csv_text
+    assert "logic_version" in csv_text
+    assert "config_hash" in csv_text
     assert "modular_stack_label" in csv_text
     assert "primary_stack_label" in json.dumps(result["report_data"]["modular_identity_summary"])
+    assert champion_card["modular_identity"]["market_mode_name"] == "spot"
+    assert champion_card["modular_identity"]["leverage"] == 1.0
+    assert champion_card["traceability"]["logic_version"] == "v15"
+    assert champion_card["traceability"]["config_json_snapshot"]["dataset_catalog_id"] == "core_1h_spot"
     assert champion_card["modular_identity"]["stack_label"] in {
         "signal_pack=policy_v21_default | genome_schema=modular_genome_v1 | gene_catalog=modular_genome_v1_gene_catalog | decision_policy=policy_v2_default | mutation_profile=default_runtime_profile | market_mode=spot | leverage=1.0 | preset=standard",
         "unknown",
@@ -274,3 +286,4 @@ def test_analyze_champions_reconstructs_modular_identity_from_explicit_config_sn
     assert champion_card["modular_identity"]["stack_label"].startswith(
         "signal_pack=policy_v21_default | genome_schema=modular_genome_v1"
     )
+    assert champion_card["traceability"]["experimental_space_snapshot"]["market_mode_name"] == "spot"

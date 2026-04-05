@@ -299,6 +299,8 @@ def build_modular_identity_summary(rows: list[dict[str, Any]]) -> dict[str, Any]
                 "gene_type_catalog_name": row.get("gene_type_catalog_name"),
                 "decision_policy_name": row.get("decision_policy_name"),
                 "mutation_profile_name": row.get("mutation_profile_name"),
+                "market_mode_name": row.get("market_mode_name"),
+                "leverage": row.get("leverage"),
                 "experiment_preset_name": row.get("experiment_preset_name"),
             }
             for row in rows
