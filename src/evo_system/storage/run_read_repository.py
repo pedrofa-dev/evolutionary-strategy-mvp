@@ -48,6 +48,20 @@ class PersistedEvaluationBreakdown:
     violations: list[str] = field(default_factory=list)
     is_valid: bool | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "selection_score": self.selection_score,
+            "median_profit": self.median_profit,
+            "median_drawdown": self.median_drawdown,
+            "median_trades": self.median_trades,
+            "dispersion": self.dispersion,
+            "dataset_scores": list(self.dataset_scores),
+            "dataset_profits": list(self.dataset_profits),
+            "dataset_drawdowns": list(self.dataset_drawdowns),
+            "violations": list(self.violations),
+            "is_valid": self.is_valid,
+        }
+
 
 @dataclass(frozen=True)
 class PersistedGenomeSnapshot:
@@ -56,6 +70,17 @@ class PersistedGenomeSnapshot:
     champion_type: str | None
     genome_snapshot: dict[str, Any] | None
     genome_repr: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "champion_id": self.champion_id,
+            "generation_number": self.generation_number,
+            "champion_type": self.champion_type,
+            "genome_snapshot": (
+                dict(self.genome_snapshot) if self.genome_snapshot is not None else None
+            ),
+            "genome_repr": self.genome_repr,
+        }
 
 
 @dataclass(frozen=True)
@@ -74,6 +99,24 @@ class PersistedRunListItem:
     leverage: float | None
     stack_label: str
     runtime_component_fingerprint: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "config_name": self.config_name,
+            "effective_seed": self.effective_seed,
+            "status": self.status,
+            "dataset_catalog_id": self.dataset_catalog_id,
+            "dataset_signature": self.dataset_signature,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "champion_persisted": self.champion_persisted,
+            "external_validation_status": self.external_validation_status,
+            "market_mode_name": self.market_mode_name,
+            "leverage": self.leverage,
+            "stack_label": self.stack_label,
+            "runtime_component_fingerprint": self.runtime_component_fingerprint,
+        }
 
 
 @dataclass(frozen=True)
@@ -110,6 +153,56 @@ class PersistedRunSummaryView:
     train_breakdown: PersistedEvaluationBreakdown | None
     validation_breakdown: PersistedEvaluationBreakdown | None
     best_genome: PersistedGenomeSnapshot | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "config_name": self.config_name,
+            "config_path": self.config_path,
+            "effective_seed": self.effective_seed,
+            "status": self.status,
+            "config_hash": self.config_hash,
+            "execution_fingerprint": self.execution_fingerprint,
+            "logic_version": self.logic_version,
+            "runtime_component_fingerprint": self.runtime_component_fingerprint,
+            "dataset_catalog_id": self.dataset_catalog_id,
+            "dataset_signature": self.dataset_signature,
+            "dataset_context": dict(self.dataset_context),
+            "config_json_snapshot": dict(self.config_json_snapshot),
+            "summary_payload": dict(self.summary_payload),
+            "experimental_space_snapshot": (
+                dict(self.experimental_space_snapshot)
+                if self.experimental_space_snapshot is not None
+                else None
+            ),
+            "market_mode_name": self.market_mode_name,
+            "leverage": self.leverage,
+            "stack_label": self.stack_label,
+            "best_train_selection_score": self.best_train_selection_score,
+            "final_validation_selection_score": self.final_validation_selection_score,
+            "final_validation_profit": self.final_validation_profit,
+            "final_validation_drawdown": self.final_validation_drawdown,
+            "final_validation_trades": self.final_validation_trades,
+            "best_genome_generation": self.best_genome_generation,
+            "champion_persisted": self.champion_persisted,
+            "champion_type": self.champion_type,
+            "external_validation_status": self.external_validation_status,
+            "total_run_time_seconds": self.total_run_time_seconds,
+            "average_generation_time_seconds": self.average_generation_time_seconds,
+            "train_breakdown": (
+                self.train_breakdown.to_dict()
+                if self.train_breakdown is not None
+                else None
+            ),
+            "validation_breakdown": (
+                self.validation_breakdown.to_dict()
+                if self.validation_breakdown is not None
+                else None
+            ),
+            "best_genome": (
+                self.best_genome.to_dict() if self.best_genome is not None else None
+            ),
+        }
 
 
 def _safe_float(value: Any) -> float | None:

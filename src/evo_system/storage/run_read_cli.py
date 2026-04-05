@@ -7,7 +7,7 @@ from evo_system.storage import DEFAULT_PERSISTENCE_DB_PATH
 from evo_system.storage.run_read_repository import RunReadRepository
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Read persisted runs from the canonical SQLite database."
     )
@@ -29,11 +29,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional run_id to show a detailed summary.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     repository = RunReadRepository(args.db_path)
 
     if args.run_id:

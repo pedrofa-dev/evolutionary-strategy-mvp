@@ -194,6 +194,16 @@ def test_run_read_repository_lists_and_reads_runs(tmp_path: Path) -> None:
     assert summary.train_breakdown.dataset_scores == [1.8]
     assert summary.best_genome is not None
     assert summary.best_genome.genome_snapshot is not None
+    summary_payload = summary.to_dict()
+    assert summary_payload["logic_version"]
+    assert summary_payload["market_mode_name"] == "spot"
+    assert summary_payload["config_json_snapshot"]["dataset_catalog_id"] == "core_1h_spot"
+    assert summary_payload["train_breakdown"]["dataset_scores"] == [1.8]
+    assert summary_payload["best_genome"]["generation_number"] == 5
+
+    list_payload = runs[1].to_dict()
+    assert list_payload["runtime_component_fingerprint"] is not None
+    assert list_payload["market_mode_name"] == "spot"
 
 
 def test_run_read_repository_handles_missing_optional_metadata_safely(tmp_path: Path) -> None:
@@ -280,19 +290,11 @@ def test_run_read_cli_lists_and_shows_run_summary(tmp_path: Path, monkeypatch, c
     database_path = tmp_path / "evolution_v2.db"
     seed_run(database_path, run_id="run-001")
 
-    monkeypatch.setattr(
-        "sys.argv",
-        ["read_runs.py", "--db-path", str(database_path), "--limit", "5"],
-    )
-    run_read_cli_main()
+    run_read_cli_main(["--db-path", str(database_path), "--limit", "5"])
     output = capsys.readouterr().out
     assert "run-001 | config=run_a.json" in output
 
-    monkeypatch.setattr(
-        "sys.argv",
-        ["read_runs.py", "--db-path", str(database_path), "--run-id", "run-001"],
-    )
-    run_read_cli_main()
+    run_read_cli_main(["--db-path", str(database_path), "--run-id", "run-001"])
     output = capsys.readouterr().out
     assert "Run ID: run-001" in output
     assert "Execution fingerprint:" in output
