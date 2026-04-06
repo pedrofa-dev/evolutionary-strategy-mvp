@@ -8,6 +8,10 @@ type CategoryPageProps = {
   selectedCategory: string;
   items: CatalogItem[];
   isLoading: boolean;
+  authoringAction?: {
+    label: string;
+    onClick: () => void;
+  } | null;
   onSelectCategory: (category: string) => void;
   onOpenItem: (item: CatalogItem) => void;
 };
@@ -17,6 +21,7 @@ export default function CategoryPage({
   selectedCategory,
   items,
   isLoading,
+  authoringAction = null,
   onSelectCategory,
   onOpenItem,
 }: CategoryPageProps) {
@@ -31,7 +36,16 @@ export default function CategoryPage({
       />
 
       <div className="panel">
-        <h2>{description.title}</h2>
+        <div className="results-panel-header">
+          <div>
+            <h2>{description.title}</h2>
+          </div>
+          {authoringAction ? (
+            <button className="link-button secondary" onClick={authoringAction.onClick} type="button">
+              {authoringAction.label}
+            </button>
+          ) : null}
+        </div>
         <p className="category-id">{selectedCategory}</p>
         <div className="category-explainer">
           <p>

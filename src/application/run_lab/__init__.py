@@ -4,7 +4,9 @@ from application.run_lab.service import (
     RunLabBootstrap,
     RunLabDatasetCatalogSummary,
     RunLabOption,
+    SavedSignalPackAssetResult,
     RunLabTemplateSummary,
+    SavedMutationProfileAssetResult,
     SavedRunConfigResult,
 )
 
@@ -14,6 +16,8 @@ __all__ = [
     "RunLabBootstrap",
     "RunLabDatasetCatalogSummary",
     "RunLabOption",
+    "SavedSignalPackAssetResult",
     "RunLabTemplateSummary",
+    "SavedMutationProfileAssetResult",
     "SavedRunConfigResult",
 ]

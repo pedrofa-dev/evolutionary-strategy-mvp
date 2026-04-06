@@ -372,7 +372,12 @@ def preserve_original_config_path(
     return summary
 
 
-def create_multiseed_dir() -> Path:
+def create_multiseed_dir(output_dir_override: Path | None = None) -> Path:
+    if output_dir_override is not None:
+        multiseed_dir = output_dir_override
+        multiseed_dir.mkdir(parents=True, exist_ok=True)
+        return multiseed_dir
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     multiseed_dir = MULTISEED_ROOT_DIR / f"multiseed_{timestamp}"
     multiseed_dir.mkdir(parents=True, exist_ok=True)
@@ -1253,6 +1258,7 @@ def run_multiseed_experiment(
     external_validation_dir: Path | None = None,
     audit_dir: Path | None = None,
     skip_post_multiseed_analysis: bool = False,
+    output_dir_override: Path | None = None,
 ) -> Path | None:
     """CORE COMPONENT - DO NOT MODIFY FROM UI OR EXPERIMENTAL LAYER.
 
@@ -1308,7 +1314,11 @@ def run_multiseed_experiment(
         f"{'parallel' if effective_parallel_workers > 1 else 'sequential'}"
     )
 
-    output_dir = create_multiseed_dir()
+    output_dir = (
+        create_multiseed_dir(output_dir_override)
+        if output_dir_override is not None
+        else create_multiseed_dir()
+    )
     print(f"Writing multiseed artifacts to {output_dir}")
 
     persistence_store = PersistenceStore(DEFAULT_PERSISTENCE_DB_PATH)

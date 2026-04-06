@@ -156,11 +156,19 @@ def test_cli_exposes_execution_arguments_at_top_level() -> None:
     parser = build_parser()
 
     args = parser.parse_args(
-        ["--configs-dir", "configs/runs", "--parallel-workers", "4"]
+        [
+            "--configs-dir",
+            "configs/runs",
+            "--parallel-workers",
+            "4",
+            "--multiseed-output-dir",
+            "artifacts/multiseed/multiseed_20260406_120000",
+        ]
     )
 
     assert args.configs_dir == Path("configs/runs")
     assert args.parallel_workers == 4
+    assert str(args.multiseed_output_dir).endswith("multiseed_20260406_120000")
 
 
 def test_cli_parses_multiseed_post_analysis_arguments() -> None:
@@ -929,6 +937,69 @@ def test_run_multiseed_experiment_generates_post_multiseed_artifacts(
     assert (multiseed_dir / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME).exists()
     assert (multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external").exists()
     assert (multiseed_dir / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit").exists()
+
+
+def test_run_multiseed_experiment_uses_explicit_output_dir_override(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "run_a.json"
+    write_config(config_path, extra_fields={"population_size": 18, "target_population_size": 18})
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.DEFAULT_PERSISTENCE_DB_PATH",
+        tmp_path / "evolution_v2.db",
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.execute_multiseed_runs_with_failures",
+        lambda **kwargs: MultiseedExecutionOutcome(
+            run_summaries=[],
+            failures=[],
+            executed_count=0,
+            reused_count=0,
+        ),
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.write_multiseed_quick_summary",
+        lambda **kwargs: tmp_path / "quick.txt",
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.write_multiseed_summary",
+        lambda **kwargs: kwargs["output_dir"] / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME,
+    )
+    monkeypatch.setattr(
+        "evo_system.experimentation.multiseed_run.run_post_multiseed_analysis",
+        lambda **kwargs: type(
+            "Result",
+            (),
+            {
+                "summary_path": kwargs["summary_path"],
+                "quick_summary_path": kwargs["multiseed_dir"] / MULTISEED_QUICK_SUMMARY_NAME,
+                "champions_summary_path": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME / MULTISEED_CHAMPIONS_SUMMARY_NAME,
+                "analysis_dir": kwargs["multiseed_dir"] / ANALYSIS_DIRNAME,
+                "debug_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME,
+                "champions_analysis_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / CHAMPIONS_ANALYSIS_DIRNAME,
+                "external_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "external",
+                "audit_output_dir": kwargs["multiseed_dir"] / DEBUG_DIRNAME / POST_MULTISEED_VALIDATION_DIRNAME / "audit",
+                "champion_count": 0,
+                "champion_analysis_status": "completed",
+                "external_evaluation_status": "completed",
+                "audit_evaluation_status": "completed",
+                "verdict": "NO_EDGE_DETECTED",
+                "recommended_next_action": "No follow-up action recorded.",
+            },
+        )(),
+    )
+
+    explicit_output_dir = tmp_path / "artifacts" / "multiseed" / "multiseed_20260406_120000"
+    summary_path = run_multiseed_experiment(
+        configs_dir=tmp_path,
+        dataset_root=tmp_path / "datasets",
+        parallel_workers=1,
+        output_dir_override=explicit_output_dir,
+    )
+
+    assert explicit_output_dir.exists()
+    assert summary_path == explicit_output_dir / DEBUG_DIRNAME / MULTISEED_RUN_SUMMARY_NAME
 
 
 def test_run_multiseed_experiment_persists_multiseed_and_run_executions(

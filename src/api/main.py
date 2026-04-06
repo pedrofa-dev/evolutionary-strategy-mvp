@@ -10,10 +10,13 @@ import argparse
 import json
 from http import HTTPStatus
 from typing import Any, Callable
+from urllib.parse import parse_qs
 from wsgiref.simple_server import WSGIServer, make_server
 
 from application.catalog import ExperimentalCatalogApplicationService
+from application.execution_queue import ExecutionQueueService
 from application.run_lab import RunLabApplicationService
+from application.runs_results import RunsResultsApplicationService
 from api.routes.catalog import (
     build_catalog_category_response,
     build_catalog_response,
@@ -22,6 +25,16 @@ from api.routes.run_lab import (
     build_run_lab_bootstrap_response,
     build_run_lab_save_and_execute_response,
     build_run_lab_save_config_response,
+    build_run_lab_save_mutation_profile_response,
+    build_run_lab_save_signal_pack_response,
+)
+from api.routes.runs_results import (
+    build_cancel_queue_job_response,
+    build_campaign_compare_response,
+    build_campaign_detail_response,
+    build_campaigns_response,
+    build_delete_campaign_response,
+    build_execution_monitor_response,
 )
 
 
@@ -44,19 +57,29 @@ class CatalogApiApp:
         *,
         catalog_service: ExperimentalCatalogApplicationService | None = None,
         run_lab_service: RunLabApplicationService | None = None,
+        runs_results_service: RunsResultsApplicationService | None = None,
+        queue_service: ExecutionQueueService | None = None,
     ) -> None:
+        self.queue_service = queue_service or ExecutionQueueService()
         self.catalog_service = catalog_service or ExperimentalCatalogApplicationService()
-        self.run_lab_service = run_lab_service or RunLabApplicationService()
+        self.run_lab_service = run_lab_service or RunLabApplicationService(
+            queue_service=self.queue_service
+        )
+        self.runs_results_service = runs_results_service or RunsResultsApplicationService(
+            queue_service=self.queue_service
+        )
 
     def __call__(self, environ: Environ, start_response: StartResponse) -> list[bytes]:
         method = environ.get("REQUEST_METHOD", "GET").upper()
         path = environ.get("PATH_INFO", "/")
+        query = parse_qs(environ.get("QUERY_STRING", ""), keep_blank_values=False)
 
         try:
             request_body = self._read_json_body(environ)
             status_code, payload = self._dispatch(
                 method=method,
                 path=path,
+                query=query,
                 request_body=request_body,
             )
         except json.JSONDecodeError:
@@ -82,9 +105,10 @@ class CatalogApiApp:
         *,
         method: str,
         path: str,
+        query: dict[str, list[str]],
         request_body: dict[str, Any] | None,
     ) -> tuple[int, dict[str, Any]]:
-        if method not in {"GET", "POST"}:
+        if method not in {"GET", "POST", "DELETE"}:
             return HTTPStatus.METHOD_NOT_ALLOWED, {
                 "error": "method_not_allowed",
                 "message": f"Unsupported method: {method}",
@@ -147,6 +171,82 @@ class CatalogApiApp:
                 self.run_lab_service,
                 request_body,
             )
+        if normalized_path == "/run-lab/authoring/mutation-profiles":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_run_lab_save_mutation_profile_response(
+                self.run_lab_service,
+                request_body,
+            )
+        if normalized_path == "/run-lab/authoring/signal-packs":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_run_lab_save_signal_pack_response(
+                self.run_lab_service,
+                request_body,
+            )
+        if normalized_path == "/runs/campaigns":
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            return build_campaigns_response(self.runs_results_service)
+        if normalized_path == "/runs/monitor":
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            return build_execution_monitor_response(self.runs_results_service)
+        if normalized_path.startswith("/runs/jobs/") and normalized_path.endswith("/cancel"):
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            job_id = normalized_path.removeprefix("/runs/jobs/").removesuffix("/cancel").strip("/")
+            return build_cancel_queue_job_response(self.runs_results_service, job_id)
+        if normalized_path.startswith("/runs/campaign/"):
+            if method == "GET":
+                campaign_id = normalized_path.removeprefix("/runs/campaign/")
+                return build_campaign_detail_response(self.runs_results_service, campaign_id)
+            if method == "DELETE":
+                campaign_id = normalized_path.removeprefix("/runs/campaign/")
+                return build_delete_campaign_response(self.runs_results_service, campaign_id)
+            return HTTPStatus.METHOD_NOT_ALLOWED, {
+                "error": "method_not_allowed",
+                "message": f"Unsupported method: {method}",
+            }
+        if normalized_path == "/runs/compare":
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            ids = [
+                item.strip()
+                for raw_value in query.get("ids", [])
+                for item in raw_value.split(",")
+                if item.strip()
+            ]
+            return build_campaign_compare_response(self.runs_results_service, ids)
         return HTTPStatus.NOT_FOUND, {
             "error": "not_found",
             "message": f"Unknown path: {path}",
@@ -173,10 +273,14 @@ def create_app(
     *,
     catalog_service: ExperimentalCatalogApplicationService | None = None,
     run_lab_service: RunLabApplicationService | None = None,
+    runs_results_service: RunsResultsApplicationService | None = None,
+    queue_service: ExecutionQueueService | None = None,
 ) -> CatalogApiApp:
     return CatalogApiApp(
         catalog_service=catalog_service,
         run_lab_service=run_lab_service,
+        runs_results_service=runs_results_service,
+        queue_service=queue_service,
     )
 
 
@@ -189,7 +293,12 @@ def create_dev_server(
     port: int = 8000,
 ) -> WSGIServer:
     """Create the local development server for the transitional catalog API."""
-    return make_server(host, port, app)
+    queue_service = ExecutionQueueService()
+    queue_service.start_background_dispatcher()
+    server_app = create_app(queue_service=queue_service)
+    server = make_server(host, port, server_app)
+    setattr(server, "_queue_service", queue_service)
+    return server
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -205,7 +314,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     with create_dev_server(host=args.host, port=args.port) as server:
         print(f"Serving catalog API on http://{args.host}:{args.port}")
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        finally:
+            queue_service = getattr(server, "_queue_service", None)
+            if isinstance(queue_service, ExecutionQueueService):
+                queue_service.stop_background_dispatcher()
     return 0
 
 

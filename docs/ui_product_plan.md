@@ -118,6 +118,11 @@ Main surfaces:
 - run config builder
 - reusable preset builder
 
+See also:
+- `docs/architecture/run-lab-authoring-v1-plan.md` for the conservative
+  modal-based authoring approach that keeps Run Lab focused on selection and
+  execution.
+
 ### Phase 4: Advanced Analysis, Comparison, And Saved Workflows
 
 Primary goal:

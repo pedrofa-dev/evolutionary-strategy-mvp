@@ -1,34 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { getCatalog, getCatalogCategory, getHealth } from "./services/catalogApi";
+import GlobalExecutionMonitor from "./components/GlobalExecutionMonitor";
+import MutationProfileModal from "./components/MutationProfileModal";
+import SignalPackModal from "./components/SignalPackModal";
 import type { CatalogItem, CatalogPayload } from "./types/catalog";
 import CategoryPage from "./pages/CategoryPage";
 import DetailPage from "./pages/DetailPage";
+import HomePage from "./pages/HomePage";
 import OverviewPage from "./pages/OverviewPage";
+import ResultsPage from "./pages/ResultsPage";
 import RunLabPage from "./pages/RunLabPage";
+import type { SavedMutationProfileAssetResult, SavedSignalPackAssetResult } from "./types/runLab";
 
 type Theme = "light" | "dark";
 type Route =
+  | { kind: "home" }
   | { kind: "overview" }
   | { kind: "run-lab" }
+  | { kind: "results"; campaignId: string | null }
   | { kind: "category"; category: string }
   | { kind: "detail"; category: string; itemId: string };
 
 const THEME_STORAGE_KEY = "catalog-ui-theme";
+const RESULTS_NAVIGATION_INTENT_KEY = "results-navigation-intent";
 
 function parseRoute(pathname: string): Route {
   const cleanPath = pathname.replace(/\/+$/, "") || "/";
   const parts = cleanPath.split("/").filter(Boolean);
 
   if (parts.length === 0) {
-    return { kind: "overview" };
+    return { kind: "home" };
   }
 
   if (parts[0] === "run-lab") {
     return { kind: "run-lab" };
   }
 
+  if (parts[0] === "results") {
+    return {
+      kind: "results",
+      campaignId: parts.length >= 2 ? decodeURIComponent(parts[1]) : null,
+    };
+  }
+
   if (parts[0] !== "catalog") {
+    return { kind: "home" };
+  }
+
+  if (parts.length === 1) {
     return { kind: "overview" };
   }
 
@@ -44,12 +64,25 @@ function parseRoute(pathname: string): Route {
     };
   }
 
-  return { kind: "overview" };
+  return { kind: "home" };
 }
 
 function navigate(path: string) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function openResultsWorkspace() {
+  window.sessionStorage.removeItem(RESULTS_NAVIGATION_INTENT_KEY);
+  navigate("/results");
+}
+
+function openResultsPath(campaignId?: string | null) {
+  if (campaignId) {
+    navigate(`/results/${encodeURIComponent(campaignId)}`);
+    return;
+  }
+  navigate("/results");
 }
 
 function getSystemTheme(): Theme {
@@ -74,6 +107,8 @@ export default function App() {
   const [isOverviewLoading, setIsOverviewLoading] = useState(true);
   const [loadingCategory, setLoadingCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isCatalogMutationProfileModalOpen, setIsCatalogMutationProfileModalOpen] = useState(false);
+  const [isCatalogSignalPackModalOpen, setIsCatalogSignalPackModalOpen] = useState(false);
 
   useEffect(() => {
     const onPopState = () => {
@@ -83,6 +118,36 @@ export default function App() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  async function refreshCatalogCategory(category: string) {
+    try {
+      setLoadingCategory(category);
+      setError(null);
+      const response = await getCatalogCategory(category);
+      setCategoryItems((current) => ({
+        ...current,
+        [category]: response.items,
+      }));
+      setCatalog((current) => ({
+        ...current,
+        [category]: response.items,
+      }));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unknown error");
+    } finally {
+      setLoadingCategory((current) => (current === category ? null : current));
+    }
+  }
+
+  async function handleCatalogMutationProfileSaved(_: SavedMutationProfileAssetResult) {
+    await refreshCatalogCategory("mutation_profiles");
+    setIsCatalogMutationProfileModalOpen(false);
+  }
+
+  async function handleCatalogSignalPackSaved(_: SavedSignalPackAssetResult) {
+    await refreshCatalogCategory("signal_packs");
+    setIsCatalogSignalPackModalOpen(false);
+  }
 
   const theme = themePreference ?? systemTheme;
 
@@ -192,15 +257,37 @@ export default function App() {
   const isCategoryLoading =
     (route.kind === "category" || route.kind === "detail") && loadingCategory === route.category;
 
+  const categoryAuthoringAction =
+    route.kind === "category"
+      ? route.category === "mutation_profiles"
+        ? {
+            label: "New mutation profile",
+            onClick: () => setIsCatalogMutationProfileModalOpen(true),
+          }
+        : route.category === "signal_packs"
+          ? {
+              label: "New signal pack",
+              onClick: () => setIsCatalogSignalPackModalOpen(true),
+            }
+          : null
+      : null;
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-content">
           <div className="app-header-left">
-            <button className="brand-button" onClick={() => navigate("/run-lab")} type="button">
+            <button className="brand-button" onClick={() => navigate("/")} type="button">
               Experimental Lab UI
             </button>
             <nav className="top-nav" aria-label="Primary">
+              <button
+                className={route.kind === "home" ? "top-nav-button active" : "top-nav-button"}
+                onClick={() => navigate("/")}
+                type="button"
+              >
+                Home
+              </button>
               <button
                 className={route.kind === "run-lab" ? "top-nav-button active" : "top-nav-button"}
                 onClick={() => navigate("/run-lab")}
@@ -209,8 +296,15 @@ export default function App() {
                 Run Lab
               </button>
               <button
+                className={route.kind === "results" ? "top-nav-button active" : "top-nav-button"}
+                onClick={openResultsWorkspace}
+                type="button"
+              >
+                Runs / Results
+              </button>
+              <button
                 className={route.kind === "overview" || route.kind === "category" || route.kind === "detail" ? "top-nav-button active" : "top-nav-button"}
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/catalog")}
                 type="button"
               >
                 Catalog
@@ -230,6 +324,16 @@ export default function App() {
       <main className="app-main">
         {error ? <div className="error-banner">{error}</div> : null}
 
+        {route.kind === "home" ? (
+          <HomePage
+            onOpenRunLab={() => navigate("/run-lab")}
+            onOpenResults={(campaignId) => openResultsPath(campaignId)}
+            onOpenCatalog={() => navigate("/catalog")}
+            onOpenMutationProfileAuthoring={() => setIsCatalogMutationProfileModalOpen(true)}
+            onOpenSignalPackAuthoring={() => setIsCatalogSignalPackModalOpen(true)}
+          />
+        ) : null}
+
         {route.kind === "overview" ? (
           <OverviewPage
             healthStatus={healthStatus}
@@ -240,7 +344,23 @@ export default function App() {
           />
         ) : null}
 
-        {route.kind === "run-lab" ? <RunLabPage onOpenCatalog={() => navigate("/")} /> : null}
+        {route.kind === "run-lab" ? (
+          <RunLabPage
+            onOpenCatalog={() => navigate("/catalog")}
+            onOpenResults={(campaignId) => openResultsPath(campaignId)}
+          />
+        ) : null}
+
+        {route.kind === "results" ? (
+          <ResultsPage
+            selectedCampaignId={route.campaignId}
+            onOpenCampaign={(campaignId) =>
+              navigate(`/results/${encodeURIComponent(campaignId)}`)
+            }
+            onOpenWorkspace={openResultsWorkspace}
+            onOpenRunLab={() => navigate("/run-lab")}
+          />
+        ) : null}
 
         {route.kind === "category" ? (
           <CategoryPage
@@ -248,6 +368,7 @@ export default function App() {
             selectedCategory={route.category}
             items={currentItems}
             isLoading={isCategoryLoading}
+            authoringAction={categoryAuthoringAction}
             onSelectCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}
             onOpenItem={(item) =>
               navigate(
@@ -264,10 +385,24 @@ export default function App() {
             isLoading={isCategoryLoading}
             missingItemId={selectedItem ? null : route.itemId}
             onBackToCategory={(category) => navigate(`/catalog/${encodeURIComponent(category)}`)}
-            onBackToOverview={() => navigate("/")}
+            onBackToOverview={() => navigate("/catalog")}
           />
         ) : null}
       </main>
+
+      <MutationProfileModal
+        contextLabel="Catalog Authoring"
+        isOpen={isCatalogMutationProfileModalOpen}
+        onClose={() => setIsCatalogMutationProfileModalOpen(false)}
+        onSaved={handleCatalogMutationProfileSaved}
+      />
+      <SignalPackModal
+        contextLabel="Catalog Authoring"
+        isOpen={isCatalogSignalPackModalOpen}
+        onClose={() => setIsCatalogSignalPackModalOpen(false)}
+        onSaved={handleCatalogSignalPackSaved}
+      />
+      <GlobalExecutionMonitor onOpenResultsPath={(path) => navigate(path)} />
     </div>
   );
 }

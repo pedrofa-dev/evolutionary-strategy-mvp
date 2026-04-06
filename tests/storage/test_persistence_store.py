@@ -86,6 +86,8 @@ def test_no_parallel_sqlite_writer_exists_in_src_tree() -> None:
         if "sqlite3.connect(" in text and relative_path not in {
             "src/evo_system/storage/persistence_store.py",
             "src/evo_system/storage/run_read_repository.py",
+            "src/application/runs_results/service.py",
+            "src/application/execution_queue/service.py",
         }:
             sqlite_write_connect_users.append(relative_path)
 
@@ -455,6 +457,47 @@ def test_save_analysis_and_evaluation_memberships(tmp_path: Path) -> None:
         '{"positive_profit_count":1}',
         "artifacts/multiseed/run/external/report.txt",
     )
+
+
+def test_execution_queue_settings_and_jobs_are_persisted(tmp_path: Path) -> None:
+    database_path = tmp_path / "persistence.db"
+    store = PersistenceStore(database_path)
+    store.initialize()
+
+    assert store.get_execution_queue_concurrency_limit() == 1
+    assert store.set_execution_queue_concurrency_limit(3) == 3
+    assert store.get_execution_queue_concurrency_limit() == 3
+
+    store.save_execution_queue_job(
+        queue_job_uid="queue-001",
+        campaign_id="multiseed_001",
+        config_name="queued_probe.json",
+        config_path="configs/runs/queued_probe.json",
+        config_payload_json={"seed_count": 4},
+        parallel_workers=2,
+        execution_configs_dir="artifacts/ui_run_lab/config_sets/queued_probe",
+        launch_log_path="artifacts/ui_run_lab/config_sets/queued_probe/launch.log",
+        multiseed_output_dir="artifacts/multiseed/multiseed_001",
+        experiment_preset_name="standard",
+    )
+
+    row = store.load_execution_queue_job("queue-001")
+    assert row is not None
+    assert row["status"] == "queued"
+    assert row["config_payload_json"]["seed_count"] == 4
+
+    store.update_execution_queue_job(
+        "queue-001",
+        status="running",
+        started_at=utc_now_iso(),
+        command_json=["python", "scripts/run_experiment.py"],
+        pid=1234,
+    )
+    updated = store.load_execution_queue_job("queue-001")
+    assert updated is not None
+    assert updated["status"] == "running"
+    assert updated["pid"] == 1234
+    assert updated["command_json"][0] == "python"
 
 
 def test_hash_and_fingerprint_generation_is_stable() -> None:

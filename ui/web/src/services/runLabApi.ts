@@ -1,8 +1,12 @@
 import type {
   LaunchedRunResult,
+  MutationProfileAuthoringRequest,
   RunLabBootstrap,
   RunLabSaveRequest,
+  SavedSignalPackAssetResult,
+  SavedMutationProfileAssetResult,
   SavedRunConfigResult,
+  SignalPackAuthoringRequest,
 } from "../types/runLab";
 
 const API_BASE_URL =
@@ -60,4 +64,34 @@ export function saveAndExecuteRun(
     },
     body: JSON.stringify(request),
   });
+}
+
+export function saveMutationProfileAsset(
+  request: MutationProfileAuthoringRequest,
+): Promise<SavedMutationProfileAssetResult> {
+  return requestJson<SavedMutationProfileAssetResult>(
+    "/run-lab/authoring/mutation-profiles",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    },
+  );
+}
+
+export function saveSignalPackAsset(
+  request: SignalPackAuthoringRequest,
+): Promise<SavedSignalPackAssetResult> {
+  return requestJson<SavedSignalPackAssetResult>(
+    "/run-lab/authoring/signal-packs",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    },
+  );
 }

@@ -60,6 +60,7 @@ Canonical documents:
 - [Datasets And Validation Rules](docs/datasets_and_validation.md)
 - [Reporting And Interpretation](docs/reporting_and_interpretation.md)
 - [Persistence Model](docs/persistence_model.md)
+- [Reset Research State](docs/reset_research_state.md)
 - [UI Product Plan](docs/ui_product_plan.md)
 - [Contributor Guidelines](docs/contributor_guidelines.md)
 

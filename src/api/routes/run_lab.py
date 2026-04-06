@@ -44,3 +44,37 @@ def build_run_lab_save_and_execute_response(
             },
         )
     return HTTPStatus.OK, result.to_dict()
+
+
+def build_run_lab_save_mutation_profile_response(
+    service: RunLabApplicationService,
+    payload: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    try:
+        result = service.save_mutation_profile_asset(payload)
+    except (KeyError, TypeError, ValueError) as exc:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {
+                "error": "invalid_run_lab_request",
+                "message": str(exc),
+            },
+        )
+    return HTTPStatus.OK, result.to_dict()
+
+
+def build_run_lab_save_signal_pack_response(
+    service: RunLabApplicationService,
+    payload: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    try:
+        result = service.save_signal_pack_asset(payload)
+    except (KeyError, TypeError, ValueError) as exc:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {
+                "error": "invalid_run_lab_request",
+                "message": str(exc),
+            },
+        )
+    return HTTPStatus.OK, result.to_dict()

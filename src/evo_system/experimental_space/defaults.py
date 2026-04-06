@@ -18,6 +18,7 @@ from evo_system.experimental_space.base import (
     MutationProfileDefinition,
     SignalPack,
 )
+from evo_system.experimental_space.asset_loader import ASSETS_ROOT, load_all_declarative_assets
 from evo_system.experimental_space.gene_catalog import (
     MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
 )
@@ -31,7 +32,10 @@ from evo_system.experimental_space.policy_engines import (
     PolicyEngine,
 )
 from evo_system.experimental_space.registry import NamedRegistry
-from evo_system.experimental_space.signal_packs import DefaultSignalPack
+from evo_system.experimental_space.signal_packs import (
+    DefaultSignalPack,
+    POLICY_V21_FEATURE_NAMES,
+)
 from evo_system.mutation.mutator import MutationProfile
 
 
@@ -163,6 +167,58 @@ class RuntimeMutationProfileAdapter(MutationProfileDefinition):
         return profile or MutationProfile()
 
 
+@dataclass(frozen=True)
+class DeclarativeMutationProfileAdapter(MutationProfileDefinition):
+    """Resolve a declarative mutation profile asset through the existing mutator."""
+
+    name: str
+    default_profile: MutationProfile
+
+    def resolve_runtime_profile(
+        self,
+        profile: MutationProfile | None = None,
+    ) -> MutationProfile:
+        return profile or self.default_profile
+
+
+@dataclass(frozen=True)
+class DeclarativeSignalPackAdapter(SignalPack):
+    """Resolve a declarative signal pack asset through the current signal vocabulary."""
+
+    name: str
+    feature_names: tuple[str, ...]
+    family_names: tuple[str, ...]
+    source_by_feature_name: dict[str, str]
+
+    def build_signal_features(self, *, environment: Any, **kwargs: Any) -> dict[str, float]:
+        base_pack = DefaultSignalPack()
+        base_features = base_pack.build_signal_features(environment=environment, **kwargs)
+        return {
+            feature_name: float(base_features.get(source_name, 0.0))
+            for feature_name, source_name in self.source_by_feature_name.items()
+        }
+
+    def build_signal_families(
+        self,
+        *,
+        environment: Any,
+        signal_features: dict[str, float],
+    ) -> dict[str, float]:
+        base_pack = DefaultSignalPack()
+        canonical_features = {
+            feature_name: 0.0 for feature_name in POLICY_V21_FEATURE_NAMES
+        }
+        for feature_name, source_name in self.source_by_feature_name.items():
+            canonical_features[source_name] = float(signal_features.get(feature_name, 0.0))
+        return base_pack.build_signal_families(
+            environment=environment,
+            signal_features=canonical_features,
+        )
+
+
+DECLARATIVE_ASSET_ROOT = ASSETS_ROOT
+
+
 signal_pack_registry: NamedRegistry[SignalPack] = NamedRegistry()
 genome_schema_registry: NamedRegistry[GenomeSchema] = NamedRegistry()
 policy_engine_registry: NamedRegistry[PolicyEngine] = NamedRegistry()
@@ -216,6 +272,13 @@ def get_default_signal_pack() -> SignalPack:
 
 
 def get_signal_pack(name: str) -> SignalPack:
+    if signal_pack_registry.has(name):
+        return signal_pack_registry.get(name)
+
+    declarative_signal_pack = _load_declarative_signal_pack(name)
+    if declarative_signal_pack is not None:
+        return declarative_signal_pack
+
     return signal_pack_registry.get(name)
 
 
@@ -248,6 +311,13 @@ def get_default_mutation_profile_definition() -> MutationProfileDefinition:
 
 
 def get_mutation_profile_definition(name: str) -> MutationProfileDefinition:
+    if mutation_profile_registry.has(name):
+        return mutation_profile_registry.get(name)
+
+    declarative_definition = _load_declarative_mutation_profile_definition(name)
+    if declarative_definition is not None:
+        return declarative_definition
+
     return mutation_profile_registry.get(name)
 
 
@@ -257,3 +327,61 @@ def get_default_market_mode() -> MarketMode:
 
 def get_market_mode(name: str) -> MarketMode:
     return market_mode_registry.get(name)
+
+
+def _load_declarative_mutation_profile_definition(
+    name: str,
+) -> MutationProfileDefinition | None:
+    assets = load_all_declarative_assets(DECLARATIVE_ASSET_ROOT).get(
+        "mutation_profiles",
+        [],
+    )
+    for asset in assets:
+        if asset.name != name:
+            continue
+        profile_payload = asset.payload.get("profile")
+        if not isinstance(profile_payload, dict):
+            return None
+        return DeclarativeMutationProfileAdapter(
+            name=asset.name,
+            default_profile=MutationProfile.from_dict(profile_payload),
+        )
+    return None
+
+
+def _load_declarative_signal_pack(name: str) -> SignalPack | None:
+    assets = load_all_declarative_assets(DECLARATIVE_ASSET_ROOT).get(
+        "signal_packs",
+        [],
+    )
+    for asset in assets:
+        if asset.name != name:
+            continue
+        signal_entries = asset.payload.get("signals")
+        if not isinstance(signal_entries, list):
+            return None
+
+        source_by_feature_name: dict[str, str] = {}
+        for entry in signal_entries:
+            if not isinstance(entry, dict):
+                return None
+            signal_id = entry.get("signal_id")
+            if not isinstance(signal_id, str) or not signal_id.strip():
+                return None
+            alias = entry.get("alias")
+            feature_name = alias if isinstance(alias, str) and alias.strip() else signal_id
+            params = entry.get("params")
+            source_name = signal_id
+            if isinstance(params, dict):
+                source_value = params.get("source")
+                if isinstance(source_value, str) and source_value.strip():
+                    source_name = source_value
+            source_by_feature_name[feature_name] = source_name
+
+        return DeclarativeSignalPackAdapter(
+            name=asset.name,
+            feature_names=tuple(source_by_feature_name.keys()),
+            family_names=DefaultSignalPack().family_names,
+            source_by_feature_name=source_by_feature_name,
+        )
+    return None

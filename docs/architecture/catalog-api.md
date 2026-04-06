@@ -18,11 +18,15 @@ The current HTTP surface exposes:
 - `GET /run-lab`
 - `POST /run-lab/configs`
 - `POST /run-lab/executions`
+- `GET /runs/campaigns`
+- `GET /runs/campaign/{id}`
+- `GET /runs/compare?ids=...`
 
 These endpoints return JSON only and cover:
 
 - the experimental catalog prepared in earlier phases
 - the first canonical Run Lab bootstrap/save/launch flow
+- a read-only Runs / Results surface over persisted campaigns and evaluations
 
 ## Local Development Server
 
@@ -63,11 +67,10 @@ types.
 
 This API does not expose:
 
-- runs
-- execution
+- run execution control beyond the existing Run Lab launch bridge
 - mutation flows
-- reporting beyond the catalog
-- persistence operations
+- reporting writes or recomputation
+- persistence operations outside the canonical runtime path
 - champion selection
 - evaluator/scoring behavior
 - authentication or authorization
@@ -85,6 +88,9 @@ The future UI can already rely on a real HTTP surface for:
 - loading the canonical Run Lab bootstrap
 - saving canonical run configs
 - launching the existing multiseed entrypoint through a thin HTTP bridge
+- listing persisted campaigns
+- reading one campaign detail
+- comparing several campaigns side by side using persisted summaries only
 
 That is enough to start frontend integration work without forcing premature
 productization of the rest of the platform.

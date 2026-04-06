@@ -52,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip automatic post-multiseed champion analysis and reevaluation.",
     )
+    parser.add_argument(
+        "--multiseed-output-dir",
+        type=Path,
+        default=None,
+        help="Optional explicit multiseed artifacts directory. Its directory name becomes the canonical campaign id.",
+    )
 
     return parser
 
@@ -68,4 +74,5 @@ def main(argv: list[str] | None = None) -> None:
         external_validation_dir=args.external_validation_dir,
         audit_dir=args.audit_dir,
         skip_post_multiseed_analysis=args.skip_post_multiseed_analysis,
+        output_dir_override=args.multiseed_output_dir,
     )

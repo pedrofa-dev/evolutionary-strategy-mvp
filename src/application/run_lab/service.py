@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
-import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from application.catalog import ExperimentalCatalogApplicationService
+from application.execution_queue import ExecutionQueueService, SubmittedRunQueueJobResult
+from evo_system.experimental_space.asset_loader import (
+    ASSETS_ROOT,
+    load_declarative_asset,
+)
 from evo_system.data_ingestion.dataset_builder.dataset_catalog import parse_manifest
 from evo_system.experimental_space.catalog_service import CatalogService
 from evo_system.experimental_space.identity import (
@@ -19,16 +20,21 @@ from evo_system.experimental_space.identity import (
 from evo_system.experimentation.presets import (
     PRESET_REGISTRY,
     describe_preset,
-    get_preset_by_name,
 )
-from evo_system.storage import CURRENT_LOGIC_VERSION
+from evo_system.storage import CURRENT_LOGIC_VERSION, DEFAULT_PERSISTENCE_DB_PATH
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUN_CONFIGS_DIR = REPO_ROOT / "configs" / "runs"
 DATASET_CONFIGS_DIR = REPO_ROOT / "configs" / "datasets"
 RUN_LAB_ARTIFACTS_DIR = REPO_ROOT / "artifacts" / "ui_run_lab"
+SIGNAL_PACK_ASSETS_DIR = ASSETS_ROOT / "signal_packs"
+MUTATION_PROFILE_ASSETS_DIR = ASSETS_ROOT / "mutation_profiles"
 DEFAULT_EXECUTION_PRESET = "standard"
+
+
+def _canonicalize_json_payload(payload: Any) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 @dataclass(frozen=True)
@@ -164,23 +170,34 @@ class SavedRunConfigResult:
 
 
 @dataclass(frozen=True)
-class LaunchedRunResult:
-    saved_config: SavedRunConfigResult
-    command: tuple[str, ...]
-    launch_log_path: str
-    execution_configs_dir: str
-    pid: int
-    preset_name: str | None
+class SavedMutationProfileAssetResult:
+    asset_id: str
+    asset_path: str
+    asset_payload: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "saved_config": self.saved_config.to_dict(),
-            "command": list(self.command),
-            "launch_log_path": self.launch_log_path,
-            "execution_configs_dir": self.execution_configs_dir,
-            "pid": self.pid,
-            "preset_name": self.preset_name,
+            "asset_id": self.asset_id,
+            "asset_path": self.asset_path,
+            "asset_payload": dict(self.asset_payload),
         }
+
+
+@dataclass(frozen=True)
+class SavedSignalPackAssetResult:
+    asset_id: str
+    asset_path: str
+    asset_payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "asset_id": self.asset_id,
+            "asset_path": self.asset_path,
+            "asset_payload": dict(self.asset_payload),
+        }
+
+
+LaunchedRunResult = SubmittedRunQueueJobResult
 
 
 class RunLabApplicationService:
@@ -200,15 +217,38 @@ class RunLabApplicationService:
         dataset_configs_dir: Path = DATASET_CONFIGS_DIR,
         run_configs_dir: Path = RUN_CONFIGS_DIR,
         run_lab_artifacts_dir: Path = RUN_LAB_ARTIFACTS_DIR,
+        signal_pack_assets_dir: Path = SIGNAL_PACK_ASSETS_DIR,
+        mutation_profile_assets_dir: Path = MUTATION_PROFILE_ASSETS_DIR,
+        database_path: str | Path | None = None,
         catalog_service: CatalogService | None = None,
         launcher: Any = None,
+        queue_service: ExecutionQueueService | None = None,
     ) -> None:
         self.repo_root = repo_root
         self.dataset_configs_dir = dataset_configs_dir
         self.run_configs_dir = run_configs_dir
         self.run_lab_artifacts_dir = run_lab_artifacts_dir
-        self.catalog_service = catalog_service or CatalogService()
-        self.launcher = launcher or subprocess.Popen
+        self.signal_pack_assets_dir = signal_pack_assets_dir
+        self.mutation_profile_assets_dir = mutation_profile_assets_dir
+        asset_root = (
+            mutation_profile_assets_dir.parent
+            if mutation_profile_assets_dir != MUTATION_PROFILE_ASSETS_DIR
+            else signal_pack_assets_dir.parent
+        )
+        self.catalog_service = catalog_service or CatalogService(
+            asset_root=asset_root
+        )
+        resolved_database_path = (
+            Path(database_path)
+            if database_path is not None
+            else repo_root / DEFAULT_PERSISTENCE_DB_PATH
+        )
+        self.queue_service = queue_service or ExecutionQueueService(
+            database_path=resolved_database_path,
+            repo_root=repo_root,
+            run_lab_artifacts_dir=run_lab_artifacts_dir,
+            launcher=launcher,
+        )
 
     def get_bootstrap(self) -> RunLabBootstrap:
         dataset_catalogs = self._list_dataset_catalogs()
@@ -236,6 +276,8 @@ class RunLabApplicationService:
             "explicit_seeds": list(default_template.explicit_seeds),
             "generations_planned": default_template.generations_planned,
             "experiment_preset_name": default_execution_preset.id,
+            "parallel_workers": 1,
+            "queue_concurrency_limit": self.queue_service.get_concurrency_limit(),
         }
 
         return RunLabBootstrap(
@@ -251,13 +293,16 @@ class RunLabApplicationService:
         )
 
     def save_run_config(self, payload: dict[str, Any]) -> SavedRunConfigResult:
+        """Write a canonical run config under configs/runs/.
+
+        This is the current canonical write path used by the UI/API layer.
+        Integrity rules such as config-name collision handling live here so
+        they are not enforced only in the frontend.
+        """
         template_path = self._resolve_template_path(str(payload["template_config_name"]))
         base_config = json.loads(template_path.read_text(encoding="utf-8"))
         config_name = _normalize_config_name(str(payload["config_name"]))
         output_path = self.run_configs_dir / config_name
-
-        if output_path.exists():
-            raise ValueError(f"Run config already exists: {output_path.name}")
 
         dataset_catalog_id = str(payload["dataset_catalog_id"])
         self._ensure_dataset_catalog_exists(dataset_catalog_id)
@@ -312,11 +357,22 @@ class RunLabApplicationService:
             merged_config["seed_count"] = seed_count
             merged_config.pop("seeds", None)
 
+        if output_path.exists():
+            existing_payload = json.loads(output_path.read_text(encoding="utf-8"))
+            if _canonicalize_json_payload(existing_payload) != _canonicalize_json_payload(
+                merged_config
+            ):
+                raise ValueError(
+                    "Run config name already exists with different content. "
+                    "Choose a different config name instead of overwriting it."
+                )
+
         self.run_configs_dir.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
-            json.dumps(merged_config, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        if not output_path.exists():
+            output_path.write_text(
+                json.dumps(merged_config, indent=2) + "\n",
+                encoding="utf-8",
+            )
 
         warnings = tuple(
             self._selection_warnings(
@@ -333,52 +389,125 @@ class RunLabApplicationService:
             warnings=warnings,
         )
 
+    def save_mutation_profile_asset(
+        self,
+        payload: dict[str, Any],
+    ) -> SavedMutationProfileAssetResult:
+        asset_id = _normalize_asset_id(str(payload["id"]))
+        description = _normalize_optional_description(payload.get("description"))
+        profile_payload = {
+            "strong_mutation_probability": float(payload["strong_mutation_probability"]),
+            "numeric_delta_scale": float(payload["numeric_delta_scale"]),
+            "flag_flip_probability": float(payload["flag_flip_probability"]),
+            "weight_delta": float(payload["weight_delta"]),
+            "window_step_mode": str(payload["window_step_mode"]),
+        }
+        asset_payload = {
+            "id": asset_id,
+            "description": description,
+            "profile": profile_payload,
+        }
+
+        candidate_path = self.mutation_profile_assets_dir / f"{asset_id}.json"
+        relative_asset_path = candidate_path.relative_to(self.repo_root)
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+
+        serialized_payload = _canonicalize_json_payload(asset_payload)
+        wrote_new_file = False
+        if candidate_path.exists():
+            existing_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+            if _canonicalize_json_payload(existing_payload) != serialized_payload:
+                raise ValueError(
+                    "Mutation profile id already exists with different content. "
+                    "Choose a different id instead of overwriting it."
+                )
+        else:
+            candidate_path.write_text(
+                json.dumps(asset_payload, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            wrote_new_file = True
+
+        try:
+            # Validate through the existing declarative asset loader contract.
+            load_declarative_asset(candidate_path, asset_type="mutation_profiles")
+        except Exception:
+            if wrote_new_file and candidate_path.exists():
+                candidate_path.unlink()
+            raise
+
+        return SavedMutationProfileAssetResult(
+            asset_id=asset_id,
+            asset_path=relative_asset_path.as_posix(),
+            asset_payload=asset_payload,
+        )
+
+    def save_signal_pack_asset(
+        self,
+        payload: dict[str, Any],
+    ) -> SavedSignalPackAssetResult:
+        asset_id = _normalize_asset_id(str(payload["id"]))
+        description = _normalize_optional_description(payload.get("description"))
+        signal_ids = _parse_signal_id_lines(payload.get("signals"))
+        if not signal_ids:
+            raise ValueError("At least one signal identifier is required.")
+
+        asset_payload = {
+            "id": asset_id,
+            "description": description,
+            "signals": [
+                {
+                    "signal_id": signal_id,
+                    "params": {"source": signal_id},
+                }
+                for signal_id in signal_ids
+            ],
+        }
+
+        candidate_path = self.signal_pack_assets_dir / f"{asset_id}.json"
+        relative_asset_path = candidate_path.relative_to(self.repo_root)
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+
+        serialized_payload = _canonicalize_json_payload(asset_payload)
+        wrote_new_file = False
+        if candidate_path.exists():
+            existing_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+            if _canonicalize_json_payload(existing_payload) != serialized_payload:
+                raise ValueError(
+                    "Signal pack id already exists with different content. "
+                    "Choose a different id instead of overwriting it."
+                )
+        else:
+            candidate_path.write_text(
+                json.dumps(asset_payload, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            wrote_new_file = True
+
+        try:
+            load_declarative_asset(candidate_path, asset_type="signal_packs")
+        except Exception:
+            if wrote_new_file and candidate_path.exists():
+                candidate_path.unlink()
+            raise
+
+        return SavedSignalPackAssetResult(
+            asset_id=asset_id,
+            asset_path=relative_asset_path.as_posix(),
+            asset_payload=asset_payload,
+        )
+
     def save_and_execute(self, payload: dict[str, Any]) -> LaunchedRunResult:
         saved_config = self.save_run_config(payload)
-        preset_name = payload.get("experiment_preset_name")
-        preset = (
-            get_preset_by_name(str(preset_name))
-            if preset_name not in {None, ""}
+        queue_limit = (
+            int(payload["queue_concurrency_limit"])
+            if payload.get("queue_concurrency_limit") is not None
             else None
         )
-        if preset_name not in {None, ""} and preset is None:
-            raise ValueError(f"Unknown experiment preset: {preset_name}")
-
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        config_stem = Path(saved_config.config_name).stem
-        execution_dir = self.run_lab_artifacts_dir / "config_sets" / f"{timestamp}_{config_stem}"
-        execution_dir.mkdir(parents=True, exist_ok=True)
-
-        saved_config_path = self.repo_root / saved_config.config_path
-        execution_config_path = execution_dir / saved_config.config_name
-        shutil.copy2(saved_config_path, execution_config_path)
-
-        launch_log_path = execution_dir / "launch.log"
-        command = [
-            sys.executable,
-            "scripts/run_experiment.py",
-            "--configs-dir",
-            str(execution_dir),
-        ]
-        if preset is not None:
-            command.extend(["--preset", preset.name])
-
-        log_handle = launch_log_path.open("w", encoding="utf-8")
-        process = self.launcher(
-            command,
-            cwd=str(self.repo_root),
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-        )
-        log_handle.close()
-
-        return LaunchedRunResult(
+        return self.queue_service.submit_run(
             saved_config=saved_config,
-            command=tuple(command),
-            launch_log_path=str(launch_log_path.relative_to(self.repo_root).as_posix()),
-            execution_configs_dir=str(execution_dir.relative_to(self.repo_root).as_posix()),
-            pid=int(process.pid),
-            preset_name=preset.name if preset is not None else None,
+            payload=payload,
+            queue_concurrency_limit=queue_limit,
         )
 
     def _list_dataset_catalogs(self) -> tuple[RunLabDatasetCatalogSummary, ...]:
@@ -421,9 +550,18 @@ class RunLabApplicationService:
         for item in catalog_payload:
             rule = option_map.get(item["id"])
             if rule is None:
-                classification = "example_only" if item["origin"] == "asset" else "internal_but_needed"
-                selectable = False
-                warning = "Not part of the current main execution path."
+                if category in {"signal_packs", "mutation_profiles"} and item["origin"] == "asset":
+                    classification = "active"
+                    selectable = True
+                    warning = (
+                        "Declarative signal pack asset available for explicit selection."
+                        if category == "signal_packs"
+                        else "Declarative mutation profile asset available for explicit selection."
+                    )
+                else:
+                    classification = "example_only" if item["origin"] == "asset" else "internal_but_needed"
+                    selectable = False
+                    warning = "Not part of the current main execution path."
             else:
                 classification = rule["classification"]
                 selectable = bool(rule["selectable"])
@@ -597,6 +735,25 @@ def _parse_explicit_seeds(value: Any) -> tuple[int, ...]:
     raise ValueError("explicit_seeds must be a comma-separated string or list of ints")
 
 
+def _parse_signal_id_lines(value: Any) -> tuple[str, ...]:
+    if value in {None, ""}:
+        return ()
+    if isinstance(value, str):
+        return tuple(
+            line.strip()
+            for line in value.splitlines()
+            if line.strip()
+        )
+    if isinstance(value, list):
+        normalized: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("signals must be a list of non-empty strings")
+            normalized.append(item.strip())
+        return tuple(normalized)
+    raise ValueError("signals must be a newline-separated string or list of strings")
+
+
 def _normalize_config_name(value: str) -> str:
     stripped = value.strip()
     if not stripped:
@@ -606,6 +763,24 @@ def _normalize_config_name(value: str) -> str:
     if not stripped.endswith(".json"):
         stripped = f"{stripped}.json"
     return stripped
+
+
+def _normalize_asset_id(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("id is required")
+    if any(separator in stripped for separator in ("/", "\\")):
+        raise ValueError("id must be a simple identifier, not a path")
+    if stripped.lower().endswith(".json"):
+        stripped = stripped[:-5]
+    return stripped
+
+
+def _normalize_optional_description(value: Any) -> str:
+    if value is None:
+        return ""
+    description = str(value).strip()
+    return description
 
 
 def _humanize_identifier(value: str) -> str:

@@ -9,6 +9,7 @@ export default defineConfig({
       "/health": "http://localhost:8000",
       "/catalog": "http://localhost:8000",
       "/run-lab": "http://localhost:8000",
+      "/runs": "http://localhost:8000",
     },
   },
 });

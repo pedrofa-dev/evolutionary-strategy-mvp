@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 
 from evo_system.domain.genome import (
     EntryContextGene,
@@ -412,6 +413,128 @@ def test_default_mutation_profile_definition_preserves_current_runtime_profile()
 
     assert definition.resolve_runtime_profile(custom_profile) == custom_profile
     assert definition.resolve_runtime_profile(None) == MutationProfile()
+
+
+def test_declarative_mutation_profile_definition_resolves_asset_profile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    assets_root = tmp_path / "assets"
+    mutation_profiles_dir = assets_root / "mutation_profiles"
+    mutation_profiles_dir.mkdir(parents=True)
+    (mutation_profiles_dir / "authored_profile_v1.json").write_text(
+        """
+        {
+          "id": "authored_profile_v1",
+          "description": "Authored profile.",
+          "profile": {
+            "strong_mutation_probability": 0.2,
+            "numeric_delta_scale": 1.4,
+            "flag_flip_probability": 0.03,
+            "weight_delta": 0.15,
+            "window_step_mode": "wide"
+          }
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimental_space.defaults.DECLARATIVE_ASSET_ROOT",
+        assets_root,
+    )
+
+    definition = get_mutation_profile_definition("authored_profile_v1")
+
+    assert definition.name == "authored_profile_v1"
+    assert definition.resolve_runtime_profile(None) == MutationProfile(
+        strong_mutation_probability=0.2,
+        numeric_delta_scale=1.4,
+        flag_flip_probability=0.03,
+        weight_delta=0.15,
+        window_step_mode="wide",
+    )
+
+
+def test_declarative_signal_pack_resolves_asset_profile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    assets_root = tmp_path / "assets"
+    signal_packs_dir = assets_root / "signal_packs"
+    signal_packs_dir.mkdir(parents=True)
+    (signal_packs_dir / "authored_signal_pack_v1.json").write_text(
+        """
+        {
+          "id": "authored_signal_pack_v1",
+          "description": "Authored signal pack.",
+          "signals": [
+            {
+              "signal_id": "trend_strength_medium",
+              "params": {
+                "source": "trend_strength_medium"
+              }
+            },
+            {
+              "signal_id": "momentum_short",
+              "params": {
+                "source": "momentum_short"
+              }
+            }
+          ]
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimental_space.defaults.DECLARATIVE_ASSET_ROOT",
+        assets_root,
+    )
+
+    signal_pack = get_signal_pack("authored_signal_pack_v1")
+    environment = _sample_environment()
+    genome = EvolutionRunner(mutation_seed=42)._build_random_genome()
+    trend_series = environment._get_trend_series(genome.trend_window)
+
+    features = signal_pack.build_signal_features(
+        environment=environment,
+        index=5,
+        normalized_momentum=environment._normalized_momentum_series[5],
+        normalized_trend=trend_series[5],
+        ret_short_series=environment._get_return_series(genome.ret_short_window),
+        ret_mid_series=environment._get_return_series(genome.ret_mid_window),
+        ma_distance_series=environment._get_ma_distance_series(genome.ma_window),
+        range_position_series=environment._get_range_position_series(genome.range_window),
+        vol_ratio_series=environment._get_vol_ratio_series(
+            genome.vol_short_window,
+            genome.vol_long_window,
+        ),
+        trend_strength_series=environment._get_trend_strength_series(genome.ma_window),
+        realized_volatility_series=environment._get_realized_volatility_series(
+            genome.vol_long_window
+        ),
+        trend_long_series=environment._get_trend_long_series(genome.ma_window),
+        breakout_series=environment._get_breakout_series(genome.range_window),
+    )
+
+    assert signal_pack.name == "authored_signal_pack_v1"
+    assert signal_pack.feature_names == ("trend_strength_medium", "momentum_short")
+    assert "trend" in signal_pack.family_names
+    assert set(features) == {"trend_strength_medium", "momentum_short"}
+    assert set(
+        signal_pack.build_signal_families(
+            environment=environment,
+            signal_features=features,
+        )
+    ) == {
+        "trend",
+        "momentum",
+        "breakout",
+        "range",
+        "volatility",
+        "realized_volatility",
+    }
 
 
 def test_runner_and_environment_expose_default_modular_components() -> None:

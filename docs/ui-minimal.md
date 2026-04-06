@@ -4,6 +4,7 @@
 
 This UI is a small React + TypeScript + Vite frontend for:
 
+- landing in a compact Lab Home operational surface
 - exploring the experimental catalog exposed by the current HTTP API
 - operating the first canonical Run Lab flow with lower friction
 
@@ -71,9 +72,16 @@ The UI consumes only these endpoints:
 - `GET /health`
 - `GET /catalog`
 - `GET /catalog/{category}`
+- `POST /run-lab/authoring/mutation-profiles`
+- `POST /run-lab/authoring/signal-packs`
 - `GET /run-lab`
 - `POST /run-lab/configs`
 - `POST /run-lab/executions`
+- `GET /runs/campaigns`
+- `GET /runs/monitor`
+- `GET /runs/campaign/{id}`
+- `DELETE /runs/campaign/{id}`
+- `GET /runs/compare?ids=...`
 
 By default, the Vite dev server proxies those paths to:
 
@@ -87,25 +95,50 @@ to point to another API base URL.
 
 ## Pages
 
-The UI includes three minimal views:
+The UI includes four main views:
 
-1. Overview
+1. Home
+   - default landing page for the research workbench
+   - summarizes active or recent persisted executions
+   - provides quick actions into Run Lab, Results, Catalog, and current authoring flows
+   - shows a compact recent campaigns list
+2. Overview
    - shows health status
    - lists catalog categories
-2. Category view
+   - now lives under the Catalog route rather than the app root
+3. Category view
    - shows items for one category
-3. Detail view
+   - can create a new mutation profile or signal pack from the natural catalog category using the same canonical authoring endpoints as Run Lab
+4. Detail view
    - shows id, category, origin, description, file path, and payload JSON
    - explains what the selected item is and why it exists
 
 It also includes a first operational tab:
 
-4. Run Lab
+5. Run Lab
    - selects a dataset catalog
    - selects signal pack, genome schema, mutation profile, and decision policy
+   - can either reuse an existing canonical config or create a new one from a starting template
+   - supports focused authoring modals for creating a new signal pack or mutation profile
    - chooses a runtime experiment preset
+   - chooses a parallel execution count for the canonical multiseed launch path
    - saves a canonical config file
    - can save and launch the canonical multiseed script
+6. Runs / Results
+   - lists persisted multiseed campaigns
+   - highlights the champion block first
+   - shows train, validation, and external summaries without recalculating them
+   - exposes multiseed execution rows to spot instability
+   - compares selected campaigns side by side
+   - allows conservative deletion of persisted campaigns that are no longer needed
+
+The application shell also includes:
+
+7. Global execution monitor
+   - polls canonical persisted campaign status
+   - shows active or recent multiseed executions across pages in a compact drawer
+   - stays honest about execution state and does not imply a scheduler-backed queue
+   - only shows progress signals that are safely known from persisted state
 
 ## Labels And Dark Mode
 
@@ -144,8 +177,12 @@ Current limitations are intentional:
 - category explanations are currently frontend-side helpers, not backend-owned descriptions
 - dark mode is still a local UI concern, not a backend-owned theming system
 - Run Lab still depends on active template configs already present in `configs/runs/`
+- Run Lab config reuse locks structural fields by default; duplicating into a brand-new config is still a deliberate operator action
 - execution launch is intentionally simple and does not yet provide live run monitoring
-- results and analysis are not yet integrated into the UI
+- the global execution monitor uses polling, not websockets, and only shows compact seed-level progress
+- results are read-only and limited to persisted campaign summaries, champion
+  analyses, and external evaluation artifacts
+- campaign deletion is conservative and blocks campaigns still marked as running
 
 This is an exploration tool, not a polished product UI.
 

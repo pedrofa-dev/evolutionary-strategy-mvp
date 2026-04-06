@@ -24,6 +24,8 @@ CANONICAL_TABLE_NAMES = (
     "champion_analysis_members",
     "champion_evaluations",
     "champion_evaluation_members",
+    "execution_queue_settings",
+    "execution_queue_jobs",
 )
 CANONICAL_INDEX_NAMES = (
     "idx_run_executions_execution_fingerprint",
@@ -40,6 +42,8 @@ CANONICAL_INDEX_NAMES = (
     "idx_champion_evaluations_multiseed_run_id",
     "idx_champion_analysis_members_champion_id",
     "idx_champion_evaluation_members_champion_id",
+    "idx_execution_queue_jobs_status_created_at",
+    "idx_execution_queue_jobs_campaign_id",
 )
 
 MULTISEED_RUNS_JSON_COLUMNS = {
@@ -68,6 +72,10 @@ CHAMPION_ANALYSES_JSON_COLUMNS = {
 CHAMPION_EVALUATIONS_JSON_COLUMNS = {
     "selection_scope_json",
     "evaluation_summary_json",
+}
+EXECUTION_QUEUE_JOBS_JSON_COLUMNS = {
+    "config_payload_json",
+    "command_json",
 }
 
 
@@ -359,6 +367,35 @@ class PersistenceStore:
                     FOREIGN KEY (champion_id) REFERENCES champions(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS execution_queue_settings (
+                    settings_key TEXT PRIMARY KEY,
+                    concurrency_limit INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS execution_queue_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    queue_job_uid TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    cancelled_at TEXT,
+                    status TEXT NOT NULL,
+                    campaign_id TEXT NOT NULL,
+                    config_name TEXT NOT NULL,
+                    config_path TEXT NOT NULL,
+                    config_payload_json TEXT NOT NULL,
+                    experiment_preset_name TEXT,
+                    parallel_workers INTEGER NOT NULL,
+                    execution_configs_dir TEXT NOT NULL,
+                    launch_log_path TEXT NOT NULL,
+                    multiseed_output_dir TEXT NOT NULL,
+                    command_json TEXT,
+                    pid INTEGER,
+                    failure_message TEXT
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_run_executions_execution_fingerprint
                 ON run_executions(execution_fingerprint);
                 CREATE INDEX IF NOT EXISTS idx_run_executions_run_id
@@ -389,6 +426,10 @@ class PersistenceStore:
                 ON champion_analysis_members(champion_id);
                 CREATE INDEX IF NOT EXISTS idx_champion_evaluation_members_champion_id
                 ON champion_evaluation_members(champion_id);
+                CREATE INDEX IF NOT EXISTS idx_execution_queue_jobs_status_created_at
+                ON execution_queue_jobs(status, created_at, id);
+                CREATE INDEX IF NOT EXISTS idx_execution_queue_jobs_campaign_id
+                ON execution_queue_jobs(campaign_id);
                 """
             )
             existing_columns = {
@@ -419,6 +460,16 @@ class PersistenceStore:
                 connection.execute(
                     "ALTER TABLE champions ADD COLUMN experimental_space_snapshot_json TEXT"
                 )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO execution_queue_settings (
+                    settings_key,
+                    concurrency_limit,
+                    updated_at
+                ) VALUES ('global', 1, ?)
+                """,
+                (utc_now_iso(),),
+            )
 
     def save_multiseed_run(
         self,
@@ -576,6 +627,238 @@ class PersistenceStore:
                 """,
                 tuple(parameters),
             )
+
+    def get_execution_queue_concurrency_limit(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT concurrency_limit
+                FROM execution_queue_settings
+                WHERE settings_key = 'global'
+                LIMIT 1
+                """
+            ).fetchone()
+        if row is None:
+            return 1
+        return max(int(row["concurrency_limit"]), 1)
+
+    def set_execution_queue_concurrency_limit(self, concurrency_limit: int) -> int:
+        normalized_limit = max(int(concurrency_limit), 1)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO execution_queue_settings (
+                    settings_key,
+                    concurrency_limit,
+                    updated_at
+                ) VALUES ('global', ?, ?)
+                ON CONFLICT(settings_key) DO UPDATE SET
+                    concurrency_limit = excluded.concurrency_limit,
+                    updated_at = excluded.updated_at
+                """,
+                (normalized_limit, utc_now_iso()),
+            )
+        return normalized_limit
+
+    def save_execution_queue_job(
+        self,
+        *,
+        queue_job_uid: str,
+        campaign_id: str,
+        config_name: str,
+        config_path: str | Path,
+        config_payload_json: dict[str, Any],
+        parallel_workers: int,
+        execution_configs_dir: str | Path,
+        launch_log_path: str | Path,
+        multiseed_output_dir: str | Path,
+        experiment_preset_name: str | None = None,
+        status: str = "queued",
+        created_at: str | None = None,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        cancelled_at: str | None = None,
+        command_json: list[str] | None = None,
+        pid: int | None = None,
+        failure_message: str | None = None,
+    ) -> int:
+        timestamp = created_at or utc_now_iso()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO execution_queue_jobs (
+                    queue_job_uid,
+                    created_at,
+                    updated_at,
+                    started_at,
+                    completed_at,
+                    cancelled_at,
+                    status,
+                    campaign_id,
+                    config_name,
+                    config_path,
+                    config_payload_json,
+                    experiment_preset_name,
+                    parallel_workers,
+                    execution_configs_dir,
+                    launch_log_path,
+                    multiseed_output_dir,
+                    command_json,
+                    pid,
+                    failure_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    queue_job_uid,
+                    timestamp,
+                    timestamp,
+                    started_at,
+                    completed_at,
+                    cancelled_at,
+                    status,
+                    campaign_id,
+                    config_name,
+                    to_repo_relative_path(config_path),
+                    serialize_json(config_payload_json),
+                    experiment_preset_name,
+                    int(parallel_workers),
+                    to_repo_relative_path(execution_configs_dir),
+                    to_repo_relative_path(launch_log_path),
+                    to_repo_relative_path(multiseed_output_dir),
+                    serialize_json(command_json) if command_json is not None else None,
+                    pid,
+                    failure_message,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def update_execution_queue_job(
+        self,
+        queue_job_uid: str,
+        *,
+        status: str | None = None,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        cancelled_at: str | None = None,
+        command_json: list[str] | None = None,
+        pid: int | None = None,
+        failure_message: str | None = None,
+    ) -> None:
+        assignments = ["updated_at = ?"]
+        parameters: list[Any] = [utc_now_iso()]
+
+        optional_updates = {
+            "status": status,
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "cancelled_at": cancelled_at,
+            "command_json": serialize_json(command_json) if command_json is not None else None,
+            "pid": pid,
+            "failure_message": failure_message,
+        }
+
+        for column_name, value in optional_updates.items():
+            if value is not None:
+                assignments.append(f"{column_name} = ?")
+                parameters.append(value)
+
+        parameters.append(queue_job_uid)
+
+        with self.connect() as connection:
+            connection.execute(
+                f"""
+                UPDATE execution_queue_jobs
+                SET {", ".join(assignments)}
+                WHERE queue_job_uid = ?
+                """,
+                tuple(parameters),
+            )
+
+    def load_execution_queue_jobs(
+        self,
+        *,
+        statuses: list[str] | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        query = """
+            SELECT *
+            FROM execution_queue_jobs
+        """
+        parameters: list[Any] = []
+
+        if statuses:
+            placeholders = ", ".join("?" for _ in statuses)
+            query += f" WHERE status IN ({placeholders})"
+            parameters.extend(statuses)
+
+        query += " ORDER BY id ASC"
+
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters.append(limit)
+
+        with self.connect() as connection:
+            rows = connection.execute(query, tuple(parameters)).fetchall()
+
+        return [_row_to_dict(row, EXECUTION_QUEUE_JOBS_JSON_COLUMNS) for row in rows]
+
+    def load_execution_queue_job(self, queue_job_uid: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM execution_queue_jobs
+                WHERE queue_job_uid = ?
+                LIMIT 1
+                """,
+                (queue_job_uid,),
+            ).fetchone()
+        if row is None:
+            return None
+        return _row_to_dict(row, EXECUTION_QUEUE_JOBS_JSON_COLUMNS)
+
+    def delete_execution_queue_jobs_for_campaign(self, campaign_id: str) -> int:
+        with self.connect() as connection:
+            return int(
+                connection.execute(
+                    """
+                    DELETE FROM execution_queue_jobs
+                    WHERE campaign_id = ?
+                    """,
+                    (campaign_id,),
+                ).rowcount
+            )
+
+    def delete_multiseed_run(self, multiseed_run_id: int) -> dict[str, int]:
+        """Delete one persisted campaign and its directly linked canonical rows."""
+        with self.connect() as connection:
+            deleted_analyses = connection.execute(
+                """
+                DELETE FROM champion_analyses
+                WHERE multiseed_run_id = ?
+                """,
+                (multiseed_run_id,),
+            ).rowcount
+            deleted_evaluations = connection.execute(
+                """
+                DELETE FROM champion_evaluations
+                WHERE multiseed_run_id = ?
+                """,
+                (multiseed_run_id,),
+            ).rowcount
+            deleted_multiseed_runs = connection.execute(
+                """
+                DELETE FROM multiseed_runs
+                WHERE id = ?
+                """,
+                (multiseed_run_id,),
+            ).rowcount
+
+        return {
+            "multiseed_runs": int(deleted_multiseed_runs),
+            "champion_analyses": int(deleted_analyses),
+            "champion_evaluations": int(deleted_evaluations),
+        }
 
     def save_run_execution(
         self,
