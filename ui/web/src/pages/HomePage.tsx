@@ -7,6 +7,7 @@ type HomePageProps = {
   onOpenRunLab: () => void;
   onOpenResults: (campaignId?: string | null) => void;
   onOpenCatalog: () => void;
+  onOpenGenomeSchemaAuthoring: () => void;
   onOpenMutationProfileAuthoring: () => void;
   onOpenSignalPackAuthoring: () => void;
 };
@@ -51,6 +52,7 @@ export default function HomePage({
   onOpenRunLab,
   onOpenResults,
   onOpenCatalog,
+  onOpenGenomeSchemaAuthoring,
   onOpenMutationProfileAuthoring,
   onOpenSignalPackAuthoring,
 }: HomePageProps) {
@@ -215,6 +217,13 @@ export default function HomePage({
             </button>
             <button className="link-button secondary" onClick={onOpenCatalog} type="button">
               Open catalog
+            </button>
+            <button
+              className="link-button secondary"
+              onClick={onOpenGenomeSchemaAuthoring}
+              type="button"
+            >
+              Create genome schema
             </button>
             <button
               className="link-button secondary"

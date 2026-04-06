@@ -4,6 +4,7 @@ from evo_system.experimental_space.gene_catalog import (
     GeneTypeDefinition,
     GenomeSchemaSlot,
     StructuralCompatibility,
+    get_gene_catalog,
 )
 
 
@@ -75,3 +76,9 @@ def test_gene_type_definitions_and_schema_slots_are_derived_structural_views() -
     assert definition.builder_name == "from_dict"
     assert definition.to_dict()["supports_constraints"] is False
     assert slot.to_dict()["slot_kind"] == "gene_block"
+
+
+def test_get_gene_catalog_resolves_known_runtime_catalog_by_name() -> None:
+    catalog = get_gene_catalog("modular_genome_v1_gene_catalog")
+
+    assert catalog is MODULAR_GENOME_V1_GENE_TYPE_CATALOG

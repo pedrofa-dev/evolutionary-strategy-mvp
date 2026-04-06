@@ -5,6 +5,7 @@ from evo_system.domain.genome import (
     EntryContextGene,
     EntryTriggerGene,
     ExitPolicyGene,
+    Genome,
     TradeControlGene,
 )
 from evo_system.domain.historical_candle import HistoricalCandle
@@ -535,6 +536,87 @@ def test_declarative_signal_pack_resolves_asset_profile(
         "volatility",
         "realized_volatility",
     }
+
+
+def test_declarative_genome_schema_resolves_asset_profile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    assets_root = tmp_path / "assets"
+    genome_schemas_dir = assets_root / "genome_schemas"
+    genome_schemas_dir.mkdir(parents=True)
+    (genome_schemas_dir / "authored_schema_v1.json").write_text(
+        """
+        {
+          "id": "authored_schema_v1",
+          "description": "Authored schema.",
+          "gene_catalog": "modular_genome_v1_gene_catalog",
+          "modules": [
+            {"name": "entry_context", "gene_type": "entry_context", "required": true},
+            {"name": "entry_trigger", "gene_type": "entry_trigger", "required": true},
+            {"name": "exit_policy", "gene_type": "exit_policy", "required": true},
+            {"name": "trade_control", "gene_type": "trade_control", "required": true}
+          ]
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimental_space.defaults.DECLARATIVE_ASSET_ROOT",
+        assets_root,
+    )
+
+    schema = get_genome_schema("authored_schema_v1")
+    genome = schema.build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+    )
+
+    assert schema.name == "authored_schema_v1"
+    assert schema.get_module_names() == (
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    )
+    assert schema.get_gene_type_catalog().name == "modular_genome_v1_gene_catalog"
+    assert isinstance(genome, Genome)
+    assert schema.is_active_for_genome(genome) is True
+
+
+def test_declarative_genome_schema_raises_clear_error_for_unknown_gene_catalog(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    assets_root = tmp_path / "assets"
+    genome_schemas_dir = assets_root / "genome_schemas"
+    genome_schemas_dir.mkdir(parents=True)
+    (genome_schemas_dir / "broken_schema_v1.json").write_text(
+        """
+        {
+          "id": "broken_schema_v1",
+          "description": "Broken schema.",
+          "gene_catalog": "missing_gene_catalog",
+          "modules": [
+            {"name": "entry_context", "gene_type": "entry_context", "required": true},
+            {"name": "entry_trigger", "gene_type": "entry_trigger", "required": true},
+            {"name": "exit_policy", "gene_type": "exit_policy", "required": true},
+            {"name": "trade_control", "gene_type": "trade_control", "required": true}
+          ]
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimental_space.defaults.DECLARATIVE_ASSET_ROOT",
+        assets_root,
+    )
+
+    with pytest.raises(ValueError, match="missing_gene_catalog"):
+        get_genome_schema("broken_schema_v1")
 
 
 def test_runner_and_environment_expose_default_modular_components() -> None:

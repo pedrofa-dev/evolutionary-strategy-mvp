@@ -132,7 +132,9 @@ def test_load_all_declarative_assets_can_validate_experiment_preset_references(
     )
     (directories["genome_schemas"] / "schema.json").write_text(
         (
-            '{"id":"basic_entry_exit_v1","modules":['
+            '{"id":"basic_entry_exit_v1","gene_catalog":"modular_genome_v1_gene_catalog",'
+            '"modules":['
+            '{"name":"entry_context","gene_type":"entry_context","required":true},'
             '{"name":"entry_trigger","gene_type":"entry_trigger","required":true},'
             '{"name":"exit_policy","gene_type":"exit_policy","required":true},'
             '{"name":"trade_control","gene_type":"trade_control","required":true}'
@@ -174,6 +176,82 @@ def test_load_all_declarative_assets_can_validate_experiment_preset_references(
     assets = load_all_declarative_assets(tmp_path, validate_references=True)
 
     assert assets["experiment_presets"][0].name == "btc_1h_probe_v1"
+
+
+def test_genome_schema_asset_raises_clear_error_for_unknown_gene_catalog(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "schema.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_schema","gene_catalog":"missing_catalog","modules":['
+            '{"name":"entry_context","gene_type":"entry_context","required":true},'
+            '{"name":"entry_trigger","gene_type":"entry_trigger","required":true},'
+            '{"name":"exit_policy","gene_type":"exit_policy","required":true},'
+            '{"name":"trade_control","gene_type":"trade_control","required":true}'
+            ']}'
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_declarative_asset(asset_path, asset_type="genome_schemas")
+    except ValueError as exc:
+        assert "missing_catalog" in str(exc)
+        assert "gene_catalog" in str(exc)
+    else:
+        raise AssertionError("Expected unknown gene catalog to raise ValueError.")
+
+
+def test_genome_schema_asset_raises_clear_error_for_unknown_gene_type(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "schema.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_schema","gene_catalog":"modular_genome_v1_gene_catalog",'
+            '"modules":['
+            '{"name":"entry_context","gene_type":"entry_context","required":true},'
+            '{"name":"entry_trigger","gene_type":"missing_gene_type","required":true},'
+            '{"name":"exit_policy","gene_type":"exit_policy","required":true},'
+            '{"name":"trade_control","gene_type":"trade_control","required":true}'
+            ']}'
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_declarative_asset(asset_path, asset_type="genome_schemas")
+    except ValueError as exc:
+        assert "missing_gene_type" in str(exc)
+        assert "gene_type" in str(exc)
+    else:
+        raise AssertionError("Expected unknown gene type to raise ValueError.")
+
+
+def test_genome_schema_asset_raises_clear_error_for_incompatible_module_order(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "schema.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_schema","gene_catalog":"modular_genome_v1_gene_catalog",'
+            '"modules":['
+            '{"name":"entry_trigger","gene_type":"entry_trigger","required":true},'
+            '{"name":"entry_context","gene_type":"entry_context","required":true},'
+            '{"name":"exit_policy","gene_type":"exit_policy","required":true},'
+            '{"name":"trade_control","gene_type":"trade_control","required":true}'
+            ']}'
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_declarative_asset(asset_path, asset_type="genome_schemas")
+    except ValueError as exc:
+        assert "runtime slot order" in str(exc)
+    else:
+        raise AssertionError("Expected incompatible module order to raise ValueError.")
 
 
 def test_validate_declarative_asset_references_raises_clear_error_for_missing_reference(

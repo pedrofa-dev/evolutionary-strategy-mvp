@@ -45,6 +45,30 @@ export type RunLabTemplateSummary = {
   generations_planned: number;
 };
 
+export type SignalAuthoringOption = {
+  id: string;
+  label?: string;
+  description?: string;
+};
+
+export type GenomeSchemaAuthoringOption = {
+  id: string;
+  label?: string;
+  description?: string;
+};
+
+export type GenomeSchemaSuggestedModule = {
+  name: string;
+  gene_type: string;
+  required: boolean;
+};
+
+export type GenomeSchemaAuthoringMetadata = {
+  gene_catalog_options: GenomeSchemaAuthoringOption[];
+  gene_type_options: GenomeSchemaAuthoringOption[];
+  suggested_modules: GenomeSchemaSuggestedModule[];
+};
+
 export type RunLabBootstrap = {
   current_logic_version: string;
   dataset_catalogs: RunLabDatasetCatalogSummary[];
@@ -54,6 +78,10 @@ export type RunLabBootstrap = {
   decision_policies: RunLabOption[];
   execution_presets: RunLabOption[];
   config_templates: RunLabTemplateSummary[];
+  signal_pack_authoring: {
+    signal_options: SignalAuthoringOption[];
+  };
+  genome_schema_authoring: GenomeSchemaAuthoringMetadata;
   defaults: {
     template_config_name: string;
     dataset_catalog_id: string;
@@ -118,6 +146,25 @@ export type SignalPackAuthoringRequest = {
 };
 
 export type SavedSignalPackAssetResult = {
+  asset_id: string;
+  asset_path: string;
+  asset_payload: Record<string, unknown>;
+};
+
+export type GenomeSchemaAuthoringModule = {
+  name: string;
+  gene_type: string;
+  required: boolean;
+};
+
+export type GenomeSchemaAuthoringRequest = {
+  id: string;
+  description: string;
+  gene_catalog: string;
+  modules: GenomeSchemaAuthoringModule[];
+};
+
+export type SavedGenomeSchemaAssetResult = {
   asset_id: string;
   asset_path: string;
   asset_payload: Record<string, unknown>;

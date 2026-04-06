@@ -596,6 +596,18 @@ MODULAR_GENOME_V1_GENE_TYPE_CATALOG = GeneTypeCatalog(
 )
 
 
+_GENE_TYPE_CATALOGS: dict[str, GeneTypeCatalog] = {
+    MODULAR_GENOME_V1_GENE_TYPE_CATALOG.name: MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
+}
+
+
+def get_gene_catalog(name: str) -> GeneTypeCatalog:
+    try:
+        return _GENE_TYPE_CATALOGS[name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown gene catalog: {name}") from exc
+
+
 def normalize_gene_data(gene_name: str, data: dict[str, Any]) -> dict[str, Any]:
     """Apply structural normalization rules after field-level mutation."""
 

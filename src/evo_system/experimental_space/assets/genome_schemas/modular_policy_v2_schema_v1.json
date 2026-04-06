@@ -1,6 +1,7 @@
 {
   "id": "modular_policy_v2_schema_v1",
   "description": "Example declarative genome schema that mirrors the active modular policy_v2 block layout.",
+  "gene_catalog": "modular_genome_v1_gene_catalog",
   "modules": [
     {
       "name": "entry_context",

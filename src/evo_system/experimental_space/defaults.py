@@ -21,6 +21,8 @@ from evo_system.experimental_space.base import (
 from evo_system.experimental_space.asset_loader import ASSETS_ROOT, load_all_declarative_assets
 from evo_system.experimental_space.gene_catalog import (
     MODULAR_GENOME_V1_GENE_TYPE_CATALOG,
+    GeneTypeCatalog,
+    get_gene_catalog,
 )
 from evo_system.experimental_space.decision_policies import DefaultDecisionPolicy
 from evo_system.experimental_space.market_modes import (
@@ -153,6 +155,53 @@ class ModularGenomeSchemaV1(GenomeSchema):
             exit_policy=exit_policy or self.build_exit_policy(),
             trade_control=trade_control or self.build_trade_control(),
         )
+
+
+@dataclass(frozen=True)
+class DeclarativeGenomeSchemaAdapter(GenomeSchema):
+    """Bounded adapter for declarative genome schema assets.
+
+    This adapter intentionally stays narrow:
+    - module order comes from the declarative asset
+    - runtime genome construction still delegates to the compatible built-in
+      schema and gene catalog
+    - it does not introduce new execution or mutation semantics
+    """
+
+    name: str
+    module_names: tuple[str, ...]
+    gene_type_catalog: GeneTypeCatalog
+    base_schema: GenomeSchema
+
+    def is_active_for_genome(self, genome: Genome) -> bool:
+        return self.base_schema.is_active_for_genome(genome)
+
+    def get_gene_type_catalog(self) -> GeneTypeCatalog:
+        return self.gene_type_catalog
+
+    def get_module_names(self) -> tuple[str, ...]:
+        return self.module_names
+
+    def build_default_module(self, module_name: str) -> Any:
+        if module_name not in self.module_names:
+            raise KeyError(f"Unknown genome schema module: {module_name}")
+        return self.gene_type_catalog.build_default_module(module_name)
+
+    def build_genome_from_modules(
+        self,
+        *,
+        position_size: float,
+        schema_fields: dict[str, int],
+        gene_blocks: dict[str, Any],
+    ) -> Genome:
+        return self.gene_type_catalog.build_genome(
+            position_size=position_size,
+            schema_fields=schema_fields,
+            gene_blocks=gene_blocks,
+        )
+
+    def build_genome(self, **kwargs: Any) -> Genome:
+        return self.base_schema.build_genome(**kwargs)
 
 @dataclass(frozen=True)
 class RuntimeMutationProfileAdapter(MutationProfileDefinition):
@@ -287,6 +336,13 @@ def get_default_genome_schema() -> GenomeSchema:
 
 
 def get_genome_schema(name: str) -> GenomeSchema:
+    if genome_schema_registry.has(name):
+        return genome_schema_registry.get(name)
+
+    declarative_schema = _load_declarative_genome_schema(name)
+    if declarative_schema is not None:
+        return declarative_schema
+
     return genome_schema_registry.get(name)
 
 
@@ -385,3 +441,71 @@ def _load_declarative_signal_pack(name: str) -> SignalPack | None:
             source_by_feature_name=source_by_feature_name,
         )
     return None
+
+
+def _load_declarative_genome_schema(name: str) -> GenomeSchema | None:
+    assets = load_all_declarative_assets(DECLARATIVE_ASSET_ROOT).get(
+        "genome_schemas",
+        [],
+    )
+    for asset in assets:
+        if asset.name != name:
+            continue
+
+        gene_catalog_name = asset.payload.get("gene_catalog")
+        if not isinstance(gene_catalog_name, str) or not gene_catalog_name.strip():
+            raise ValueError(
+                f"Genome schema asset {asset.path} is missing a valid 'gene_catalog'."
+            )
+
+        try:
+            gene_catalog = get_gene_catalog(gene_catalog_name)
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown gene_catalog {gene_catalog_name!r} in genome schema asset: "
+                f"{asset.path}"
+            ) from exc
+
+        base_schema_name = _runtime_schema_name_for_gene_catalog(gene_catalog_name)
+        base_schema = genome_schema_registry.get(base_schema_name)
+
+        modules = asset.payload.get("modules")
+        if not isinstance(modules, list):
+            raise ValueError(
+                f"Genome schema asset {asset.path} must define a modules list."
+            )
+
+        module_names: list[str] = []
+        for module in modules:
+            if not isinstance(module, dict):
+                raise ValueError(
+                    f"Genome schema asset {asset.path} contains a non-object module."
+                )
+            module_name = module.get("name")
+            if not isinstance(module_name, str) or not module_name.strip():
+                raise ValueError(
+                    f"Genome schema asset {asset.path} contains a module without a "
+                    f"valid name."
+                )
+            module_names.append(module_name)
+
+        return DeclarativeGenomeSchemaAdapter(
+            name=asset.name,
+            module_names=tuple(module_names),
+            gene_type_catalog=gene_catalog,
+            base_schema=base_schema,
+        )
+    return None
+
+
+def _runtime_schema_name_for_gene_catalog(gene_catalog_name: str) -> str:
+    runtime_schema_names_by_gene_catalog = {
+        MODULAR_GENOME_V1_GENE_TYPE_CATALOG.name: "modular_genome_v1",
+    }
+    try:
+        return runtime_schema_names_by_gene_catalog[gene_catalog_name]
+    except KeyError as exc:
+        raise ValueError(
+            f"No runtime genome schema is registered for gene_catalog "
+            f"{gene_catalog_name!r}."
+        ) from exc

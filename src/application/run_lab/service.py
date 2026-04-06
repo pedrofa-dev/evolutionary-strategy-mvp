@@ -14,9 +14,11 @@ from evo_system.experimental_space.asset_loader import (
 )
 from evo_system.data_ingestion.dataset_builder.dataset_catalog import parse_manifest
 from evo_system.experimental_space.catalog_service import CatalogService
+from evo_system.experimental_space.gene_catalog import get_gene_catalog
 from evo_system.experimental_space.identity import (
     build_experimental_space_snapshot_from_config_snapshot,
 )
+from evo_system.experimental_space.defaults import get_default_signal_pack
 from evo_system.experimentation.presets import (
     PRESET_REGISTRY,
     describe_preset,
@@ -29,6 +31,7 @@ RUN_CONFIGS_DIR = REPO_ROOT / "configs" / "runs"
 DATASET_CONFIGS_DIR = REPO_ROOT / "configs" / "datasets"
 RUN_LAB_ARTIFACTS_DIR = REPO_ROOT / "artifacts" / "ui_run_lab"
 SIGNAL_PACK_ASSETS_DIR = ASSETS_ROOT / "signal_packs"
+GENOME_SCHEMA_ASSETS_DIR = ASSETS_ROOT / "genome_schemas"
 MUTATION_PROFILE_ASSETS_DIR = ASSETS_ROOT / "mutation_profiles"
 DEFAULT_EXECUTION_PRESET = "standard"
 
@@ -128,6 +131,74 @@ class RunLabTemplateSummary:
 
 
 @dataclass(frozen=True)
+class SignalAuthoringOption:
+    id: str
+    label: str | None = None
+    description: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "description": self.description,
+        }
+
+
+@dataclass(frozen=True)
+class SignalPackAuthoringMetadata:
+    signal_options: tuple[SignalAuthoringOption, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "signal_options": [item.to_dict() for item in self.signal_options],
+        }
+
+
+@dataclass(frozen=True)
+class GenomeSchemaAuthoringOption:
+    id: str
+    label: str | None = None
+    description: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "description": self.description,
+        }
+
+
+@dataclass(frozen=True)
+class GenomeSchemaSuggestedModule:
+    name: str
+    gene_type: str
+    required: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "gene_type": self.gene_type,
+            "required": self.required,
+        }
+
+
+@dataclass(frozen=True)
+class GenomeSchemaAuthoringMetadata:
+    gene_catalog_options: tuple[GenomeSchemaAuthoringOption, ...]
+    gene_type_options: tuple[GenomeSchemaAuthoringOption, ...]
+    suggested_modules: tuple[GenomeSchemaSuggestedModule, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "gene_catalog_options": [
+                item.to_dict() for item in self.gene_catalog_options
+            ],
+            "gene_type_options": [item.to_dict() for item in self.gene_type_options],
+            "suggested_modules": [item.to_dict() for item in self.suggested_modules],
+        }
+
+
+@dataclass(frozen=True)
 class RunLabBootstrap:
     current_logic_version: str
     dataset_catalogs: tuple[RunLabDatasetCatalogSummary, ...]
@@ -137,6 +208,8 @@ class RunLabBootstrap:
     decision_policies: tuple[RunLabOption, ...]
     execution_presets: tuple[RunLabOption, ...]
     config_templates: tuple[RunLabTemplateSummary, ...]
+    signal_pack_authoring: SignalPackAuthoringMetadata
+    genome_schema_authoring: GenomeSchemaAuthoringMetadata
     defaults: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -149,6 +222,8 @@ class RunLabBootstrap:
             "decision_policies": [item.to_dict() for item in self.decision_policies],
             "execution_presets": [item.to_dict() for item in self.execution_presets],
             "config_templates": [item.to_dict() for item in self.config_templates],
+            "signal_pack_authoring": self.signal_pack_authoring.to_dict(),
+            "genome_schema_authoring": self.genome_schema_authoring.to_dict(),
             "defaults": dict(self.defaults),
         }
 
@@ -197,6 +272,20 @@ class SavedSignalPackAssetResult:
         }
 
 
+@dataclass(frozen=True)
+class SavedGenomeSchemaAssetResult:
+    asset_id: str
+    asset_path: str
+    asset_payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "asset_id": self.asset_id,
+            "asset_path": self.asset_path,
+            "asset_payload": dict(self.asset_payload),
+        }
+
+
 LaunchedRunResult = SubmittedRunQueueJobResult
 
 
@@ -218,6 +307,7 @@ class RunLabApplicationService:
         run_configs_dir: Path = RUN_CONFIGS_DIR,
         run_lab_artifacts_dir: Path = RUN_LAB_ARTIFACTS_DIR,
         signal_pack_assets_dir: Path = SIGNAL_PACK_ASSETS_DIR,
+        genome_schema_assets_dir: Path = GENOME_SCHEMA_ASSETS_DIR,
         mutation_profile_assets_dir: Path = MUTATION_PROFILE_ASSETS_DIR,
         database_path: str | Path | None = None,
         catalog_service: CatalogService | None = None,
@@ -229,11 +319,16 @@ class RunLabApplicationService:
         self.run_configs_dir = run_configs_dir
         self.run_lab_artifacts_dir = run_lab_artifacts_dir
         self.signal_pack_assets_dir = signal_pack_assets_dir
+        self.genome_schema_assets_dir = genome_schema_assets_dir
         self.mutation_profile_assets_dir = mutation_profile_assets_dir
         asset_root = (
             mutation_profile_assets_dir.parent
             if mutation_profile_assets_dir != MUTATION_PROFILE_ASSETS_DIR
-            else signal_pack_assets_dir.parent
+            else (
+                genome_schema_assets_dir.parent
+                if genome_schema_assets_dir != GENOME_SCHEMA_ASSETS_DIR
+                else signal_pack_assets_dir.parent
+            )
         )
         self.catalog_service = catalog_service or CatalogService(
             asset_root=asset_root
@@ -258,6 +353,8 @@ class RunLabApplicationService:
         decision_policies = self._build_runtime_options("decision_policies")
         execution_presets = self._build_execution_presets()
         config_templates = self._list_config_templates()
+        signal_pack_authoring = self._build_signal_pack_authoring_metadata()
+        genome_schema_authoring = self._build_genome_schema_authoring_metadata()
         default_template = self._select_default_template(config_templates)
         default_execution_preset = self._select_default_execution_preset(
             execution_presets
@@ -289,6 +386,8 @@ class RunLabApplicationService:
             decision_policies=decision_policies,
             execution_presets=execution_presets,
             config_templates=config_templates,
+            signal_pack_authoring=signal_pack_authoring,
+            genome_schema_authoring=genome_schema_authoring,
             defaults=defaults,
         )
 
@@ -497,6 +596,81 @@ class RunLabApplicationService:
             asset_payload=asset_payload,
         )
 
+    def save_genome_schema_asset(
+        self,
+        payload: dict[str, Any],
+    ) -> SavedGenomeSchemaAssetResult:
+        asset_id = _normalize_asset_id(str(payload["id"]))
+        description = _normalize_optional_description(payload.get("description"))
+        gene_catalog = str(payload["gene_catalog"]).strip()
+        if not gene_catalog:
+            raise ValueError("gene_catalog is required")
+
+        modules_input = payload.get("modules")
+        if not isinstance(modules_input, list) or not modules_input:
+            raise ValueError("modules must be a non-empty list")
+
+        modules: list[dict[str, Any]] = []
+        for module in modules_input:
+            if not isinstance(module, dict):
+                raise ValueError("modules must contain objects")
+            module_name = str(module["name"]).strip()
+            gene_type = str(module["gene_type"]).strip()
+            required = module["required"]
+            if not module_name:
+                raise ValueError("Genome schema module name is required")
+            if not gene_type:
+                raise ValueError("Genome schema module gene_type is required")
+            if not isinstance(required, bool):
+                raise ValueError("Genome schema module required must be a bool")
+            modules.append(
+                {
+                    "name": module_name,
+                    "gene_type": gene_type,
+                    "required": required,
+                }
+            )
+
+        asset_payload = {
+            "id": asset_id,
+            "description": description,
+            "gene_catalog": gene_catalog,
+            "modules": modules,
+        }
+
+        candidate_path = self.genome_schema_assets_dir / f"{asset_id}.json"
+        relative_asset_path = candidate_path.relative_to(self.repo_root)
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+
+        serialized_payload = _canonicalize_json_payload(asset_payload)
+        wrote_new_file = False
+        if candidate_path.exists():
+            existing_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+            if _canonicalize_json_payload(existing_payload) != serialized_payload:
+                raise ValueError(
+                    "Genome schema id already exists with different content. "
+                    "Choose a different id instead of overwriting it."
+                )
+        else:
+            candidate_path.write_text(
+                json.dumps(asset_payload, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            wrote_new_file = True
+
+        try:
+            load_declarative_asset(candidate_path, asset_type="genome_schemas")
+        except Exception:
+            if wrote_new_file and candidate_path.exists():
+                candidate_path.unlink()
+            raise
+
+        return SavedGenomeSchemaAssetResult(
+            asset_id=asset_id,
+            asset_path=relative_asset_path.as_posix(),
+            asset_payload=asset_payload,
+        )
+
     def save_and_execute(self, payload: dict[str, Any]) -> LaunchedRunResult:
         saved_config = self.save_run_config(payload)
         queue_limit = (
@@ -615,6 +789,37 @@ class RunLabApplicationService:
                 )
             )
         return tuple(options)
+
+    def _build_signal_pack_authoring_metadata(self) -> SignalPackAuthoringMetadata:
+        feature_names = get_default_signal_pack().feature_names
+        signal_options = tuple(
+            SignalAuthoringOption(id=feature_name)
+            for feature_name in feature_names
+        )
+        return SignalPackAuthoringMetadata(signal_options=signal_options)
+
+    def _build_genome_schema_authoring_metadata(self) -> GenomeSchemaAuthoringMetadata:
+        gene_catalog = get_gene_catalog("modular_genome_v1_gene_catalog")
+        gene_catalog_options = (
+            GenomeSchemaAuthoringOption(id=gene_catalog.name),
+        )
+        gene_type_options = tuple(
+            GenomeSchemaAuthoringOption(id=definition.name)
+            for definition in gene_catalog.describe_gene_types()
+        )
+        suggested_modules = tuple(
+            GenomeSchemaSuggestedModule(
+                name=slot.name,
+                gene_type=slot.name,
+                required=slot.required,
+            )
+            for slot in gene_catalog.describe_schema_slots()
+        )
+        return GenomeSchemaAuthoringMetadata(
+            gene_catalog_options=gene_catalog_options,
+            gene_type_options=gene_type_options,
+            suggested_modules=suggested_modules,
+        )
 
     def _list_config_templates(self) -> tuple[RunLabTemplateSummary, ...]:
         templates: list[RunLabTemplateSummary] = []

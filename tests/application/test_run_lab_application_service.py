@@ -103,6 +103,38 @@ def test_run_lab_bootstrap_exposes_canonical_defaults(tmp_path: Path) -> None:
     assert bootstrap.defaults["experiment_preset_name"] == "standard"
     assert bootstrap.dataset_catalogs[0].split_summary == {"train": 1, "validation": 1}
     assert any(option.id == "policy_v2_default" for option in bootstrap.decision_policies)
+    assert [
+        option.id for option in bootstrap.signal_pack_authoring.signal_options
+    ] == [
+        "trend_strength_medium",
+        "trend_strength_long",
+        "momentum_short",
+        "momentum_persistence",
+        "breakout_strength_medium",
+        "range_position_medium",
+        "realized_volatility_medium",
+        "volatility_ratio_short_long",
+    ]
+    assert [
+        option.id for option in bootstrap.genome_schema_authoring.gene_catalog_options
+    ] == ["modular_genome_v1_gene_catalog"]
+    assert [
+        option.id for option in bootstrap.genome_schema_authoring.gene_type_options
+    ] == [
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    ]
+    assert [
+        module.to_dict()
+        for module in bootstrap.genome_schema_authoring.suggested_modules
+    ] == [
+        {"name": "entry_context", "gene_type": "entry_context", "required": True},
+        {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+        {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+        {"name": "trade_control", "gene_type": "trade_control", "required": True},
+    ]
 
 
 def test_run_lab_save_run_config_writes_canonical_json(tmp_path: Path) -> None:
@@ -819,7 +851,267 @@ def test_run_lab_save_signal_pack_asset_writes_canonical_json(
 
     assert result.asset_id == "authoring_signal_pack_v1"
     assert len(saved_payload["signals"]) == 3
+    assert [entry["signal_id"] for entry in saved_payload["signals"]] == [
+        "trend_strength_medium",
+        "trend_strength_long",
+        "momentum_short",
+    ]
     assert saved_payload["signals"][0]["params"]["source"] == "trend_strength_medium"
+
+
+def test_run_lab_save_genome_schema_asset_writes_canonical_json(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    genome_schema_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "genome_schemas"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        genome_schema_assets_dir=genome_schema_assets_dir,
+    )
+
+    result = service.save_genome_schema_asset(
+        {
+            "id": "authored_schema_v1",
+            "description": "Authored schema.",
+            "gene_catalog": "modular_genome_v1_gene_catalog",
+            "modules": [
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        }
+    )
+
+    saved_path = repo_root / result.asset_path
+    saved_payload = json.loads(saved_path.read_text(encoding="utf-8"))
+
+    assert result.asset_id == "authored_schema_v1"
+    assert saved_payload["gene_catalog"] == "modular_genome_v1_gene_catalog"
+    assert [module["name"] for module in saved_payload["modules"]] == [
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    ]
+
+
+def test_run_lab_save_genome_schema_asset_allows_identical_reuse(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    genome_schema_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "genome_schemas"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        genome_schema_assets_dir=genome_schema_assets_dir,
+    )
+
+    payload = {
+        "id": "authored_schema_v1",
+        "description": "Authored schema.",
+        "gene_catalog": "modular_genome_v1_gene_catalog",
+        "modules": [
+            {"name": "entry_context", "gene_type": "entry_context", "required": True},
+            {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+            {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+            {"name": "trade_control", "gene_type": "trade_control", "required": True},
+        ],
+    }
+
+    first_result = service.save_genome_schema_asset(payload)
+    second_result = service.save_genome_schema_asset(payload)
+
+    assert first_result.asset_path == second_result.asset_path
+
+
+def test_run_lab_save_genome_schema_asset_rejects_different_content_same_id(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    genome_schema_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "genome_schemas"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        genome_schema_assets_dir=genome_schema_assets_dir,
+    )
+
+    service.save_genome_schema_asset(
+        {
+            "id": "authored_schema_v1",
+            "description": "Authored schema.",
+            "gene_catalog": "modular_genome_v1_gene_catalog",
+            "modules": [
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        }
+    )
+
+    try:
+        service.save_genome_schema_asset(
+            {
+                "id": "authored_schema_v1",
+                "description": "Different schema.",
+                "gene_catalog": "modular_genome_v1_gene_catalog",
+                "modules": [
+                    {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                    {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                    {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                    {"name": "trade_control", "gene_type": "trade_control", "required": True},
+                ],
+            }
+        )
+    except ValueError as exc:
+        assert "different content" in str(exc)
+    else:
+        raise AssertionError("Expected authored genome schema collision to fail.")
+
+
+def test_run_lab_save_genome_schema_asset_rejects_invalid_payload(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    genome_schema_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "genome_schemas"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        genome_schema_assets_dir=genome_schema_assets_dir,
+    )
+
+    invalid_payloads = (
+        {
+            "id": "invalid_catalog_schema",
+            "description": "Bad catalog.",
+            "gene_catalog": "missing_gene_catalog",
+            "modules": [
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        },
+        {
+            "id": "invalid_gene_type_schema",
+            "description": "Bad gene type.",
+            "gene_catalog": "modular_genome_v1_gene_catalog",
+            "modules": [
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "entry_trigger", "gene_type": "missing_gene_type", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        },
+        {
+            "id": "invalid_structure_schema",
+            "description": "Bad structure.",
+            "gene_catalog": "modular_genome_v1_gene_catalog",
+            "modules": [
+                {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        },
+    )
+
+    for payload in invalid_payloads:
+        try:
+            service.save_genome_schema_asset(payload)
+        except ValueError:
+            continue
+        raise AssertionError("Expected invalid authored genome schema to fail.")
+
+
+def test_run_lab_save_signal_pack_asset_preserves_signal_order(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    signal_pack_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "signal_packs"
+    )
+    signal_pack_assets_dir.mkdir(parents=True)
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=repo_root / "configs" / "datasets",
+        run_configs_dir=repo_root / "configs" / "runs",
+        run_lab_artifacts_dir=repo_root / "artifacts" / "ui_run_lab",
+        signal_pack_assets_dir=signal_pack_assets_dir,
+        mutation_profile_assets_dir=repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "mutation_profiles",
+    )
+
+    result = service.save_signal_pack_asset(
+        {
+            "id": "ordered_signal_pack_v1",
+            "description": "Order should stay intact.",
+            "signals": "momentum_short\ntrend_strength_medium\nbreakout_strength_medium",
+        }
+    )
+
+    saved_path = repo_root / result.asset_path
+    saved_payload = json.loads(saved_path.read_text(encoding="utf-8"))
+
+    assert [entry["signal_id"] for entry in saved_payload["signals"]] == [
+        "momentum_short",
+        "trend_strength_medium",
+        "breakout_strength_medium",
+    ]
 
 
 def test_run_lab_save_signal_pack_asset_allows_identical_reuse(

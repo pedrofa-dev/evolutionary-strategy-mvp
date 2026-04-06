@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { getCatalog, getCatalogCategory, getHealth } from "./services/catalogApi";
+import { getRunLabBootstrap } from "./services/runLabApi";
+import GenomeSchemaModal from "./components/GenomeSchemaModal";
 import GlobalExecutionMonitor from "./components/GlobalExecutionMonitor";
 import MutationProfileModal from "./components/MutationProfileModal";
 import SignalPackModal from "./components/SignalPackModal";
@@ -11,7 +13,13 @@ import HomePage from "./pages/HomePage";
 import OverviewPage from "./pages/OverviewPage";
 import ResultsPage from "./pages/ResultsPage";
 import RunLabPage from "./pages/RunLabPage";
-import type { SavedMutationProfileAssetResult, SavedSignalPackAssetResult } from "./types/runLab";
+import type {
+  GenomeSchemaAuthoringMetadata,
+  SavedGenomeSchemaAssetResult,
+  SavedMutationProfileAssetResult,
+  SavedSignalPackAssetResult,
+  SignalAuthoringOption,
+} from "./types/runLab";
 
 type Theme = "light" | "dark";
 type Route =
@@ -109,6 +117,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isCatalogMutationProfileModalOpen, setIsCatalogMutationProfileModalOpen] = useState(false);
   const [isCatalogSignalPackModalOpen, setIsCatalogSignalPackModalOpen] = useState(false);
+  const [isCatalogGenomeSchemaModalOpen, setIsCatalogGenomeSchemaModalOpen] = useState(false);
+  const [catalogSignalAuthoringOptions, setCatalogSignalAuthoringOptions] = useState<
+    SignalAuthoringOption[]
+  >([]);
+  const [catalogGenomeSchemaAuthoring, setCatalogGenomeSchemaAuthoring] =
+    useState<GenomeSchemaAuthoringMetadata | null>(null);
 
   useEffect(() => {
     const onPopState = () => {
@@ -147,6 +161,42 @@ export default function App() {
   async function handleCatalogSignalPackSaved(_: SavedSignalPackAssetResult) {
     await refreshCatalogCategory("signal_packs");
     setIsCatalogSignalPackModalOpen(false);
+  }
+
+  async function handleCatalogGenomeSchemaSaved(_: SavedGenomeSchemaAssetResult) {
+    await refreshCatalogCategory("genome_schemas");
+    setIsCatalogGenomeSchemaModalOpen(false);
+  }
+
+  async function ensureCatalogAuthoringBootstrap() {
+    const bootstrap = await getRunLabBootstrap();
+    setCatalogSignalAuthoringOptions(bootstrap.signal_pack_authoring.signal_options);
+    setCatalogGenomeSchemaAuthoring(bootstrap.genome_schema_authoring);
+    return bootstrap;
+  }
+
+  async function openCatalogSignalPackAuthoring() {
+    try {
+      setError(null);
+      if (catalogSignalAuthoringOptions.length === 0) {
+        await ensureCatalogAuthoringBootstrap();
+      }
+      setIsCatalogSignalPackModalOpen(true);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unknown error");
+    }
+  }
+
+  async function openCatalogGenomeSchemaAuthoring() {
+    try {
+      setError(null);
+      if (!catalogGenomeSchemaAuthoring) {
+        await ensureCatalogAuthoringBootstrap();
+      }
+      setIsCatalogGenomeSchemaModalOpen(true);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unknown error");
+    }
   }
 
   const theme = themePreference ?? systemTheme;
@@ -267,8 +317,13 @@ export default function App() {
         : route.category === "signal_packs"
           ? {
               label: "New signal pack",
-              onClick: () => setIsCatalogSignalPackModalOpen(true),
+              onClick: () => void openCatalogSignalPackAuthoring(),
             }
+          : route.category === "genome_schemas"
+            ? {
+                label: "New genome schema",
+                onClick: () => void openCatalogGenomeSchemaAuthoring(),
+              }
           : null
       : null;
 
@@ -329,8 +384,9 @@ export default function App() {
             onOpenRunLab={() => navigate("/run-lab")}
             onOpenResults={(campaignId) => openResultsPath(campaignId)}
             onOpenCatalog={() => navigate("/catalog")}
+            onOpenGenomeSchemaAuthoring={() => void openCatalogGenomeSchemaAuthoring()}
             onOpenMutationProfileAuthoring={() => setIsCatalogMutationProfileModalOpen(true)}
-            onOpenSignalPackAuthoring={() => setIsCatalogSignalPackModalOpen(true)}
+            onOpenSignalPackAuthoring={() => void openCatalogSignalPackAuthoring()}
           />
         ) : null}
 
@@ -401,6 +457,18 @@ export default function App() {
         isOpen={isCatalogSignalPackModalOpen}
         onClose={() => setIsCatalogSignalPackModalOpen(false)}
         onSaved={handleCatalogSignalPackSaved}
+        signalOptions={catalogSignalAuthoringOptions}
+      />
+      <GenomeSchemaModal
+        contextLabel="Catalog Authoring"
+        isOpen={isCatalogGenomeSchemaModalOpen}
+        onClose={() => setIsCatalogGenomeSchemaModalOpen(false)}
+        onSaved={handleCatalogGenomeSchemaSaved}
+        geneCatalogOptions={
+          catalogGenomeSchemaAuthoring?.gene_catalog_options ?? []
+        }
+        geneTypeOptions={catalogGenomeSchemaAuthoring?.gene_type_options ?? []}
+        suggestedModules={catalogGenomeSchemaAuthoring?.suggested_modules ?? []}
       />
       <GlobalExecutionMonitor onOpenResultsPath={(path) => navigate(path)} />
     </div>

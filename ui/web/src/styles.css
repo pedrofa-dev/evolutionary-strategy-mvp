@@ -973,6 +973,186 @@ pre {
   gap: 0.75rem;
 }
 
+.signal-builder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.signal-builder-panel {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+  align-self: start;
+  justify-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-strong);
+  padding: 0.85rem;
+}
+
+.signal-builder-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.signal-builder-summary {
+  margin: 0;
+  font-size: 0.84rem;
+}
+
+.signal-builder-empty {
+  margin: 0;
+  padding: 0.75rem 0.8rem;
+  border-radius: 12px;
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  align-self: start;
+}
+
+.signal-option-list,
+.selected-signal-list {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+  align-self: start;
+}
+
+.module-builder-toolbar {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.module-row-list {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+}
+
+.module-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-muted);
+  padding: 0.55rem 0.6rem;
+}
+
+.module-row-fields {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.module-row-field {
+  margin-bottom: 0;
+}
+
+.module-row-toggle {
+  margin-bottom: 0;
+  min-width: 120px;
+}
+
+.module-required-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 42px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-strong);
+}
+
+.module-required-toggle input {
+  accent-color: var(--accent);
+}
+
+.module-row-actions {
+  align-self: center;
+}
+
+.signal-option-row,
+.selected-signal-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-muted);
+  padding: 0.7rem 0.75rem;
+}
+
+.signal-option-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.selected-signal-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  border-radius: 10px;
+  gap: 0.55rem;
+  padding: 0.38rem 0.55rem;
+}
+
+.selected-signal-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 0.74rem;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.selected-signal-label {
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selected-signal-actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: max-content;
+}
+
+.subtle-inline-action-button {
+  padding: 0.22rem 0.45rem;
+  border-radius: 9px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  min-height: auto;
+}
+
+.subtle-inline-action-button:disabled {
+  opacity: 0.55;
+  transform: none;
+}
+
 @media (max-width: 820px) {
   .app-header-content {
     padding: 0.75rem 0;
@@ -1001,6 +1181,10 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .signal-builder-grid {
+    grid-template-columns: 1fr;
+  }
+
   .results-layout {
     grid-template-columns: 1fr;
   }
@@ -1023,6 +1207,33 @@ pre {
   .home-list-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .signal-option-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .module-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .module-row-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .module-row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .selected-signal-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .selected-signal-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .execution-monitor-action {

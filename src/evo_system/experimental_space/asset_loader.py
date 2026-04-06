@@ -203,15 +203,74 @@ def _validate_signal_pack_asset(payload: dict[str, Any], asset_path: Path) -> No
 
 
 def _validate_genome_schema_asset(payload: dict[str, Any], asset_path: Path) -> None:
+    gene_catalog_name = _require_string(payload, "gene_catalog", asset_path)
     modules = _require_list(payload, "modules", asset_path)
     if not modules:
         raise ValueError(f"Genome schema asset must define at least one module: {asset_path}")
+    try:
+        from evo_system.experimental_space.gene_catalog import get_gene_catalog
+
+        gene_catalog = get_gene_catalog(gene_catalog_name)
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown gene_catalog {gene_catalog_name!r} in genome schema asset: "
+            f"{asset_path}"
+        ) from exc
+
+    allowed_gene_types = set(gene_catalog.list_gene_type_names())
+    schema_slots = {slot.name: slot for slot in gene_catalog.describe_schema_slots()}
+    expected_module_order = tuple(schema_slots)
+    seen_module_names: set[str] = set()
+    resolved_module_names: list[str] = []
+
     for module in modules:
         if not isinstance(module, dict):
             raise ValueError(f"Genome schema modules must be JSON objects: {asset_path}")
-        _require_string(module, "name", asset_path)
-        _require_string(module, "gene_type", asset_path)
-        _require_bool(module, "required", asset_path)
+        module_name = _require_string(module, "name", asset_path)
+        gene_type_name = _require_string(module, "gene_type", asset_path)
+        required = _require_bool(module, "required", asset_path)
+
+        if module_name in seen_module_names:
+            raise ValueError(
+                f"Genome schema asset defines duplicate module {module_name!r}: "
+                f"{asset_path}"
+            )
+        seen_module_names.add(module_name)
+        resolved_module_names.append(module_name)
+
+        if module_name not in schema_slots:
+            raise ValueError(
+                f"Unknown genome schema module {module_name!r} for gene catalog "
+                f"{gene_catalog_name!r}: {asset_path}"
+            )
+
+        if gene_type_name not in allowed_gene_types:
+            raise ValueError(
+                f"Unknown gene_type {gene_type_name!r} for gene catalog "
+                f"{gene_catalog_name!r}: {asset_path}"
+            )
+
+        slot = schema_slots[module_name]
+        if required is not slot.required:
+            raise ValueError(
+                f"Genome schema module {module_name!r} must use required="
+                f"{slot.required!r} for gene catalog {gene_catalog_name!r}: "
+                f"{asset_path}"
+            )
+
+        if gene_type_name != module_name:
+            raise ValueError(
+                f"Genome schema module {module_name!r} must use matching gene_type "
+                f"{module_name!r} for gene catalog {gene_catalog_name!r}: "
+                f"{asset_path}"
+            )
+
+    if tuple(resolved_module_names) != expected_module_order:
+        raise ValueError(
+            f"Genome schema modules must match the runtime slot order "
+            f"{list(expected_module_order)!r} for gene catalog {gene_catalog_name!r}: "
+            f"{asset_path}"
+        )
 
 
 def _validate_decision_policy_asset(payload: dict[str, Any], asset_path: Path) -> None:

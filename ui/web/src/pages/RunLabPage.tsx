@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import GenomeSchemaModal from "../components/GenomeSchemaModal";
 import MutationProfileModal from "../components/MutationProfileModal";
 import SignalPackModal from "../components/SignalPackModal";
 import { getDisplayLabel } from "../content/catalogMetadata";
@@ -10,6 +11,7 @@ import type {
   RunLabDatasetCatalogSummary,
   RunLabOption,
   RunLabSaveRequest,
+  SavedGenomeSchemaAssetResult,
   SavedSignalPackAssetResult,
   RunLabTemplateSummary,
   SavedMutationProfileAssetResult,
@@ -146,6 +148,7 @@ function applyBootstrapSelection(
   options?: {
     currentForm?: FormState | null;
     preferredSignalPackId?: string | null;
+    preferredGenomeSchemaId?: string | null;
     preferredMutationProfileId?: string | null;
   },
 ): FormState {
@@ -173,6 +176,18 @@ function applyBootstrapSelection(
     return {
       ...baseForm,
       signal_pack_name: options.preferredSignalPackId,
+    };
+  }
+
+  if (
+    options?.preferredGenomeSchemaId &&
+    nextBootstrap.genome_schemas.some(
+      (option) => option.id === options.preferredGenomeSchemaId && option.selectable,
+    )
+  ) {
+    return {
+      ...baseForm,
+      genome_schema_name: options.preferredGenomeSchemaId,
     };
   }
 
@@ -210,6 +225,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
   const [savedResult, setSavedResult] = useState<SavedRunConfigResult | null>(null);
   const [launchResult, setLaunchResult] = useState<LaunchedRunResult | null>(null);
   const [isSignalPackModalOpen, setIsSignalPackModalOpen] = useState(false);
+  const [isGenomeSchemaModalOpen, setIsGenomeSchemaModalOpen] = useState(false);
   const [isMutationProfileModalOpen, setIsMutationProfileModalOpen] = useState(false);
 
   useEffect(() => {
@@ -245,6 +261,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
 
   async function refreshBootstrap(
     preferredSignalPackId?: string | null,
+    preferredGenomeSchemaId?: string | null,
     preferredMutationProfileId?: string | null,
     currentFormOverride?: FormState | null,
   ) {
@@ -254,6 +271,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
       applyBootstrapSelection(nextBootstrap, {
         currentForm: currentFormOverride ?? form,
         preferredSignalPackId,
+        preferredGenomeSchemaId,
         preferredMutationProfileId,
       }),
     );
@@ -464,7 +482,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
                 : duplicateConfigName(form.template_config_name),
           }
         : form;
-    await refreshBootstrap(null, result.asset_id, nextForm);
+    await refreshBootstrap(null, null, result.asset_id, nextForm);
     setIsMutationProfileModalOpen(false);
   }
 
@@ -482,8 +500,26 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
                 : duplicateConfigName(form.template_config_name),
           }
         : form;
-    await refreshBootstrap(result.asset_id, null, nextForm);
+    await refreshBootstrap(result.asset_id, null, null, nextForm);
     setIsSignalPackModalOpen(false);
+  }
+
+  async function handleGenomeSchemaSaved(
+    result: SavedGenomeSchemaAssetResult,
+  ) {
+    const nextForm =
+      form?.config_mode === "existing" && form
+        ? {
+            ...form,
+            config_mode: "new" as const,
+            config_name:
+              form.config_name.trim() && form.config_name !== form.template_config_name
+                ? form.config_name
+                : duplicateConfigName(form.template_config_name),
+          }
+        : form;
+    await refreshBootstrap(null, result.asset_id, null, nextForm);
+    setIsGenomeSchemaModalOpen(false);
   }
 
   if (isLoading) {
@@ -681,7 +717,16 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
           </label>
 
           <label className="form-field">
-            <span className="form-label">Genome schema</span>
+            <span className="form-label form-label-row">
+              <span>Genome schema</span>
+              <button
+                className="link-button secondary inline-action-button"
+                onClick={() => setIsGenomeSchemaModalOpen(true)}
+                type="button"
+              >
+                New
+              </button>
+            </span>
             <select
               value={form.genome_schema_name}
               disabled={isExistingConfigMode}
@@ -1120,6 +1165,16 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
         isOpen={isSignalPackModalOpen}
         onClose={() => setIsSignalPackModalOpen(false)}
         onSaved={handleSignalPackSaved}
+        signalOptions={bootstrap.signal_pack_authoring.signal_options}
+      />
+      <GenomeSchemaModal
+        contextLabel="Run Lab Authoring"
+        isOpen={isGenomeSchemaModalOpen}
+        onClose={() => setIsGenomeSchemaModalOpen(false)}
+        onSaved={handleGenomeSchemaSaved}
+        geneCatalogOptions={bootstrap.genome_schema_authoring.gene_catalog_options}
+        geneTypeOptions={bootstrap.genome_schema_authoring.gene_type_options}
+        suggestedModules={bootstrap.genome_schema_authoring.suggested_modules}
       />
     </div>
   );

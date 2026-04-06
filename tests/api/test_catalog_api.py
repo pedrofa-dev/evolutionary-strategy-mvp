@@ -9,7 +9,7 @@ import api.main
 from application.run_lab import RunLabApplicationService
 from application.runs_results import RunsResultsApplicationService
 from api.main import create_app
-from tests.application.test_runs_results_application_service import seed_campaign
+from ..application.test_runs_results_application_service import seed_campaign
 
 
 def _write_manifest(path: Path) -> None:
@@ -193,6 +193,22 @@ def test_run_lab_bootstrap_endpoint_returns_operational_payload(tmp_path: Path) 
     assert payload["defaults"]["dataset_catalog_id"] == "core_1h_spot"
     assert payload["defaults"]["experiment_preset_name"] == "standard"
     assert payload["dataset_catalogs"][0]["id"] == "core_1h_spot"
+    assert payload["signal_pack_authoring"]["signal_options"][0]["id"] == "trend_strength_medium"
+    assert payload["genome_schema_authoring"]["gene_catalog_options"][0]["id"] == (
+        "modular_genome_v1_gene_catalog"
+    )
+    assert [item["id"] for item in payload["genome_schema_authoring"]["gene_type_options"]] == [
+        "entry_context",
+        "entry_trigger",
+        "exit_policy",
+        "trade_control",
+    ]
+    assert payload["genome_schema_authoring"]["suggested_modules"] == [
+        {"name": "entry_context", "gene_type": "entry_context", "required": True},
+        {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+        {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+        {"name": "trade_control", "gene_type": "trade_control", "required": True},
+    ]
 
 
 def test_run_lab_save_config_endpoint_writes_config(tmp_path: Path) -> None:
@@ -472,6 +488,105 @@ def test_run_lab_authoring_signal_pack_endpoint_saves_asset(tmp_path: Path) -> N
     assert status_code == 200
     assert payload["asset_id"] == "authoring_signal_pack_v1"
     assert (repo_root / payload["asset_path"]).exists()
+
+
+def test_run_lab_authoring_genome_schema_endpoint_saves_asset(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    genome_schema_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "genome_schemas"
+    )
+    mutation_profile_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "mutation_profiles"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    genome_schema_assets_dir.mkdir(parents=True)
+    mutation_profile_assets_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    run_lab_service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        genome_schema_assets_dir=genome_schema_assets_dir,
+        mutation_profile_assets_dir=mutation_profile_assets_dir,
+    )
+
+    status_code, payload = _request(
+        "POST",
+        "/run-lab/authoring/genome-schemas",
+        body={
+            "id": "authoring_genome_schema_v1",
+            "description": "Authored genome schema.",
+            "gene_catalog": "modular_genome_v1_gene_catalog",
+            "modules": [
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        },
+        run_lab_service=run_lab_service,
+    )
+
+    assert status_code == 200
+    assert payload["asset_id"] == "authoring_genome_schema_v1"
+    assert (repo_root / payload["asset_path"]).exists()
+
+
+def test_run_lab_authoring_genome_schema_endpoint_rejects_invalid_asset(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    genome_schema_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "genome_schemas"
+    )
+    mutation_profile_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "mutation_profiles"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    genome_schema_assets_dir.mkdir(parents=True)
+    mutation_profile_assets_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    run_lab_service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        genome_schema_assets_dir=genome_schema_assets_dir,
+        mutation_profile_assets_dir=mutation_profile_assets_dir,
+    )
+
+    status_code, payload = _request(
+        "POST",
+        "/run-lab/authoring/genome-schemas",
+        body={
+            "id": "authoring_genome_schema_v1",
+            "description": "Broken genome schema.",
+            "gene_catalog": "missing_gene_catalog",
+            "modules": [
+                {"name": "entry_context", "gene_type": "entry_context", "required": True},
+                {"name": "entry_trigger", "gene_type": "entry_trigger", "required": True},
+                {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
+                {"name": "trade_control", "gene_type": "trade_control", "required": True},
+            ],
+        },
+        run_lab_service=run_lab_service,
+    )
+
+    assert status_code == 400
+    assert payload["error"] == "invalid_run_lab_request"
 
 
 def test_runs_campaigns_endpoints_return_persisted_results(tmp_path: Path) -> None:

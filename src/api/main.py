@@ -25,6 +25,7 @@ from api.routes.run_lab import (
     build_run_lab_bootstrap_response,
     build_run_lab_save_and_execute_response,
     build_run_lab_save_config_response,
+    build_run_lab_save_genome_schema_response,
     build_run_lab_save_mutation_profile_response,
     build_run_lab_save_signal_pack_response,
 )
@@ -198,6 +199,21 @@ class CatalogApiApp:
                     "message": "Expected a JSON request body.",
                 }
             return build_run_lab_save_signal_pack_response(
+                self.run_lab_service,
+                request_body,
+            )
+        if normalized_path == "/run-lab/authoring/genome-schemas":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_run_lab_save_genome_schema_response(
                 self.run_lab_service,
                 request_body,
             )
