@@ -209,6 +209,33 @@ def test_run_lab_bootstrap_endpoint_returns_operational_payload(tmp_path: Path) 
         {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
         {"name": "trade_control", "gene_type": "trade_control", "required": True},
     ]
+    assert payload["decision_policy_authoring"]["engine_options"] == [
+        {"id": "policy_v2_default_engine", "label": None, "description": None}
+    ]
+    assert [
+        item["id"] for item in payload["decision_policy_authoring"]["entry_signal_options"]
+    ] == [
+        "trend",
+        "momentum",
+        "breakout",
+        "range",
+        "volatility",
+    ]
+    assert [
+        item["id"]
+        for item in payload["decision_policy_authoring"]["weight_gene_field_options"]
+    ] == [
+        "trend_weight",
+        "momentum_weight",
+        "breakout_weight",
+        "range_weight",
+        "volatility_weight",
+    ]
+    assert payload["decision_policy_authoring"]["fixed_gene_bindings"] == {
+        "entry_trigger_gene": "entry_trigger",
+        "exit_policy_gene": "exit_policy",
+        "trade_control_gene": "trade_control",
+    }
 
 
 def test_run_lab_save_config_endpoint_writes_config(tmp_path: Path) -> None:
@@ -581,6 +608,131 @@ def test_run_lab_authoring_genome_schema_endpoint_rejects_invalid_asset(
                 {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
                 {"name": "trade_control", "gene_type": "trade_control", "required": True},
             ],
+        },
+        run_lab_service=run_lab_service,
+    )
+
+    assert status_code == 400
+    assert payload["error"] == "invalid_run_lab_request"
+
+
+def test_run_lab_authoring_decision_policy_endpoint_saves_asset(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    decision_policy_assets_dir = (
+        repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "decision_policies"
+    )
+    mutation_profile_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "mutation_profiles"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    decision_policy_assets_dir.mkdir(parents=True)
+    mutation_profile_assets_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    run_lab_service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        decision_policy_assets_dir=decision_policy_assets_dir,
+        mutation_profile_assets_dir=mutation_profile_assets_dir,
+    )
+
+    status_code, payload = _request(
+        "POST",
+        "/run-lab/authoring/decision-policies",
+        body={
+            "id": "authoring_decision_policy_v1",
+            "description": "Authored decision policy.",
+            "engine": "policy_v2_default_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
+        },
+        run_lab_service=run_lab_service,
+    )
+
+    assert status_code == 200
+    assert payload["asset_id"] == "authoring_decision_policy_v1"
+    assert (repo_root / payload["asset_path"]).exists()
+
+
+def test_run_lab_authoring_decision_policy_endpoint_rejects_invalid_asset(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    dataset_configs_dir = repo_root / "configs" / "datasets"
+    run_configs_dir = repo_root / "configs" / "runs"
+    artifacts_dir = repo_root / "artifacts" / "ui_run_lab"
+    decision_policy_assets_dir = (
+        repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "decision_policies"
+    )
+    mutation_profile_assets_dir = (
+        repo_root / "src" / "evo_system" / "experimental_space" / "assets" / "mutation_profiles"
+    )
+    dataset_configs_dir.mkdir(parents=True)
+    run_configs_dir.mkdir(parents=True)
+    decision_policy_assets_dir.mkdir(parents=True)
+    mutation_profile_assets_dir.mkdir(parents=True)
+    _write_manifest(dataset_configs_dir / "core_1h_spot.yaml")
+    _write_template(run_configs_dir / "balanced_baseline.json")
+
+    run_lab_service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=dataset_configs_dir,
+        run_configs_dir=run_configs_dir,
+        run_lab_artifacts_dir=artifacts_dir,
+        decision_policy_assets_dir=decision_policy_assets_dir,
+        mutation_profile_assets_dir=mutation_profile_assets_dir,
+    )
+
+    status_code, payload = _request(
+        "POST",
+        "/run-lab/authoring/decision-policies",
+        body={
+            "id": "authoring_decision_policy_v1",
+            "description": "Broken decision policy.",
+            "engine": "missing_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
         },
         run_lab_service=run_lab_service,
     )

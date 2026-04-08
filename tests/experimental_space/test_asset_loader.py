@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from evo_system.experimental_space.asset_loader import (
     ASSETS_ROOT,
     ASSET_DIRECTORY_NAMES,
@@ -111,7 +113,11 @@ def test_load_declarative_asset_supports_id_as_canonical_identifier(
         (
             '{"id":"weighted_policy_v1","engine":"policy_v2_default_engine",'
             '"entry":{"trigger_gene":"entry_trigger","signals":['
-            '{"signal":"trend","weight_gene_field":"trend_weight"}]},'
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"volatility_weight"}]},'
             '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
         ),
         encoding="utf-8",
@@ -146,7 +152,11 @@ def test_load_all_declarative_assets_can_validate_experiment_preset_references(
         (
             '{"id":"weighted_momentum_v1","engine":"policy_v2_default_engine",'
             '"entry":{"trigger_gene":"entry_trigger","signals":['
-            '{"signal":"trend","weight_gene_field":"trend_weight"}]},'
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"volatility_weight"}]},'
             '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
         ),
         encoding="utf-8",
@@ -176,6 +186,156 @@ def test_load_all_declarative_assets_can_validate_experiment_preset_references(
     assets = load_all_declarative_assets(tmp_path, validate_references=True)
 
     assert assets["experiment_presets"][0].name == "btc_1h_probe_v1"
+
+
+def test_decision_policy_asset_raises_clear_error_for_unknown_engine(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"missing_engine",'
+            '"entry":{"trigger_gene":"entry_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"volatility_weight"}]},'
+            '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="policy_v2_default_engine"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
+
+
+def test_decision_policy_asset_raises_clear_error_for_wrong_trigger_gene(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"policy_v2_default_engine",'
+            '"entry":{"trigger_gene":"wrong_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"volatility_weight"}]},'
+            '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="entry.trigger_gene"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
+
+
+def test_decision_policy_asset_raises_clear_error_for_wrong_exit_policy_gene(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"policy_v2_default_engine",'
+            '"entry":{"trigger_gene":"entry_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"volatility_weight"}]},'
+            '"exit":{"policy_gene":"wrong_exit","trade_control_gene":"trade_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="exit.policy_gene"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
+
+
+def test_decision_policy_asset_raises_clear_error_for_wrong_trade_control_gene(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"policy_v2_default_engine",'
+            '"entry":{"trigger_gene":"entry_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"volatility_weight"}]},'
+            '"exit":{"policy_gene":"exit_policy","trade_control_gene":"wrong_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="exit.trade_control_gene"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
+
+
+def test_decision_policy_asset_raises_clear_error_for_unknown_signal_family(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"policy_v2_default_engine",'
+            '"entry":{"trigger_gene":"entry_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"made_up","weight_gene_field":"volatility_weight"}]},'
+            '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="made_up"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
+
+
+def test_decision_policy_asset_raises_clear_error_for_unknown_weight_gene_field(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"policy_v2_default_engine",'
+            '"entry":{"trigger_gene":"entry_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"},'
+            '{"signal":"momentum","weight_gene_field":"momentum_weight"},'
+            '{"signal":"breakout","weight_gene_field":"breakout_weight"},'
+            '{"signal":"range","weight_gene_field":"range_weight"},'
+            '{"signal":"volatility","weight_gene_field":"unknown_weight"}]},'
+            '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unknown_weight"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
+
+
+def test_decision_policy_asset_raises_clear_error_for_incomplete_mapping(
+    tmp_path: Path,
+) -> None:
+    asset_path = tmp_path / "policy.json"
+    asset_path.write_text(
+        (
+            '{"id":"broken_policy","engine":"policy_v2_default_engine",'
+            '"entry":{"trigger_gene":"entry_trigger","signals":['
+            '{"signal":"trend","weight_gene_field":"trend_weight"}]},'
+            '"exit":{"policy_gene":"exit_policy","trade_control_gene":"trade_control"}}'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="complete supported weighted entry mapping"):
+        load_declarative_asset(asset_path, asset_type="decision_policies")
 
 
 def test_genome_schema_asset_raises_clear_error_for_unknown_gene_catalog(

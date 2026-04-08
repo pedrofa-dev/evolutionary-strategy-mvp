@@ -274,18 +274,80 @@ def _validate_genome_schema_asset(payload: dict[str, Any], asset_path: Path) -> 
 
 
 def _validate_decision_policy_asset(payload: dict[str, Any], asset_path: Path) -> None:
-    _require_string(payload, "engine", asset_path)
+    engine_name = _require_string(payload, "engine", asset_path)
     entry = _require_dict(payload, "entry", asset_path)
     exit_payload = _require_dict(payload, "exit", asset_path)
-    _require_string(entry, "trigger_gene", asset_path)
+    trigger_gene = _require_string(entry, "trigger_gene", asset_path)
     signals = _require_list(entry, "signals", asset_path)
+    policy_gene = _require_string(exit_payload, "policy_gene", asset_path)
+    trade_control_gene = _require_string(exit_payload, "trade_control_gene", asset_path)
+
+    from evo_system.experimental_space.decision_policies import (
+        SUPPORTED_DECISION_POLICY_ENGINE_NAME,
+        SUPPORTED_ENTRY_SIGNAL_WEIGHT_FIELDS,
+        SUPPORTED_ENTRY_TRIGGER_GENE_NAME,
+        SUPPORTED_EXIT_POLICY_GENE_NAME,
+        SUPPORTED_TRADE_CONTROL_GENE_NAME,
+        SUPPORTED_WEIGHTED_ENTRY_SIGNAL_FAMILIES,
+    )
+
+    if engine_name != SUPPORTED_DECISION_POLICY_ENGINE_NAME:
+        raise ValueError(
+            "Decision policy asset must use engine "
+            f"{SUPPORTED_DECISION_POLICY_ENGINE_NAME!r}: {asset_path}"
+        )
+    if trigger_gene != SUPPORTED_ENTRY_TRIGGER_GENE_NAME:
+        raise ValueError(
+            "Decision policy asset must use entry.trigger_gene "
+            f"{SUPPORTED_ENTRY_TRIGGER_GENE_NAME!r}: {asset_path}"
+        )
+    if policy_gene != SUPPORTED_EXIT_POLICY_GENE_NAME:
+        raise ValueError(
+            "Decision policy asset must use exit.policy_gene "
+            f"{SUPPORTED_EXIT_POLICY_GENE_NAME!r}: {asset_path}"
+        )
+    if trade_control_gene != SUPPORTED_TRADE_CONTROL_GENE_NAME:
+        raise ValueError(
+            "Decision policy asset must use exit.trade_control_gene "
+            f"{SUPPORTED_TRADE_CONTROL_GENE_NAME!r}: {asset_path}"
+        )
+
+    seen_signals: set[str] = set()
+    seen_weight_fields: set[str] = set()
     for signal in signals:
         if not isinstance(signal, dict):
             raise ValueError(f"Decision policy signal mappings must be objects: {asset_path}")
-        _require_string(signal, "signal", asset_path)
-        _require_string(signal, "weight_gene_field", asset_path)
-    _require_string(exit_payload, "policy_gene", asset_path)
-    _require_string(exit_payload, "trade_control_gene", asset_path)
+        signal_name = _require_string(signal, "signal", asset_path)
+        weight_gene_field = _require_string(signal, "weight_gene_field", asset_path)
+        if signal_name not in SUPPORTED_WEIGHTED_ENTRY_SIGNAL_FAMILIES:
+            raise ValueError(
+                f"Unknown decision policy signal {signal_name!r}: {asset_path}"
+            )
+        if weight_gene_field not in SUPPORTED_ENTRY_SIGNAL_WEIGHT_FIELDS:
+            raise ValueError(
+                f"Unknown decision policy weight_gene_field {weight_gene_field!r}: "
+                f"{asset_path}"
+            )
+        if signal_name in seen_signals:
+            raise ValueError(
+                f"Decision policy asset defines duplicate signal mapping for "
+                f"{signal_name!r}: {asset_path}"
+            )
+        if weight_gene_field in seen_weight_fields:
+            raise ValueError(
+                f"Decision policy asset defines duplicate weight_gene_field "
+                f"{weight_gene_field!r}: {asset_path}"
+            )
+        seen_signals.add(signal_name)
+        seen_weight_fields.add(weight_gene_field)
+    expected_signals = set(SUPPORTED_WEIGHTED_ENTRY_SIGNAL_FAMILIES)
+    expected_weight_fields = set(SUPPORTED_ENTRY_SIGNAL_WEIGHT_FIELDS)
+    if seen_signals != expected_signals or seen_weight_fields != expected_weight_fields:
+        raise ValueError(
+            "Decision policy asset must define the complete supported weighted "
+            "entry mapping using each supported signal family and weight field "
+            f"exactly once: {asset_path}"
+        )
 
 
 def _validate_mutation_profile_asset(

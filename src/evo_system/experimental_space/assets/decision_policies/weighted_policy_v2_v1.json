@@ -16,6 +16,14 @@
       {
         "signal": "breakout",
         "weight_gene_field": "breakout_weight"
+      },
+      {
+        "signal": "range",
+        "weight_gene_field": "range_weight"
+      },
+      {
+        "signal": "volatility",
+        "weight_gene_field": "volatility_weight"
       }
     ]
   },

@@ -24,7 +24,10 @@ from evo_system.experimental_space.gene_catalog import (
     GeneTypeCatalog,
     get_gene_catalog,
 )
-from evo_system.experimental_space.decision_policies import DefaultDecisionPolicy
+from evo_system.experimental_space.decision_policies import (
+    DefaultDecisionPolicy,
+    compute_weighted_entry_trigger_score,
+)
 from evo_system.experimental_space.market_modes import (
     FuturesMarketMode,
     SpotMarketMode,
@@ -265,6 +268,33 @@ class DeclarativeSignalPackAdapter(SignalPack):
         )
 
 
+@dataclass(frozen=True, kw_only=True)
+class DeclarativeDecisionPolicyAdapter(DefaultDecisionPolicy):
+    """Bounded adapter for declarative weighted decision-policy assets.
+
+    This adapter intentionally stays narrow:
+    - it preserves the current policy_v2 decision semantics
+    - it only replaces the signal-family to weight-field mapping used to
+      compute the entry trigger score
+    """
+
+    name: str
+    signal_to_weight_field: dict[str, str]
+
+    def get_entry_trigger_score(
+        self,
+        *,
+        environment: Any,
+        genome: Genome,
+        signal_families: dict[str, float],
+    ) -> float:
+        return compute_weighted_entry_trigger_score(
+            genome=genome,
+            signal_families=signal_families,
+            signal_to_weight_field=self.signal_to_weight_field,
+        )
+
+
 DECLARATIVE_ASSET_ROOT = ASSETS_ROOT
 
 
@@ -351,6 +381,13 @@ def get_default_decision_policy() -> DecisionPolicy:
 
 
 def get_decision_policy(name: str) -> DecisionPolicy:
+    if decision_policy_registry.has(name):
+        return decision_policy_registry.get(name)
+
+    declarative_policy = _load_declarative_decision_policy(name)
+    if declarative_policy is not None:
+        return declarative_policy
+
     return decision_policy_registry.get(name)
 
 
@@ -439,6 +476,61 @@ def _load_declarative_signal_pack(name: str) -> SignalPack | None:
             feature_names=tuple(source_by_feature_name.keys()),
             family_names=DefaultSignalPack().family_names,
             source_by_feature_name=source_by_feature_name,
+        )
+    return None
+
+
+def _load_declarative_decision_policy(name: str) -> DecisionPolicy | None:
+    assets = load_all_declarative_assets(DECLARATIVE_ASSET_ROOT).get(
+        "decision_policies",
+        [],
+    )
+    for asset in assets:
+        if asset.name != name:
+            continue
+
+        engine_name = asset.payload.get("engine")
+        if not isinstance(engine_name, str) or not engine_name.strip():
+            raise ValueError(
+                f"Decision policy asset {asset.path} is missing a valid 'engine'."
+            )
+
+        # Resolve the known engine explicitly so missing runtime engine support
+        # fails clearly instead of silently pretending the asset is executable.
+        get_policy_engine(engine_name)
+
+        entry_payload = asset.payload.get("entry")
+        if not isinstance(entry_payload, dict):
+            raise ValueError(
+                f"Decision policy asset {asset.path} must define an entry object."
+            )
+        signal_entries = entry_payload.get("signals")
+        if not isinstance(signal_entries, list):
+            raise ValueError(
+                f"Decision policy asset {asset.path} must define entry.signals."
+            )
+
+        signal_to_weight_field: dict[str, str] = {}
+        for entry in signal_entries:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"Decision policy asset {asset.path} contains a non-object signal mapping."
+                )
+            signal_name = entry.get("signal")
+            weight_gene_field = entry.get("weight_gene_field")
+            if not isinstance(signal_name, str) or not signal_name.strip():
+                raise ValueError(
+                    f"Decision policy asset {asset.path} contains an invalid signal name."
+                )
+            if not isinstance(weight_gene_field, str) or not weight_gene_field.strip():
+                raise ValueError(
+                    f"Decision policy asset {asset.path} contains an invalid weight_gene_field."
+                )
+            signal_to_weight_field[signal_name] = weight_gene_field
+
+        return DeclarativeDecisionPolicyAdapter(
+            name=asset.name,
+            signal_to_weight_field=signal_to_weight_field,
         )
     return None
 

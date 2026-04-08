@@ -538,6 +538,95 @@ def test_declarative_signal_pack_resolves_asset_profile(
     }
 
 
+def test_declarative_decision_policy_resolves_asset_profile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    assets_root = tmp_path / "assets"
+    decision_policies_dir = assets_root / "decision_policies"
+    decision_policies_dir.mkdir(parents=True)
+    (decision_policies_dir / "authored_policy_v1.json").write_text(
+        """
+        {
+          "id": "authored_policy_v1",
+          "description": "Authored decision policy.",
+          "engine": "policy_v2_default_engine",
+          "entry": {
+            "trigger_gene": "entry_trigger",
+            "signals": [
+              {"signal": "trend", "weight_gene_field": "momentum_weight"},
+              {"signal": "momentum", "weight_gene_field": "trend_weight"},
+              {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+              {"signal": "range", "weight_gene_field": "range_weight"},
+              {"signal": "volatility", "weight_gene_field": "volatility_weight"}
+            ]
+          },
+          "exit": {
+            "policy_gene": "exit_policy",
+            "trade_control_gene": "trade_control"
+          }
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evo_system.experimental_space.defaults.DECLARATIVE_ASSET_ROOT",
+        assets_root,
+    )
+
+    decision_policy = get_decision_policy("authored_policy_v1")
+    environment = _sample_environment()
+    genome = get_default_genome_schema().build_genome(
+        position_size=0.5,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        entry_context=EntryContextGene(),
+        entry_trigger=EntryTriggerGene(
+            trend_weight=1.0,
+            momentum_weight=0.25,
+            breakout_weight=0.5,
+            range_weight=-0.25,
+            volatility_weight=0.75,
+            entry_score_threshold=0.0,
+            min_positive_families=0,
+            require_trend_or_breakout=False,
+        ),
+        exit_policy=ExitPolicyGene(),
+        trade_control=TradeControlGene(),
+    )
+    families = {
+        "trend": 0.6,
+        "momentum": -0.2,
+        "breakout": 0.4,
+        "range": 0.1,
+        "volatility": -0.5,
+        "realized_volatility": 0.0,
+    }
+
+    default_score = get_default_decision_policy().get_entry_trigger_score(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+    )
+    authored_score = decision_policy.get_entry_trigger_score(
+        environment=environment,
+        genome=genome,
+        signal_families=families,
+    )
+    expected_authored_score = (
+        genome.entry_trigger.momentum_weight * families["trend"]
+        + genome.entry_trigger.trend_weight * families["momentum"]
+        + genome.entry_trigger.breakout_weight * families["breakout"]
+        + genome.entry_trigger.range_weight * families["range"]
+        + genome.entry_trigger.volatility_weight * families["volatility"]
+    )
+
+    assert decision_policy.name == "authored_policy_v1"
+    assert authored_score == pytest.approx(expected_authored_score)
+    assert authored_score != default_score
+
+
 def test_declarative_genome_schema_resolves_asset_profile(
     tmp_path: Path,
     monkeypatch,

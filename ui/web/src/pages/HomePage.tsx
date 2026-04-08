@@ -5,8 +5,10 @@ import type { CampaignSummary, ExecutionMonitorItem } from "../types/results";
 
 type HomePageProps = {
   onOpenRunLab: () => void;
+  onOpenConfigs: () => void;
   onOpenResults: (campaignId?: string | null) => void;
   onOpenCatalog: () => void;
+  onOpenDecisionPolicyAuthoring: () => void;
   onOpenGenomeSchemaAuthoring: () => void;
   onOpenMutationProfileAuthoring: () => void;
   onOpenSignalPackAuthoring: () => void;
@@ -50,8 +52,10 @@ function statusLabel(value: string): string {
 
 export default function HomePage({
   onOpenRunLab,
+  onOpenConfigs,
   onOpenResults,
   onOpenCatalog,
+  onOpenDecisionPolicyAuthoring,
   onOpenGenomeSchemaAuthoring,
   onOpenMutationProfileAuthoring,
   onOpenSignalPackAuthoring,
@@ -212,11 +216,21 @@ export default function HomePage({
             <button className="link-button" onClick={onOpenRunLab} type="button">
               New run
             </button>
+            <button className="link-button secondary" onClick={onOpenConfigs} type="button">
+              Browse configs
+            </button>
             <button className="link-button secondary" onClick={() => onOpenResults()} type="button">
               Open results
             </button>
             <button className="link-button secondary" onClick={onOpenCatalog} type="button">
               Open catalog
+            </button>
+            <button
+              className="link-button secondary"
+              onClick={onOpenDecisionPolicyAuthoring}
+              type="button"
+            >
+              Create decision policy
             </button>
             <button
               className="link-button secondary"

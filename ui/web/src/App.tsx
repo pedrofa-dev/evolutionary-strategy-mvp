@@ -2,18 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getCatalog, getCatalogCategory, getHealth } from "./services/catalogApi";
 import { getRunLabBootstrap } from "./services/runLabApi";
+import DecisionPolicyModal from "./components/DecisionPolicyModal";
 import GenomeSchemaModal from "./components/GenomeSchemaModal";
 import GlobalExecutionMonitor from "./components/GlobalExecutionMonitor";
 import MutationProfileModal from "./components/MutationProfileModal";
 import SignalPackModal from "./components/SignalPackModal";
 import type { CatalogItem, CatalogPayload } from "./types/catalog";
 import CategoryPage from "./pages/CategoryPage";
+import ConfigsPage from "./pages/ConfigsPage";
 import DetailPage from "./pages/DetailPage";
 import HomePage from "./pages/HomePage";
 import OverviewPage from "./pages/OverviewPage";
 import ResultsPage from "./pages/ResultsPage";
 import RunLabPage from "./pages/RunLabPage";
 import type {
+  DecisionPolicyAuthoringMetadata,
+  SavedDecisionPolicyAssetResult,
   GenomeSchemaAuthoringMetadata,
   SavedGenomeSchemaAssetResult,
   SavedMutationProfileAssetResult,
@@ -24,6 +28,7 @@ import type {
 type Theme = "light" | "dark";
 type Route =
   | { kind: "home" }
+  | { kind: "configs"; configName: string | null }
   | { kind: "overview" }
   | { kind: "run-lab" }
   | { kind: "results"; campaignId: string | null }
@@ -39,6 +44,13 @@ function parseRoute(pathname: string): Route {
 
   if (parts.length === 0) {
     return { kind: "home" };
+  }
+
+  if (parts[0] === "configs") {
+    return {
+      kind: "configs",
+      configName: parts.length >= 2 ? decodeURIComponent(parts[1]) : null,
+    };
   }
 
   if (parts[0] === "run-lab") {
@@ -118,11 +130,14 @@ export default function App() {
   const [isCatalogMutationProfileModalOpen, setIsCatalogMutationProfileModalOpen] = useState(false);
   const [isCatalogSignalPackModalOpen, setIsCatalogSignalPackModalOpen] = useState(false);
   const [isCatalogGenomeSchemaModalOpen, setIsCatalogGenomeSchemaModalOpen] = useState(false);
+  const [isCatalogDecisionPolicyModalOpen, setIsCatalogDecisionPolicyModalOpen] = useState(false);
   const [catalogSignalAuthoringOptions, setCatalogSignalAuthoringOptions] = useState<
     SignalAuthoringOption[]
   >([]);
   const [catalogGenomeSchemaAuthoring, setCatalogGenomeSchemaAuthoring] =
     useState<GenomeSchemaAuthoringMetadata | null>(null);
+  const [catalogDecisionPolicyAuthoring, setCatalogDecisionPolicyAuthoring] =
+    useState<DecisionPolicyAuthoringMetadata | null>(null);
 
   useEffect(() => {
     const onPopState = () => {
@@ -168,10 +183,16 @@ export default function App() {
     setIsCatalogGenomeSchemaModalOpen(false);
   }
 
+  async function handleCatalogDecisionPolicySaved(_: SavedDecisionPolicyAssetResult) {
+    await refreshCatalogCategory("decision_policies");
+    setIsCatalogDecisionPolicyModalOpen(false);
+  }
+
   async function ensureCatalogAuthoringBootstrap() {
     const bootstrap = await getRunLabBootstrap();
     setCatalogSignalAuthoringOptions(bootstrap.signal_pack_authoring.signal_options);
     setCatalogGenomeSchemaAuthoring(bootstrap.genome_schema_authoring);
+    setCatalogDecisionPolicyAuthoring(bootstrap.decision_policy_authoring);
     return bootstrap;
   }
 
@@ -194,6 +215,18 @@ export default function App() {
         await ensureCatalogAuthoringBootstrap();
       }
       setIsCatalogGenomeSchemaModalOpen(true);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unknown error");
+    }
+  }
+
+  async function openCatalogDecisionPolicyAuthoring() {
+    try {
+      setError(null);
+      if (!catalogDecisionPolicyAuthoring) {
+        await ensureCatalogAuthoringBootstrap();
+      }
+      setIsCatalogDecisionPolicyModalOpen(true);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unknown error");
     }
@@ -324,6 +357,11 @@ export default function App() {
                 label: "New genome schema",
                 onClick: () => void openCatalogGenomeSchemaAuthoring(),
               }
+            : route.category === "decision_policies"
+              ? {
+                  label: "New decision policy",
+                  onClick: () => void openCatalogDecisionPolicyAuthoring(),
+                }
           : null
       : null;
 
@@ -349,6 +387,13 @@ export default function App() {
                 type="button"
               >
                 Run Lab
+              </button>
+              <button
+                className={route.kind === "configs" ? "top-nav-button active" : "top-nav-button"}
+                onClick={() => navigate("/configs")}
+                type="button"
+              >
+                Configs
               </button>
               <button
                 className={route.kind === "results" ? "top-nav-button active" : "top-nav-button"}
@@ -382,11 +427,21 @@ export default function App() {
         {route.kind === "home" ? (
           <HomePage
             onOpenRunLab={() => navigate("/run-lab")}
+            onOpenConfigs={() => navigate("/configs")}
             onOpenResults={(campaignId) => openResultsPath(campaignId)}
             onOpenCatalog={() => navigate("/catalog")}
             onOpenGenomeSchemaAuthoring={() => void openCatalogGenomeSchemaAuthoring()}
             onOpenMutationProfileAuthoring={() => setIsCatalogMutationProfileModalOpen(true)}
+            onOpenDecisionPolicyAuthoring={() => void openCatalogDecisionPolicyAuthoring()}
             onOpenSignalPackAuthoring={() => void openCatalogSignalPackAuthoring()}
+          />
+        ) : null}
+
+        {route.kind === "configs" ? (
+          <ConfigsPage
+            selectedConfigName={route.configName}
+            onOpenConfig={(configName) => navigate(`/configs/${encodeURIComponent(configName)}`)}
+            onOpenBrowser={() => navigate("/configs")}
           />
         ) : null}
 
@@ -469,6 +524,24 @@ export default function App() {
         }
         geneTypeOptions={catalogGenomeSchemaAuthoring?.gene_type_options ?? []}
         suggestedModules={catalogGenomeSchemaAuthoring?.suggested_modules ?? []}
+      />
+      <DecisionPolicyModal
+        contextLabel="Catalog Authoring"
+        isOpen={isCatalogDecisionPolicyModalOpen}
+        onClose={() => setIsCatalogDecisionPolicyModalOpen(false)}
+        onSaved={handleCatalogDecisionPolicySaved}
+        authoring={
+          catalogDecisionPolicyAuthoring ?? {
+            engine_options: [],
+            entry_signal_options: [],
+            weight_gene_field_options: [],
+            fixed_gene_bindings: {
+              entry_trigger_gene: "",
+              exit_policy_gene: "",
+              trade_control_gene: "",
+            },
+          }
+        }
       />
       <GlobalExecutionMonitor onOpenResultsPath={(path) => navigate(path)} />
     </div>

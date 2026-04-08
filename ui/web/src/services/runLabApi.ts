@@ -1,9 +1,11 @@
 import type {
+  DecisionPolicyAuthoringRequest,
   GenomeSchemaAuthoringRequest,
   LaunchedRunResult,
   MutationProfileAuthoringRequest,
   RunLabBootstrap,
   RunLabSaveRequest,
+  SavedDecisionPolicyAssetResult,
   SavedGenomeSchemaAssetResult,
   SavedSignalPackAssetResult,
   SavedMutationProfileAssetResult,
@@ -103,6 +105,21 @@ export function saveGenomeSchemaAsset(
 ): Promise<SavedGenomeSchemaAssetResult> {
   return requestJson<SavedGenomeSchemaAssetResult>(
     "/run-lab/authoring/genome-schemas",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    },
+  );
+}
+
+export function saveDecisionPolicyAsset(
+  request: DecisionPolicyAuthoringRequest,
+): Promise<SavedDecisionPolicyAssetResult> {
+  return requestJson<SavedDecisionPolicyAssetResult>(
+    "/run-lab/authoring/decision-policies",
     {
       method: "POST",
       headers: {

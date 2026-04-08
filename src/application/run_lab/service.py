@@ -18,7 +18,18 @@ from evo_system.experimental_space.gene_catalog import get_gene_catalog
 from evo_system.experimental_space.identity import (
     build_experimental_space_snapshot_from_config_snapshot,
 )
-from evo_system.experimental_space.defaults import get_default_signal_pack
+from evo_system.experimental_space.defaults import (
+    get_default_policy_engine,
+    get_default_signal_pack,
+)
+from evo_system.experimental_space.decision_policies import (
+    SUPPORTED_DECISION_POLICY_ENGINE_NAME,
+    SUPPORTED_ENTRY_SIGNAL_WEIGHT_FIELDS,
+    SUPPORTED_ENTRY_TRIGGER_GENE_NAME,
+    SUPPORTED_EXIT_POLICY_GENE_NAME,
+    SUPPORTED_TRADE_CONTROL_GENE_NAME,
+    SUPPORTED_WEIGHTED_ENTRY_SIGNAL_FAMILIES,
+)
 from evo_system.experimentation.presets import (
     PRESET_REGISTRY,
     describe_preset,
@@ -33,6 +44,7 @@ RUN_LAB_ARTIFACTS_DIR = REPO_ROOT / "artifacts" / "ui_run_lab"
 SIGNAL_PACK_ASSETS_DIR = ASSETS_ROOT / "signal_packs"
 GENOME_SCHEMA_ASSETS_DIR = ASSETS_ROOT / "genome_schemas"
 MUTATION_PROFILE_ASSETS_DIR = ASSETS_ROOT / "mutation_profiles"
+DECISION_POLICY_ASSETS_DIR = ASSETS_ROOT / "decision_policies"
 DEFAULT_EXECUTION_PRESET = "standard"
 
 
@@ -199,6 +211,40 @@ class GenomeSchemaAuthoringMetadata:
 
 
 @dataclass(frozen=True)
+class DecisionPolicyFixedGeneBindings:
+    entry_trigger_gene: str
+    exit_policy_gene: str
+    trade_control_gene: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entry_trigger_gene": self.entry_trigger_gene,
+            "exit_policy_gene": self.exit_policy_gene,
+            "trade_control_gene": self.trade_control_gene,
+        }
+
+
+@dataclass(frozen=True)
+class DecisionPolicyAuthoringMetadata:
+    engine_options: tuple[SignalAuthoringOption, ...]
+    entry_signal_options: tuple[SignalAuthoringOption, ...]
+    weight_gene_field_options: tuple[SignalAuthoringOption, ...]
+    fixed_gene_bindings: DecisionPolicyFixedGeneBindings
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "engine_options": [item.to_dict() for item in self.engine_options],
+            "entry_signal_options": [
+                item.to_dict() for item in self.entry_signal_options
+            ],
+            "weight_gene_field_options": [
+                item.to_dict() for item in self.weight_gene_field_options
+            ],
+            "fixed_gene_bindings": self.fixed_gene_bindings.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class RunLabBootstrap:
     current_logic_version: str
     dataset_catalogs: tuple[RunLabDatasetCatalogSummary, ...]
@@ -210,6 +256,7 @@ class RunLabBootstrap:
     config_templates: tuple[RunLabTemplateSummary, ...]
     signal_pack_authoring: SignalPackAuthoringMetadata
     genome_schema_authoring: GenomeSchemaAuthoringMetadata
+    decision_policy_authoring: DecisionPolicyAuthoringMetadata
     defaults: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -224,6 +271,7 @@ class RunLabBootstrap:
             "config_templates": [item.to_dict() for item in self.config_templates],
             "signal_pack_authoring": self.signal_pack_authoring.to_dict(),
             "genome_schema_authoring": self.genome_schema_authoring.to_dict(),
+            "decision_policy_authoring": self.decision_policy_authoring.to_dict(),
             "defaults": dict(self.defaults),
         }
 
@@ -286,6 +334,20 @@ class SavedGenomeSchemaAssetResult:
         }
 
 
+@dataclass(frozen=True)
+class SavedDecisionPolicyAssetResult:
+    asset_id: str
+    asset_path: str
+    asset_payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "asset_id": self.asset_id,
+            "asset_path": self.asset_path,
+            "asset_payload": dict(self.asset_payload),
+        }
+
+
 LaunchedRunResult = SubmittedRunQueueJobResult
 
 
@@ -309,6 +371,7 @@ class RunLabApplicationService:
         signal_pack_assets_dir: Path = SIGNAL_PACK_ASSETS_DIR,
         genome_schema_assets_dir: Path = GENOME_SCHEMA_ASSETS_DIR,
         mutation_profile_assets_dir: Path = MUTATION_PROFILE_ASSETS_DIR,
+        decision_policy_assets_dir: Path = DECISION_POLICY_ASSETS_DIR,
         database_path: str | Path | None = None,
         catalog_service: CatalogService | None = None,
         launcher: Any = None,
@@ -321,6 +384,7 @@ class RunLabApplicationService:
         self.signal_pack_assets_dir = signal_pack_assets_dir
         self.genome_schema_assets_dir = genome_schema_assets_dir
         self.mutation_profile_assets_dir = mutation_profile_assets_dir
+        self.decision_policy_assets_dir = decision_policy_assets_dir
         asset_root = (
             mutation_profile_assets_dir.parent
             if mutation_profile_assets_dir != MUTATION_PROFILE_ASSETS_DIR
@@ -355,6 +419,7 @@ class RunLabApplicationService:
         config_templates = self._list_config_templates()
         signal_pack_authoring = self._build_signal_pack_authoring_metadata()
         genome_schema_authoring = self._build_genome_schema_authoring_metadata()
+        decision_policy_authoring = self._build_decision_policy_authoring_metadata()
         default_template = self._select_default_template(config_templates)
         default_execution_preset = self._select_default_execution_preset(
             execution_presets
@@ -388,6 +453,7 @@ class RunLabApplicationService:
             config_templates=config_templates,
             signal_pack_authoring=signal_pack_authoring,
             genome_schema_authoring=genome_schema_authoring,
+            decision_policy_authoring=decision_policy_authoring,
             defaults=defaults,
         )
 
@@ -671,6 +737,101 @@ class RunLabApplicationService:
             asset_payload=asset_payload,
         )
 
+    def save_decision_policy_asset(
+        self,
+        payload: dict[str, Any],
+    ) -> SavedDecisionPolicyAssetResult:
+        asset_id = _normalize_asset_id(str(payload["id"]))
+        description = _normalize_optional_description(payload.get("description"))
+        engine = str(payload["engine"]).strip()
+        if not engine:
+            raise ValueError("engine is required")
+
+        entry_input = payload.get("entry")
+        if not isinstance(entry_input, dict):
+            raise ValueError("entry must be an object")
+        exit_input = payload.get("exit")
+        if not isinstance(exit_input, dict):
+            raise ValueError("exit must be an object")
+
+        trigger_gene = str(entry_input["trigger_gene"]).strip()
+        if not trigger_gene:
+            raise ValueError("entry.trigger_gene is required")
+        signals_input = entry_input.get("signals")
+        if not isinstance(signals_input, list) or not signals_input:
+            raise ValueError("entry.signals must be a non-empty list")
+
+        signals: list[dict[str, str]] = []
+        for signal_entry in signals_input:
+            if not isinstance(signal_entry, dict):
+                raise ValueError("entry.signals must contain objects")
+            signal_name = str(signal_entry["signal"]).strip()
+            weight_gene_field = str(signal_entry["weight_gene_field"]).strip()
+            if not signal_name:
+                raise ValueError("decision policy signal is required")
+            if not weight_gene_field:
+                raise ValueError("decision policy weight_gene_field is required")
+            signals.append(
+                {
+                    "signal": signal_name,
+                    "weight_gene_field": weight_gene_field,
+                }
+            )
+
+        policy_gene = str(exit_input["policy_gene"]).strip()
+        trade_control_gene = str(exit_input["trade_control_gene"]).strip()
+        if not policy_gene:
+            raise ValueError("exit.policy_gene is required")
+        if not trade_control_gene:
+            raise ValueError("exit.trade_control_gene is required")
+
+        asset_payload = {
+            "id": asset_id,
+            "description": description,
+            "engine": engine,
+            "entry": {
+                "trigger_gene": trigger_gene,
+                "signals": signals,
+            },
+            "exit": {
+                "policy_gene": policy_gene,
+                "trade_control_gene": trade_control_gene,
+            },
+        }
+
+        candidate_path = self.decision_policy_assets_dir / f"{asset_id}.json"
+        relative_asset_path = candidate_path.relative_to(self.repo_root)
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+
+        serialized_payload = _canonicalize_json_payload(asset_payload)
+        wrote_new_file = False
+        if candidate_path.exists():
+            existing_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+            if _canonicalize_json_payload(existing_payload) != serialized_payload:
+                raise ValueError(
+                    "Decision policy id already exists with different content. "
+                    "Choose a different id instead of overwriting it."
+                )
+        else:
+            candidate_path.write_text(
+                json.dumps(asset_payload, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            wrote_new_file = True
+
+        try:
+            load_declarative_asset(candidate_path, asset_type="decision_policies")
+        except Exception:
+            if wrote_new_file and candidate_path.exists():
+                candidate_path.unlink()
+            raise
+
+        return SavedDecisionPolicyAssetResult(
+            asset_id=asset_id,
+            asset_path=relative_asset_path.as_posix(),
+            asset_payload=asset_payload,
+        )
+
     def save_and_execute(self, payload: dict[str, Any]) -> LaunchedRunResult:
         saved_config = self.save_run_config(payload)
         queue_limit = (
@@ -819,6 +980,38 @@ class RunLabApplicationService:
             gene_catalog_options=gene_catalog_options,
             gene_type_options=gene_type_options,
             suggested_modules=suggested_modules,
+        )
+
+    def _build_decision_policy_authoring_metadata(
+        self,
+    ) -> DecisionPolicyAuthoringMetadata:
+        engine = get_default_policy_engine()
+        engine_options = (
+            SignalAuthoringOption(id=engine.name),
+        )
+        entry_signal_options = tuple(
+            SignalAuthoringOption(id=signal_name)
+            for signal_name in SUPPORTED_WEIGHTED_ENTRY_SIGNAL_FAMILIES
+        )
+        weight_gene_field_options = tuple(
+            SignalAuthoringOption(id=field_name)
+            for field_name in SUPPORTED_ENTRY_SIGNAL_WEIGHT_FIELDS
+        )
+        fixed_gene_bindings = DecisionPolicyFixedGeneBindings(
+            entry_trigger_gene=SUPPORTED_ENTRY_TRIGGER_GENE_NAME,
+            exit_policy_gene=SUPPORTED_EXIT_POLICY_GENE_NAME,
+            trade_control_gene=SUPPORTED_TRADE_CONTROL_GENE_NAME,
+        )
+        if engine.name != SUPPORTED_DECISION_POLICY_ENGINE_NAME:
+            raise ValueError(
+                "The default decision policy engine no longer matches the "
+                "supported declarative weighted policy lane."
+            )
+        return DecisionPolicyAuthoringMetadata(
+            engine_options=engine_options,
+            entry_signal_options=entry_signal_options,
+            weight_gene_field_options=weight_gene_field_options,
+            fixed_gene_bindings=fixed_gene_bindings,
         )
 
     def _list_config_templates(self) -> tuple[RunLabTemplateSummary, ...]:

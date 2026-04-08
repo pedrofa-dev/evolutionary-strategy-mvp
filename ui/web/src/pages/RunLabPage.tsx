@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import DecisionPolicyModal from "../components/DecisionPolicyModal";
 import GenomeSchemaModal from "../components/GenomeSchemaModal";
 import MutationProfileModal from "../components/MutationProfileModal";
 import SignalPackModal from "../components/SignalPackModal";
@@ -11,6 +12,7 @@ import type {
   RunLabDatasetCatalogSummary,
   RunLabOption,
   RunLabSaveRequest,
+  SavedDecisionPolicyAssetResult,
   SavedGenomeSchemaAssetResult,
   SavedSignalPackAssetResult,
   RunLabTemplateSummary,
@@ -150,6 +152,7 @@ function applyBootstrapSelection(
     preferredSignalPackId?: string | null;
     preferredGenomeSchemaId?: string | null;
     preferredMutationProfileId?: string | null;
+    preferredDecisionPolicyId?: string | null;
   },
 ): FormState {
   const currentForm = options?.currentForm ?? null;
@@ -203,6 +206,18 @@ function applyBootstrapSelection(
     };
   }
 
+  if (
+    options?.preferredDecisionPolicyId &&
+    nextBootstrap.decision_policies.some(
+      (option) => option.id === options.preferredDecisionPolicyId && option.selectable,
+    )
+  ) {
+    return {
+      ...baseForm,
+      decision_policy_name: options.preferredDecisionPolicyId,
+    };
+  }
+
   return baseForm;
 }
 
@@ -227,6 +242,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
   const [isSignalPackModalOpen, setIsSignalPackModalOpen] = useState(false);
   const [isGenomeSchemaModalOpen, setIsGenomeSchemaModalOpen] = useState(false);
   const [isMutationProfileModalOpen, setIsMutationProfileModalOpen] = useState(false);
+  const [isDecisionPolicyModalOpen, setIsDecisionPolicyModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -263,6 +279,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
     preferredSignalPackId?: string | null,
     preferredGenomeSchemaId?: string | null,
     preferredMutationProfileId?: string | null,
+    preferredDecisionPolicyId?: string | null,
     currentFormOverride?: FormState | null,
   ) {
     const nextBootstrap = await getRunLabBootstrap();
@@ -273,6 +290,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
         preferredSignalPackId,
         preferredGenomeSchemaId,
         preferredMutationProfileId,
+        preferredDecisionPolicyId,
       }),
     );
   }
@@ -482,7 +500,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
                 : duplicateConfigName(form.template_config_name),
           }
         : form;
-    await refreshBootstrap(null, null, result.asset_id, nextForm);
+    await refreshBootstrap(null, null, result.asset_id, null, nextForm);
     setIsMutationProfileModalOpen(false);
   }
 
@@ -500,7 +518,7 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
                 : duplicateConfigName(form.template_config_name),
           }
         : form;
-    await refreshBootstrap(result.asset_id, null, null, nextForm);
+    await refreshBootstrap(result.asset_id, null, null, null, nextForm);
     setIsSignalPackModalOpen(false);
   }
 
@@ -518,8 +536,26 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
                 : duplicateConfigName(form.template_config_name),
           }
         : form;
-    await refreshBootstrap(null, result.asset_id, null, nextForm);
+    await refreshBootstrap(null, result.asset_id, null, null, nextForm);
     setIsGenomeSchemaModalOpen(false);
+  }
+
+  async function handleDecisionPolicySaved(
+    result: SavedDecisionPolicyAssetResult,
+  ) {
+    const nextForm =
+      form?.config_mode === "existing" && form
+        ? {
+            ...form,
+            config_mode: "new" as const,
+            config_name:
+              form.config_name.trim() && form.config_name !== form.template_config_name
+                ? form.config_name
+                : duplicateConfigName(form.template_config_name),
+          }
+        : form;
+    await refreshBootstrap(null, null, null, result.asset_id, nextForm);
+    setIsDecisionPolicyModalOpen(false);
   }
 
   if (isLoading) {
@@ -791,7 +827,16 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
         <div className="panel">
           <h2>3. Decision Logic</h2>
           <label className="form-field">
-            <span className="form-label">Decision policy</span>
+            <span className="form-label form-label-row">
+              <span>Decision policy</span>
+              <button
+                className="link-button secondary inline-action-button"
+                onClick={() => setIsDecisionPolicyModalOpen(true)}
+                type="button"
+              >
+                New
+              </button>
+            </span>
             <select
               value={form.decision_policy_name}
               disabled={isExistingConfigMode}
@@ -1175,6 +1220,13 @@ export default function RunLabPage({ onOpenCatalog, onOpenResults }: RunLabPageP
         geneCatalogOptions={bootstrap.genome_schema_authoring.gene_catalog_options}
         geneTypeOptions={bootstrap.genome_schema_authoring.gene_type_options}
         suggestedModules={bootstrap.genome_schema_authoring.suggested_modules}
+      />
+      <DecisionPolicyModal
+        contextLabel="Run Lab Authoring"
+        isOpen={isDecisionPolicyModalOpen}
+        onClose={() => setIsDecisionPolicyModalOpen(false)}
+        onSaved={handleDecisionPolicySaved}
+        authoring={bootstrap.decision_policy_authoring}
       />
     </div>
   );

@@ -69,6 +69,19 @@ export type GenomeSchemaAuthoringMetadata = {
   suggested_modules: GenomeSchemaSuggestedModule[];
 };
 
+export type DecisionPolicyFixedGeneBindings = {
+  entry_trigger_gene: string;
+  exit_policy_gene: string;
+  trade_control_gene: string;
+};
+
+export type DecisionPolicyAuthoringMetadata = {
+  engine_options: SignalAuthoringOption[];
+  entry_signal_options: SignalAuthoringOption[];
+  weight_gene_field_options: SignalAuthoringOption[];
+  fixed_gene_bindings: DecisionPolicyFixedGeneBindings;
+};
+
 export type RunLabBootstrap = {
   current_logic_version: string;
   dataset_catalogs: RunLabDatasetCatalogSummary[];
@@ -82,6 +95,7 @@ export type RunLabBootstrap = {
     signal_options: SignalAuthoringOption[];
   };
   genome_schema_authoring: GenomeSchemaAuthoringMetadata;
+  decision_policy_authoring: DecisionPolicyAuthoringMetadata;
   defaults: {
     template_config_name: string;
     dataset_catalog_id: string;
@@ -165,6 +179,31 @@ export type GenomeSchemaAuthoringRequest = {
 };
 
 export type SavedGenomeSchemaAssetResult = {
+  asset_id: string;
+  asset_path: string;
+  asset_payload: Record<string, unknown>;
+};
+
+export type DecisionPolicySignalMapping = {
+  signal: string;
+  weight_gene_field: string;
+};
+
+export type DecisionPolicyAuthoringRequest = {
+  id: string;
+  description: string;
+  engine: string;
+  entry: {
+    trigger_gene: string;
+    signals: DecisionPolicySignalMapping[];
+  };
+  exit: {
+    policy_gene: string;
+    trade_control_gene: string;
+  };
+};
+
+export type SavedDecisionPolicyAssetResult = {
   asset_id: string;
   asset_path: string;
   asset_payload: Record<string, unknown>;

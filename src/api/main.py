@@ -14,6 +14,7 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import WSGIServer, make_server
 
 from application.catalog import ExperimentalCatalogApplicationService
+from application.configs import RunConfigBrowserApplicationService
 from application.execution_queue import ExecutionQueueService
 from application.run_lab import RunLabApplicationService
 from application.runs_results import RunsResultsApplicationService
@@ -21,10 +22,19 @@ from api.routes.catalog import (
     build_catalog_category_response,
     build_catalog_response,
 )
+from api.routes.configs import (
+    build_config_detail_response,
+    build_config_duplicate_response,
+    build_config_list_response,
+    build_config_rename_response,
+    build_config_save_as_new_response,
+    build_config_save_response,
+)
 from api.routes.run_lab import (
     build_run_lab_bootstrap_response,
     build_run_lab_save_and_execute_response,
     build_run_lab_save_config_response,
+    build_run_lab_save_decision_policy_response,
     build_run_lab_save_genome_schema_response,
     build_run_lab_save_mutation_profile_response,
     build_run_lab_save_signal_pack_response,
@@ -57,12 +67,16 @@ class CatalogApiApp:
         self,
         *,
         catalog_service: ExperimentalCatalogApplicationService | None = None,
+        config_browser_service: RunConfigBrowserApplicationService | None = None,
         run_lab_service: RunLabApplicationService | None = None,
         runs_results_service: RunsResultsApplicationService | None = None,
         queue_service: ExecutionQueueService | None = None,
     ) -> None:
         self.queue_service = queue_service or ExecutionQueueService()
         self.catalog_service = catalog_service or ExperimentalCatalogApplicationService()
+        self.config_browser_service = (
+            config_browser_service or RunConfigBrowserApplicationService()
+        )
         self.run_lab_service = run_lab_service or RunLabApplicationService(
             queue_service=self.queue_service
         )
@@ -130,6 +144,84 @@ class CatalogApiApp:
                     "message": f"Unsupported method: {method}",
                 }
             return build_catalog_response(self.catalog_service)
+        if normalized_path == "/configs":
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            return build_config_list_response(self.config_browser_service)
+        if normalized_path == "/configs/duplicate":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_config_duplicate_response(
+                self.config_browser_service,
+                request_body,
+            )
+        if normalized_path == "/configs/rename":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_config_rename_response(
+                self.config_browser_service,
+                request_body,
+            )
+        if normalized_path == "/configs/save":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_config_save_response(
+                self.config_browser_service,
+                request_body,
+            )
+        if normalized_path == "/configs/save-as-new":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_config_save_as_new_response(
+                self.config_browser_service,
+                request_body,
+            )
+        if normalized_path.startswith("/configs/"):
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            config_name = normalized_path.removeprefix("/configs/")
+            return build_config_detail_response(
+                self.config_browser_service,
+                config_name,
+            )
         if normalized_path.startswith("/catalog/"):
             if method != "GET":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
@@ -217,6 +309,21 @@ class CatalogApiApp:
                 self.run_lab_service,
                 request_body,
             )
+        if normalized_path == "/run-lab/authoring/decision-policies":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {
+                    "error": "method_not_allowed",
+                    "message": f"Unsupported method: {method}",
+                }
+            if request_body is None:
+                return HTTPStatus.BAD_REQUEST, {
+                    "error": "invalid_json_body",
+                    "message": "Expected a JSON request body.",
+                }
+            return build_run_lab_save_decision_policy_response(
+                self.run_lab_service,
+                request_body,
+            )
         if normalized_path == "/runs/campaigns":
             if method != "GET":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
@@ -288,12 +395,14 @@ class CatalogApiApp:
 def create_app(
     *,
     catalog_service: ExperimentalCatalogApplicationService | None = None,
+    config_browser_service: RunConfigBrowserApplicationService | None = None,
     run_lab_service: RunLabApplicationService | None = None,
     runs_results_service: RunsResultsApplicationService | None = None,
     queue_service: ExecutionQueueService | None = None,
 ) -> CatalogApiApp:
     return CatalogApiApp(
         catalog_service=catalog_service,
+        config_browser_service=config_browser_service,
         run_lab_service=run_lab_service,
         runs_results_service=runs_results_service,
         queue_service=queue_service,

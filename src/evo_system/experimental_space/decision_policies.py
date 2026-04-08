@@ -6,6 +6,49 @@ from typing import Any
 from evo_system.domain.genome import Genome
 from evo_system.experimental_space.base import DecisionPolicy, EntryDecision, ExitDecision
 
+SUPPORTED_ENTRY_SIGNAL_WEIGHT_FIELDS: tuple[str, ...] = (
+    "trend_weight",
+    "momentum_weight",
+    "breakout_weight",
+    "range_weight",
+    "volatility_weight",
+)
+
+SUPPORTED_DECISION_POLICY_ENGINE_NAME = "policy_v2_default_engine"
+SUPPORTED_ENTRY_TRIGGER_GENE_NAME = "entry_trigger"
+SUPPORTED_EXIT_POLICY_GENE_NAME = "exit_policy"
+SUPPORTED_TRADE_CONTROL_GENE_NAME = "trade_control"
+
+SUPPORTED_WEIGHTED_ENTRY_SIGNAL_FAMILIES: tuple[str, ...] = (
+    "trend",
+    "momentum",
+    "breakout",
+    "range",
+    "volatility",
+)
+
+DEFAULT_ENTRY_SIGNAL_WEIGHT_MAPPING: tuple[tuple[str, str], ...] = (
+    ("trend", "trend_weight"),
+    ("momentum", "momentum_weight"),
+    ("breakout", "breakout_weight"),
+    ("range", "range_weight"),
+    ("volatility", "volatility_weight"),
+)
+
+
+def compute_weighted_entry_trigger_score(
+    *,
+    genome: Genome,
+    signal_families: dict[str, float],
+    signal_to_weight_field: dict[str, str] | None = None,
+) -> float:
+    mapping = signal_to_weight_field or dict(DEFAULT_ENTRY_SIGNAL_WEIGHT_MAPPING)
+    trigger = genome.entry_trigger
+    return sum(
+        float(getattr(trigger, weight_field)) * float(signal_families[signal_name])
+        for signal_name, weight_field in mapping.items()
+    )
+
 
 @dataclass(frozen=True)
 class DefaultDecisionPolicy(DecisionPolicy):
@@ -30,13 +73,9 @@ class DefaultDecisionPolicy(DecisionPolicy):
         genome: Genome,
         signal_families: dict[str, float],
     ) -> float:
-        trigger = genome.entry_trigger
-        return (
-            trigger.trend_weight * signal_families["trend"]
-            + trigger.momentum_weight * signal_families["momentum"]
-            + trigger.breakout_weight * signal_families["breakout"]
-            + trigger.range_weight * signal_families["range"]
-            + trigger.volatility_weight * signal_families["volatility"]
+        return compute_weighted_entry_trigger_score(
+            genome=genome,
+            signal_families=signal_families,
         )
 
     def passes_entry_context(

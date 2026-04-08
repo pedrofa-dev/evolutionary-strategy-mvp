@@ -135,6 +135,34 @@ def test_run_lab_bootstrap_exposes_canonical_defaults(tmp_path: Path) -> None:
         {"name": "exit_policy", "gene_type": "exit_policy", "required": True},
         {"name": "trade_control", "gene_type": "trade_control", "required": True},
     ]
+    assert [
+        option.id for option in bootstrap.decision_policy_authoring.engine_options
+    ] == ["policy_v2_default_engine"]
+    assert [
+        option.id
+        for option in bootstrap.decision_policy_authoring.entry_signal_options
+    ] == [
+        "trend",
+        "momentum",
+        "breakout",
+        "range",
+        "volatility",
+    ]
+    assert [
+        option.id
+        for option in bootstrap.decision_policy_authoring.weight_gene_field_options
+    ] == [
+        "trend_weight",
+        "momentum_weight",
+        "breakout_weight",
+        "range_weight",
+        "volatility_weight",
+    ]
+    assert bootstrap.decision_policy_authoring.fixed_gene_bindings.to_dict() == {
+        "entry_trigger_gene": "entry_trigger",
+        "exit_policy_gene": "exit_policy",
+        "trade_control_gene": "trade_control",
+    }
 
 
 def test_run_lab_save_run_config_writes_canonical_json(tmp_path: Path) -> None:
@@ -1072,6 +1100,286 @@ def test_run_lab_save_genome_schema_asset_rejects_invalid_payload(
         except ValueError:
             continue
         raise AssertionError("Expected invalid authored genome schema to fail.")
+
+
+def test_run_lab_save_decision_policy_asset_writes_canonical_json(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    decision_policy_assets_dir = (
+        repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "decision_policies"
+    )
+    decision_policy_assets_dir.mkdir(parents=True)
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=repo_root / "configs" / "datasets",
+        run_configs_dir=repo_root / "configs" / "runs",
+        run_lab_artifacts_dir=repo_root / "artifacts" / "ui_run_lab",
+        decision_policy_assets_dir=decision_policy_assets_dir,
+    )
+
+    result = service.save_decision_policy_asset(
+        {
+            "id": "authored_policy_v1",
+            "description": "Authored decision policy.",
+            "engine": "policy_v2_default_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
+        }
+    )
+
+    saved_path = repo_root / result.asset_path
+    saved_payload = json.loads(saved_path.read_text(encoding="utf-8"))
+
+    assert result.asset_id == "authored_policy_v1"
+    assert saved_payload["engine"] == "policy_v2_default_engine"
+    assert saved_payload["entry"]["trigger_gene"] == "entry_trigger"
+    assert [item["signal"] for item in saved_payload["entry"]["signals"]] == [
+        "trend",
+        "momentum",
+        "breakout",
+        "range",
+        "volatility",
+    ]
+
+
+def test_run_lab_save_decision_policy_asset_allows_identical_reuse(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    decision_policy_assets_dir = (
+        repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "decision_policies"
+    )
+    decision_policy_assets_dir.mkdir(parents=True)
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=repo_root / "configs" / "datasets",
+        run_configs_dir=repo_root / "configs" / "runs",
+        run_lab_artifacts_dir=repo_root / "artifacts" / "ui_run_lab",
+        decision_policy_assets_dir=decision_policy_assets_dir,
+    )
+
+    payload = {
+        "id": "authored_policy_v1",
+        "description": "Authored decision policy.",
+        "engine": "policy_v2_default_engine",
+        "entry": {
+            "trigger_gene": "entry_trigger",
+            "signals": [
+                {"signal": "trend", "weight_gene_field": "trend_weight"},
+                {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                {"signal": "range", "weight_gene_field": "range_weight"},
+                {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+            ],
+        },
+        "exit": {
+            "policy_gene": "exit_policy",
+            "trade_control_gene": "trade_control",
+        },
+    }
+
+    first_result = service.save_decision_policy_asset(payload)
+    second_result = service.save_decision_policy_asset(payload)
+
+    assert first_result.asset_path == second_result.asset_path
+
+
+def test_run_lab_save_decision_policy_asset_rejects_different_content_same_id(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    decision_policy_assets_dir = (
+        repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "decision_policies"
+    )
+    decision_policy_assets_dir.mkdir(parents=True)
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=repo_root / "configs" / "datasets",
+        run_configs_dir=repo_root / "configs" / "runs",
+        run_lab_artifacts_dir=repo_root / "artifacts" / "ui_run_lab",
+        decision_policy_assets_dir=decision_policy_assets_dir,
+    )
+
+    service.save_decision_policy_asset(
+        {
+            "id": "authored_policy_v1",
+            "description": "Authored decision policy.",
+            "engine": "policy_v2_default_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
+        }
+    )
+
+    try:
+        service.save_decision_policy_asset(
+            {
+                "id": "authored_policy_v1",
+                "description": "Different decision policy.",
+                "engine": "policy_v2_default_engine",
+                "entry": {
+                    "trigger_gene": "entry_trigger",
+                    "signals": [
+                        {"signal": "trend", "weight_gene_field": "momentum_weight"},
+                        {"signal": "momentum", "weight_gene_field": "trend_weight"},
+                        {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                        {"signal": "range", "weight_gene_field": "range_weight"},
+                        {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                    ],
+                },
+                "exit": {
+                    "policy_gene": "exit_policy",
+                    "trade_control_gene": "trade_control",
+                },
+            }
+        )
+    except ValueError as exc:
+        assert "different content" in str(exc)
+    else:
+        raise AssertionError("Expected authored decision policy collision to fail.")
+
+
+def test_run_lab_save_decision_policy_asset_rejects_invalid_payload(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    decision_policy_assets_dir = (
+        repo_root
+        / "src"
+        / "evo_system"
+        / "experimental_space"
+        / "assets"
+        / "decision_policies"
+    )
+    decision_policy_assets_dir.mkdir(parents=True)
+    service = RunLabApplicationService(
+        repo_root=repo_root,
+        dataset_configs_dir=repo_root / "configs" / "datasets",
+        run_configs_dir=repo_root / "configs" / "runs",
+        run_lab_artifacts_dir=repo_root / "artifacts" / "ui_run_lab",
+        decision_policy_assets_dir=decision_policy_assets_dir,
+    )
+
+    invalid_payloads = (
+        {
+            "id": "invalid_engine_policy",
+            "description": "Bad engine.",
+            "engine": "missing_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
+        },
+        {
+            "id": "invalid_trigger_policy",
+            "description": "Bad trigger gene.",
+            "engine": "policy_v2_default_engine",
+            "entry": {
+                "trigger_gene": "wrong_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
+        },
+        {
+            "id": "invalid_exit_policy",
+            "description": "Bad exit genes.",
+            "engine": "policy_v2_default_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                    {"signal": "momentum", "weight_gene_field": "momentum_weight"},
+                    {"signal": "breakout", "weight_gene_field": "breakout_weight"},
+                    {"signal": "range", "weight_gene_field": "range_weight"},
+                    {"signal": "volatility", "weight_gene_field": "volatility_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "wrong_exit",
+                "trade_control_gene": "trade_control",
+            },
+        },
+        {
+            "id": "incomplete_mapping_policy",
+            "description": "Incomplete mapping.",
+            "engine": "policy_v2_default_engine",
+            "entry": {
+                "trigger_gene": "entry_trigger",
+                "signals": [
+                    {"signal": "trend", "weight_gene_field": "trend_weight"},
+                ],
+            },
+            "exit": {
+                "policy_gene": "exit_policy",
+                "trade_control_gene": "trade_control",
+            },
+        },
+    )
+
+    for payload in invalid_payloads:
+        try:
+            service.save_decision_policy_asset(payload)
+        except ValueError:
+            continue
+        raise AssertionError("Expected invalid authored decision policy to fail.")
 
 
 def test_run_lab_save_signal_pack_asset_preserves_signal_order(
