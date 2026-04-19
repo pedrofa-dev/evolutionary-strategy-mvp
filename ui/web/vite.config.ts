@@ -6,6 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
       "/health": "http://localhost:8000",
       "/catalog": "http://localhost:8000",
       "/run-lab": "http://localhost:8000",

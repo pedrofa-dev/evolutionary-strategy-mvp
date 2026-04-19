@@ -732,7 +732,7 @@ pre {
 
 .configs-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -740,6 +740,15 @@ pre {
 .configs-sidebar {
   position: sticky;
   top: calc(var(--app-header-offset) + 0.5rem);
+  min-width: 0;
+}
+
+.configs-layout > * {
+  min-width: 0;
+}
+
+.detail-panel {
+  min-width: 0;
 }
 
 .configs-filter-grid {
@@ -757,6 +766,8 @@ pre {
   border: 1px solid var(--border);
   background: var(--panel-strong);
   border-radius: 14px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .config-row-card.selected {
@@ -783,6 +794,12 @@ pre {
   justify-content: space-between;
   gap: 0.75rem;
   align-items: flex-start;
+}
+
+.config-row-header .primary-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
 }
 
 .config-row-actions {

@@ -81,7 +81,7 @@ def test_configs_list_endpoint_returns_canonical_configs(tmp_path: Path) -> None
 
     status_code, payload = _request(
         "GET",
-        "/configs",
+        "/api/configs",
         config_browser_service=service,
     )
 
@@ -103,7 +103,7 @@ def test_configs_detail_endpoint_returns_normalized_editor_dto(tmp_path: Path) -
 
     status_code, payload = _request(
         "GET",
-        "/configs/alpha.json",
+        "/api/configs/alpha.json",
         config_browser_service=service,
     )
 
@@ -125,7 +125,7 @@ def test_configs_duplicate_endpoint_creates_copy(tmp_path: Path) -> None:
 
     status_code, payload = _request(
         "POST",
-        "/configs/duplicate",
+        "/api/configs/duplicate",
         body={
             "source_config_name": "alpha.json",
             "new_config_name": "alpha copy",
@@ -150,7 +150,7 @@ def test_configs_rename_endpoint_renames_config(tmp_path: Path) -> None:
 
     status_code, payload = _request(
         "POST",
-        "/configs/rename",
+        "/api/configs/rename",
         body={
             "source_config_name": "alpha.json",
             "new_config_name": "renamed_alpha",
@@ -176,7 +176,7 @@ def test_configs_duplicate_collision_returns_bad_request(tmp_path: Path) -> None
 
     status_code, payload = _request(
         "POST",
-        "/configs/duplicate",
+        "/api/configs/duplicate",
         body={
             "source_config_name": "alpha.json",
             "new_config_name": "beta.json",
@@ -202,7 +202,7 @@ def test_configs_rename_collision_returns_bad_request(tmp_path: Path) -> None:
 
     status_code, payload = _request(
         "POST",
-        "/configs/rename",
+        "/api/configs/rename",
         body={
             "source_config_name": "alpha.json",
             "new_config_name": "beta.json",
@@ -226,7 +226,7 @@ def test_configs_detail_missing_returns_not_found(tmp_path: Path) -> None:
 
     status_code, payload = _request(
         "GET",
-        "/configs/missing.json",
+        "/api/configs/missing.json",
         config_browser_service=service,
     )
 
@@ -246,7 +246,7 @@ def test_configs_operation_invalid_payload_returns_bad_request(tmp_path: Path) -
 
     status_code, payload = _request(
         "POST",
-        "/configs/duplicate",
+        "/api/configs/duplicate",
         body={"source_config_name": "alpha.json"},
         config_browser_service=service,
     )
@@ -277,7 +277,7 @@ def test_configs_save_endpoint_updates_existing_config(tmp_path: Path) -> None:
 
     status_code, payload = _request(
         "POST",
-        "/configs/save",
+        "/api/configs/save",
         body={
             "source_config_name": "alpha.json",
             "config": editor,
@@ -307,7 +307,7 @@ def test_configs_save_as_new_endpoint_creates_new_config(tmp_path: Path) -> None
 
     status_code, payload = _request(
         "POST",
-        "/configs/save-as-new",
+        "/api/configs/save-as-new",
         body={"config": editor},
         config_browser_service=service,
     )
@@ -328,7 +328,7 @@ def test_configs_save_missing_source_returns_not_found(tmp_path: Path) -> None:
 
     status_code, payload = _request(
         "POST",
-        "/configs/save",
+        "/api/configs/save",
         body={
             "source_config_name": "missing.json",
             "config": {
@@ -363,7 +363,7 @@ def test_configs_save_as_new_collision_returns_bad_request(tmp_path: Path) -> No
 
     status_code, payload = _request(
         "POST",
-        "/configs/save-as-new",
+        "/api/configs/save-as-new",
         body={"config": editor},
         config_browser_service=service,
     )
@@ -388,7 +388,7 @@ def test_configs_save_invalid_payload_returns_bad_request(tmp_path: Path) -> Non
 
     status_code, payload = _request(
         "POST",
-        "/configs/save",
+        "/api/configs/save",
         body={
             "source_config_name": "alpha.json",
             "config": editor,

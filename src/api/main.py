@@ -144,14 +144,14 @@ class CatalogApiApp:
                     "message": f"Unsupported method: {method}",
                 }
             return build_catalog_response(self.catalog_service)
-        if normalized_path == "/configs":
+        if normalized_path == "/api/configs":
             if method != "GET":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
                     "error": "method_not_allowed",
                     "message": f"Unsupported method: {method}",
                 }
             return build_config_list_response(self.config_browser_service)
-        if normalized_path == "/configs/duplicate":
+        if normalized_path == "/api/configs/duplicate":
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
                     "error": "method_not_allowed",
@@ -166,7 +166,7 @@ class CatalogApiApp:
                 self.config_browser_service,
                 request_body,
             )
-        if normalized_path == "/configs/rename":
+        if normalized_path == "/api/configs/rename":
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
                     "error": "method_not_allowed",
@@ -181,7 +181,7 @@ class CatalogApiApp:
                 self.config_browser_service,
                 request_body,
             )
-        if normalized_path == "/configs/save":
+        if normalized_path == "/api/configs/save":
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
                     "error": "method_not_allowed",
@@ -196,7 +196,7 @@ class CatalogApiApp:
                 self.config_browser_service,
                 request_body,
             )
-        if normalized_path == "/configs/save-as-new":
+        if normalized_path == "/api/configs/save-as-new":
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
                     "error": "method_not_allowed",
@@ -211,13 +211,13 @@ class CatalogApiApp:
                 self.config_browser_service,
                 request_body,
             )
-        if normalized_path.startswith("/configs/"):
+        if normalized_path.startswith("/api/configs/"):
             if method != "GET":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {
                     "error": "method_not_allowed",
                     "message": f"Unsupported method: {method}",
                 }
-            config_name = normalized_path.removeprefix("/configs/")
+            config_name = normalized_path.removeprefix("/api/configs/")
             return build_config_detail_response(
                 self.config_browser_service,
                 config_name,

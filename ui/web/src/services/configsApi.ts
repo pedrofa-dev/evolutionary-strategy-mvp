@@ -36,19 +36,19 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getConfigs(): Promise<RunConfigBrowserSummary[]> {
-  const payload = await requestJson<{ items: RunConfigBrowserSummary[] }>("/configs");
+  const payload = await requestJson<{ items: RunConfigBrowserSummary[] }>("/api/configs");
   return payload.items;
 }
 
 export function getConfig(configName: string): Promise<RunConfigEditorView> {
-  return requestJson<RunConfigEditorView>(`/configs/${encodeURIComponent(configName)}`);
+  return requestJson<RunConfigEditorView>(`/api/configs/${encodeURIComponent(configName)}`);
 }
 
 export function duplicateConfig(
   sourceConfigName: string,
   newConfigName: string,
 ): Promise<RunConfigFileOperationResult> {
-  return requestJson<RunConfigFileOperationResult>("/configs/duplicate", {
+  return requestJson<RunConfigFileOperationResult>("/api/configs/duplicate", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -64,7 +64,7 @@ export function renameConfig(
   sourceConfigName: string,
   newConfigName: string,
 ): Promise<RunConfigFileOperationResult> {
-  return requestJson<RunConfigFileOperationResult>("/configs/rename", {
+  return requestJson<RunConfigFileOperationResult>("/api/configs/rename", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -80,7 +80,7 @@ export function saveConfig(
   sourceConfigName: string,
   config: RunConfigEditorView,
 ): Promise<RunConfigEditorView> {
-  return requestJson<RunConfigEditorView>("/configs/save", {
+  return requestJson<RunConfigEditorView>("/api/configs/save", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -93,7 +93,7 @@ export function saveConfig(
 }
 
 export function saveConfigAsNew(config: RunConfigEditorView): Promise<RunConfigEditorView> {
-  return requestJson<RunConfigEditorView>("/configs/save-as-new", {
+  return requestJson<RunConfigEditorView>("/api/configs/save-as-new", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
